@@ -1,0 +1,3 @@
+[submodule "osimpipeline"]
+	path = osimpipeline
+	url = https://github.com/stanfordnmbl/osimpipeline.git
