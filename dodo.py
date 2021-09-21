@@ -40,13 +40,7 @@ from tasks import *
 # Custom helper functions for this project
 from helpers import *
 
-treadmill = False
-model_fname = ''
-if treadmill:
-    model_fname = 'Rajagopal2015_passiveCal_hipAbdMoved_noArms_30musc_treadmill_optMaxIsoForces.osim'
-else:
-    model_fname = 'Rajagopal2015_passiveCal_hipAbdMoved_noArms_30musc_optMaxIsoForces.osim'
-
+model_fname = 'Rajagopal2015_passiveCal_hipAbdMoved_noArms_30musc_optMaxIsoForces.osim'
 generic_model_fpath = os.path.join('model', model_fname)
 study = osp.Study('hai_perturb_sim', generic_model_fpath=generic_model_fpath)
 
@@ -72,9 +66,6 @@ study.module3 = rotateVec(study.module3)
 
 # Set the treadmill walking speed for the study
 study.walking_speed = 1.25
-
-# Are we modeling the treadmill in this study?
-study.treadmill = treadmill
 
 # Copy data files
 # ---------------
@@ -148,26 +139,26 @@ cmap_indices = [0.1, 0.3, 0.5, 0.9]
 delay = 0.400
 colormap = 'nipy_spectral'
 
-study.add_task(TaskPlotCOMTrackingErrorsAnklePerturb, subjects, [40, 50, 60], 
-    colormap, cmap_indices[1:], delay)
-study.add_task(TaskPlotNormalizedImpulseAnklePerturb, subjects, times, colormap,
-    cmap_indices, delay)
-study.add_task(TaskPlotGroundReactionsAnklePerturb, subjects[0], times, colormap,
-    cmap_indices, delay)
-study.add_task(TaskPlotCOMVersusAnklePerturbTime, subjects, 100, times, colormap,
-    cmap_indices, delay)
-study.add_task(TaskPlotCOMVersusAnklePerturbTorque, subjects, 40, delay=delay)
-study.add_task(TaskPlotCOMVersusAnklePerturbTorque, subjects, 50, delay=delay)
-study.add_task(TaskPlotCOMVersusAnklePerturbTorque, subjects, 60, delay=delay)
-delays40 = np.arange(0.0, 1.1, 0.1)
-delays50 = np.arange(0.0, 1.1, 0.1)
-delays60 = np.arange(0.0, 0.8, 0.1)
-study.add_task(TaskPlotCOMVersusAnklePerturbDelay, subjects, delays40, 100, 40)
-study.add_task(TaskPlotCOMVersusAnklePerturbDelay, subjects, delays50, 100, 50)
-study.add_task(TaskPlotCOMVersusAnklePerturbDelay, subjects, delays60, 100, 60)
-study.add_task(TaskPlotCOMTrackingErrorsAnklePerturbDelay, subjects, delays40, 100, 40)
-study.add_task(TaskPlotCOMTrackingErrorsAnklePerturbDelay, subjects, delays50, 100, 50)
-study.add_task(TaskPlotCOMTrackingErrorsAnklePerturbDelay, subjects, delays60, 100, 60)
+# study.add_task(TaskPlotCOMTrackingErrorsAnklePerturb, subjects, [40, 50, 60], 
+#     colormap, cmap_indices[1:], delay)
+# study.add_task(TaskPlotNormalizedImpulseAnklePerturb, subjects, times, colormap,
+#     cmap_indices, delay)
+# study.add_task(TaskPlotGroundReactionsAnklePerturb, subjects[0], times, colormap,
+#     cmap_indices, delay)
+# study.add_task(TaskPlotCOMVersusAnklePerturbTime, subjects, 100, times, colormap,
+#     cmap_indices, delay)
+# study.add_task(TaskPlotCOMVersusAnklePerturbTorque, subjects, 40, delay=delay)
+# study.add_task(TaskPlotCOMVersusAnklePerturbTorque, subjects, 50, delay=delay)
+# study.add_task(TaskPlotCOMVersusAnklePerturbTorque, subjects, 60, delay=delay)
+# delays40 = np.arange(0.0, 1.1, 0.1)
+# delays50 = np.arange(0.0, 1.1, 0.1)
+# delays60 = np.arange(0.0, 0.8, 0.1)
+# study.add_task(TaskPlotCOMVersusAnklePerturbDelay, subjects, delays40, 100, 40)
+# study.add_task(TaskPlotCOMVersusAnklePerturbDelay, subjects, delays50, 100, 50)
+# study.add_task(TaskPlotCOMVersusAnklePerturbDelay, subjects, delays60, 100, 60)
+# study.add_task(TaskPlotCOMTrackingErrorsAnklePerturbDelay, subjects, delays40, 100, 40)
+# study.add_task(TaskPlotCOMTrackingErrorsAnklePerturbDelay, subjects, delays50, 100, 50)
+# study.add_task(TaskPlotCOMTrackingErrorsAnklePerturbDelay, subjects, delays60, 100, 60)
 
 # conditions = ['walk2']
 # # Experiment results
