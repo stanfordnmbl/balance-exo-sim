@@ -235,3 +235,6 @@ upper*.sto
 lower*.sto
 controls*.sto
 
+# Run taks config file
+run_tasks.ps1
+

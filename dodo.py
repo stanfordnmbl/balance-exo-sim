@@ -9,7 +9,7 @@ import inspect
 
 import yaml
 with open('config.yaml') as f:
-    config = yaml.load(f)
+    config = yaml.safe_load(f)
 if not 'opensim_home' in config:
     raise Exception('You must define the field `opensim_home` in config.yaml '
                     'to point to the root of your OpenSim 4.0 (or later) '
@@ -42,7 +42,7 @@ from helpers import *
 
 model_fname = 'Rajagopal2015_passiveCal_hipAbdMoved_noArms_30musc_optMaxIsoForces.osim'
 generic_model_fpath = os.path.join('model', model_fname)
-study = osp.Study('hai_perturb_sim', generic_model_fpath=generic_model_fpath)
+study = osp.Study('ankle_perturb_sim', generic_model_fpath=generic_model_fpath)
 
 # Bump'em module locations
 # ------------------------
@@ -83,14 +83,15 @@ subjects = [1]
 # 39: backward cross step (Pert mid-swing, right)
 # 40: cross over with slight hop in recovery (Pert at heelstrike, left-front)
 # 43: almost places swing leg, then changes position (Pert at mid swing, front left)
-trials = [4, 5, 8, 17, 25, 26, 28, 31, 39, 40, 43]
-study.add_task(TaskCopyMotionCaptureData, subjects, trials)
-study.add_task(TaskTransformExperimentalData, subjects, trials)
-study.add_task(TaskFilterAndShiftGroundReactions, subjects, trials)
+# trials = [5, 8, 17, 25, 26, 28, 31, 39, 40, 43]
+unperturbed_trial = 4
+study.add_task(TaskCopyMotionCaptureData, subjects, unperturbed_trial)
+study.add_task(TaskTransformExperimentalData, subjects)
+study.add_task(TaskFilterAndShiftGroundReactions, subjects)
 lowpass_freq = 7.0 / 1.25 # Based on Bianco et al. 2018
-study.add_task(TaskExtractAndFilterEMG, subjects, trials, 
+study.add_task(TaskExtractAndFilterEMG, subjects, 
     frequency_band=[10.0, 400.0], filter_order=4.0, lowpass_freq=lowpass_freq)
-study.add_task(TaskExtractAndFilterPerturbationForces, subjects, trials, 
+study.add_task(TaskExtractAndFilterPerturbationForces, subjects, 
     lowpass_freq=10.0)
 
 # Model markers to compute errors for
@@ -128,12 +129,6 @@ subject01.add_to_study(study)
 # Analysis
 # --------
 subjects = ['subject01']
-# study.add_task(TaskPlotStateTrackingErrors, 'perturb05', subjects, 'perturb05')
-# study.add_task(TaskPlotCOMTrackingErrors, 'perturb05', subjects, 'perturb05')
-# study.add_task(TaskPlotStateTrackingErrors, 'perturb08', subjects, 'perturb08')
-# study.add_task(TaskPlotMuscleEffort, 'perturb05', subjects, 'perturb05')
-# study.add_task(TaskPlotMuscleEffort, 'perturb08', subjects, 'perturb08')
-
 times = [30, 40, 50, 60]
 cmap_indices = [0.1, 0.3, 0.5, 0.9]
 delay = 0.400

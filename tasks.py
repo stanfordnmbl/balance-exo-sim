@@ -41,7 +41,7 @@ class working_directory():
 
 class TaskCopyMotionCaptureData(osp.TaskCopyMotionCaptureData):
     REGISTRY = []
-    def __init__(self, study, subjects, trials, prefix='S01DN6'):
+    def __init__(self, study, subjects, unperturbed_trial, prefix='S01DN6'):
         regex_replacements = list()
 
         subjects = ['subject%02i' % subj for subj in subjects]
@@ -55,70 +55,58 @@ class TaskCopyMotionCaptureData(osp.TaskCopyMotionCaptureData):
                         subject, 'static', 'expdata', 
                         'marker_trajectories.trc').replace('\\','\\\\')
                     ))
-            for side in ['_left', '_right']:
-                # Vicon
-                regex_replacements.append(
-                    (
-                        os.path.join('Vicon', subject,
-                            '%s%02i.c3d' % (prefix, trials[0])).replace('\\', '\\\\'),
-                        os.path.join('experiments',
-                            subject, f'unperturbed{side}', 'expdata', 
-                            'vicon.c3d').replace('\\','\\\\')
-                        ))
-                # EMG
-                regex_replacements.append(
-                    (
-                        os.path.join('Vicon', subject,
-                            '%s%02i.mat' % (prefix, trials[0])).replace('\\', '\\\\'),
-                        os.path.join('experiments',
-                            subject, f'unperturbed{side}', 'expdata', 
-                            'emg.mat').replace('\\','\\\\')
-                        ))
-                # Speedgoat
-                regex_replacements.append(
-                    (
-                        os.path.join('Speedgoat', subject,
-                            '%s%02i.mat' % (prefix, trials[0])).replace('\\', '\\\\'),
-                        os.path.join('experiments',
-                            subject, f'unperturbed{side}', 'expdata', 
-                            'speedgoat.mat').replace('\\','\\\\')
-                        ))
+            # for side in ['_left', '_right']:
+            # Vicon
+            regex_replacements.append(
+                (
+                    os.path.join('Vicon', subject,
+                        '%s%02i.c3d' % (prefix, unperturbed_trial)).replace('\\', '\\\\'),
+                    os.path.join('experiments',
+                        subject, f'unperturbed', 'expdata', 
+                        'vicon.c3d').replace('\\','\\\\')
+                    ))
+            # EMG
+            regex_replacements.append(
+                (
+                    os.path.join('Vicon', subject,
+                        '%s%02i.mat' % (prefix, unperturbed_trial)).replace('\\', '\\\\'),
+                    os.path.join('experiments',
+                        subject, f'unperturbed', 'expdata', 
+                        'emg.mat').replace('\\','\\\\')
+                    ))
+            # Speedgoat
+            regex_replacements.append(
+                (
+                    os.path.join('Speedgoat', subject,
+                        '%s%02i.mat' % (prefix, unperturbed_trial)).replace('\\', '\\\\'),
+                    os.path.join('experiments',
+                        subject, f'unperturbed', 'expdata', 
+                        'speedgoat.mat').replace('\\','\\\\')
+                    ))
 
         super(TaskCopyMotionCaptureData, self).__init__(study,
                 regex_replacements)
 
 class TaskTransformExperimentalData(osp.StudyTask):
     REGISTRY = []
-    def __init__(self, study, subjects, trials):
+    def __init__(self, study, subjects):
         super(TaskTransformExperimentalData, self).__init__(study)
         self.name = study.name + '_transform_experimental_data'
 
         subjects = ['subject%02i' % subj for subj in subjects]
         for subject in subjects:
-            for side in ['_left', '_right']:
-                expdata_path = os.path.join(study.config['results_path'], 
-                        'experiments', subject, f'unperturbed{side}', 
-                        'expdata')
-                self.add_action(
-                    [os.path.join(expdata_path, 
-                        'vicon.c3d').replace('\\','\\\\')],
-                    [os.path.join(expdata_path, 
-                        'marker_trajectories.trc').replace('\\','\\\\'),
-                     os.path.join(expdata_path, 
-                        'ground_reaction_unfiltered.mot').replace('\\','\\\\')],
-                    self.transform_experimental_data)
-
-            for trial in trials:
-                expdata_path = os.path.join(study.config['results_path'], 
-                    'experiments', subject, 'perturb%02i' % trial, 'expdata')
-                self.add_action(
-                    [os.path.join(expdata_path, 
-                        'vicon.c3d').replace('\\','\\\\')],
-                    [os.path.join(expdata_path, 
-                        'marker_trajectories.trc').replace('\\','\\\\'),
-                     os.path.join(expdata_path, 
-                        'ground_reaction_unfiltered.mot').replace('\\','\\\\')],
-                    self.transform_experimental_data)
+            # for side in ['_left', '_right']:
+            expdata_path = os.path.join(study.config['results_path'], 
+                    'experiments', subject, f'unperturbed', 
+                    'expdata')
+            self.add_action(
+                [os.path.join(expdata_path, 
+                    'vicon.c3d').replace('\\','\\\\')],
+                [os.path.join(expdata_path, 
+                    'marker_trajectories.trc').replace('\\','\\\\'),
+                 os.path.join(expdata_path, 
+                    'ground_reaction_unfiltered.mot').replace('\\','\\\\')],
+                self.transform_experimental_data)
 
     def transform_experimental_data(self, file_dep, target):
 
@@ -228,7 +216,7 @@ class TaskTransformExperimentalData(osp.StudyTask):
 
 class TaskFilterAndShiftGroundReactions(osp.StudyTask):
     REGISTRY = []
-    def __init__(self, study, subjects, trials, threshold=35, sample_rate=2000,
+    def __init__(self, study, subjects, threshold=35, sample_rate=2000,
             critically_damped_order=4, critically_damped_cutoff_frequency=100,
             gaussian_smoothing_sigma=5, grf_xpos_offset=-1.75, 
             grf_zpos_offset=0.55):
@@ -256,30 +244,18 @@ class TaskFilterAndShiftGroundReactions(osp.StudyTask):
 
         subjects = ['subject%02i' % subj for subj in subjects]
         for subject in subjects:
-            for side in ['_left', '_right']:
-                expdata_path = os.path.join(study.config['results_path'], 
-                        'experiments', subject, f'unperturbed{side}', 
-                        'expdata')
-                self.add_action(
-                    [os.path.join(expdata_path, 
-                        'ground_reaction_unfiltered.mot').replace('\\','\\\\')],
-                    [os.path.join(expdata_path, 
-                        'ground_reaction.mot').replace('\\','\\\\'),
-                     os.path.join(expdata_path, 
-                        'ground_reactions_filtered.png').replace('\\','\\\\')],
-                    self.filter_and_shift_grfs)
-
-            for trial in trials:
-                expdata_path = os.path.join(study.config['results_path'], 
-                    'experiments', subject, 'perturb%02i' % trial, 'expdata')
-                self.add_action(
-                    [os.path.join(expdata_path, 
-                        'ground_reaction_unfiltered.mot').replace('\\','\\\\')],
-                    [os.path.join(expdata_path, 
-                        'ground_reaction.mot').replace('\\','\\\\'),
-                     os.path.join(expdata_path, 
-                        'ground_reactions_filtered.png').replace('\\','\\\\')],
-                    self.filter_and_shift_grfs)
+            # for side in ['_left', '_right']:
+            expdata_path = os.path.join(study.config['results_path'], 
+                    'experiments', subject, f'unperturbed', 
+                    'expdata')
+            self.add_action(
+                [os.path.join(expdata_path, 
+                    'ground_reaction_unfiltered.mot').replace('\\','\\\\')],
+                [os.path.join(expdata_path, 
+                    'ground_reaction.mot').replace('\\','\\\\'),
+                 os.path.join(expdata_path, 
+                    'ground_reactions_filtered.png').replace('\\','\\\\')],
+                self.filter_and_shift_grfs)
 
     def filter_and_shift_grfs(self, file_dep, target):
 
@@ -528,7 +504,7 @@ class TaskFilterAndShiftGroundReactions(osp.StudyTask):
 
 class TaskExtractAndFilterEMG(osp.StudyTask):
     REGISTRY = []
-    def __init__(self, study, subjects, trials, frequency_band=[10.0, 400.0],
+    def __init__(self, study, subjects, frequency_band=[10.0, 400.0],
             filter_order=4.0, lowpass_freq=6.0):
         super(TaskExtractAndFilterEMG, self).__init__(study)
         self.name = study.name + '_extract_and_filter_emg'
@@ -543,30 +519,18 @@ class TaskExtractAndFilterEMG(osp.StudyTask):
 
         subjects = ['subject%02i' % subj for subj in subjects]
         for subject in subjects:
-            for side in ['_left', '_right']:
-                expdata_path = os.path.join(study.config['results_path'], 
-                        'experiments', subject, f'unperturbed{side}', 
-                        'expdata')
-                self.add_action(
-                    [os.path.join(expdata_path, 
-                        'emg.mat').replace('\\','\\\\')],
-                    [os.path.join(expdata_path, 
-                        'emg.sto').replace('\\','\\\\'),
-                     os.path.join(expdata_path, 
-                        'emg_filtered.png').replace('\\','\\\\')],
-                    self.extract_and_filter_emg)
-
-            for trial in trials:
-                expdata_path = os.path.join(study.config['results_path'], 
-                    'experiments', subject, 'perturb%02i' % trial, 'expdata')
-                self.add_action(
-                    [os.path.join(expdata_path, 
-                        'emg.mat').replace('\\','\\\\')],
-                    [os.path.join(expdata_path, 
-                        'emg.sto').replace('\\','\\\\'),
-                     os.path.join(expdata_path, 
-                        'emg_filtered.png').replace('\\','\\\\')],
-                    self.extract_and_filter_emg)
+            # for side in ['_left', '_right']:
+            expdata_path = os.path.join(study.config['results_path'], 
+                    'experiments', subject, f'unperturbed', 
+                    'expdata')
+            self.add_action(
+                [os.path.join(expdata_path, 
+                    'emg.mat').replace('\\','\\\\')],
+                [os.path.join(expdata_path, 
+                    'emg.sto').replace('\\','\\\\'),
+                 os.path.join(expdata_path, 
+                    'emg_filtered.png').replace('\\','\\\\')],
+                self.extract_and_filter_emg)
 
     def extract_and_filter_emg(self, file_dep, target):
 
@@ -645,7 +609,7 @@ class TaskExtractAndFilterEMG(osp.StudyTask):
 
 class TaskExtractAndFilterPerturbationForces(osp.StudyTask):
     REGISTRY = []
-    def __init__(self, study, subjects, trials, lowpass_freq=10.0, 
+    def __init__(self, study, subjects, lowpass_freq=10.0, 
             filter_order=4.0, threshold=25, gaussian_smoothing_sigma=15):
         super(TaskExtractAndFilterPerturbationForces, self).__init__(study)
         self.name = study.name + '_extract_and_filter_perturbation_forces'
@@ -657,30 +621,18 @@ class TaskExtractAndFilterPerturbationForces(osp.StudyTask):
 
         subjects = ['subject%02i' % subj for subj in subjects]
         for subject in subjects:
-            for side in ['_left', '_right']:
-                expdata_path = os.path.join(study.config['results_path'], 
-                        'experiments', subject, f'unperturbed{side}', 
-                        'expdata')
-                self.add_action(
-                    [os.path.join(expdata_path, 
-                        'speedgoat.mat').replace('\\','\\\\')],
-                    [os.path.join(expdata_path, 
-                        'perturbation_force.sto').replace('\\','\\\\'),
-                     os.path.join(expdata_path, 
-                        'perturbation_force_filtered.png').replace('\\','\\\\')],
-                    self.extract_and_filter_perturbation_force)
-
-            for trial in trials:
-                expdata_path = os.path.join(study.config['results_path'], 
-                    'experiments', subject, 'perturb%02i' % trial, 'expdata')
-                self.add_action(
-                    [os.path.join(expdata_path, 
-                        'speedgoat.mat').replace('\\','\\\\')],
-                    [os.path.join(expdata_path, 
-                        'perturbation_force.sto').replace('\\','\\\\'),
-                     os.path.join(expdata_path, 
-                        'perturbation_force_filtered.png').replace('\\','\\\\')],
-                    self.extract_and_filter_perturbation_force)
+            # for side in ['_left', '_right']:
+            expdata_path = os.path.join(study.config['results_path'], 
+                    'experiments', subject, f'unperturbed', 
+                    'expdata')
+            self.add_action(
+                [os.path.join(expdata_path, 
+                    'speedgoat.mat').replace('\\','\\\\')],
+                [os.path.join(expdata_path, 
+                    'perturbation_force.sto').replace('\\','\\\\'),
+                 os.path.join(expdata_path, 
+                    'perturbation_force_filtered.png').replace('\\','\\\\')],
+                self.extract_and_filter_perturbation_force)
 
     def extract_and_filter_perturbation_force(self, file_dep, target):
 
@@ -864,13 +816,13 @@ class TaskScaleMuscleMaxIsometricForce(osp.SubjectTask):
 
         subj_model.printToXML(target[0])
 
-class TaskAdjustScaledModelMarkers(osp.SubjectTask):
+class TaskAdjustScaledModel(osp.SubjectTask):
     REGISTRY = []
     def __init__(self, subject, marker_adjustments, treadmill=False):
-        super(TaskAdjustScaledModelMarkers, self).__init__(subject)
+        super(TaskAdjustScaledModel, self).__init__(subject)
         self.subject = subject
         self.study = subject.study
-        self.name = '%s_adjust_scaled_model_markers' % self.subject.name
+        self.name = '%s_adjust_scaled_model' % self.subject.name
         self.doc = 'Make adjustments to model marker post-scale'
         self.scaled_model_fpath = os.path.join(
             self.subject.results_exp_path, 
@@ -900,17 +852,17 @@ class TaskAdjustScaledModelMarkers(osp.SubjectTask):
             loc.set(adj[0], adj[1])
             marker.set_location(loc)
 
-        print('Adding Bump-em module markers... ')
-        module0 = osim.Marker('module0', model.getGround(), self.study.module0)
-        module1 = osim.Marker('module1', model.getGround(), self.study.module1)
-        module2 = osim.Marker('module2', model.getGround(), self.study.module2)
-        module3 = osim.Marker('module3', model.getGround(), self.study.module3)
+        # print('Adding Bump-em module markers... ')
+        # module0 = osim.Marker('module0', model.getGround(), self.study.module0)
+        # module1 = osim.Marker('module1', model.getGround(), self.study.module1)
+        # module2 = osim.Marker('module2', model.getGround(), self.study.module2)
+        # module3 = osim.Marker('module3', model.getGround(), self.study.module3)
 
-        markerSet.adoptAndAppend(module0)
-        markerSet.adoptAndAppend(module1)
-        markerSet.adoptAndAppend(module2)
-        markerSet.adoptAndAppend(module3)
-        model.finalizeConnections()
+        # markerSet.adoptAndAppend(module0)
+        # markerSet.adoptAndAppend(module1)
+        # markerSet.adoptAndAppend(module2)
+        # markerSet.adoptAndAppend(module3)
+        # model.finalizeConnections()
 
         print('Adding markers for ankle exoskeletons...')
         state = model.initSystem()
@@ -936,6 +888,14 @@ class TaskAdjustScaledModelMarkers(osp.SubjectTask):
         REXO = osim.Marker('REXO', tibia_r, REXO_tibia_r)
         markerSet.adoptAndAppend(LEXO)
         markerSet.adoptAndAppend(REXO)
+        model.finalizeConnections()
+
+        print('Unlocking subtalar and mtp joints...')
+        coordSet = model.updCoordinateSet()
+        for coordName in ['subtalar_angle', 'mtp_angle']:
+            for side in ['_l', '_r']:
+                coord = coordSet.get(f'{coordName}{side}')
+                coord.set_locked(False)
 
         model.finalizeConnections()
         model.printToXML(target[0])

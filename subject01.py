@@ -196,15 +196,15 @@ def add_to_study(study):
     marker_adjustments = dict()
     marker_adjustments['RASI'] = (1, 0.03)
     marker_adjustments['LASI'] = (1, 0.03)
-    subject.add_task(tasks.TaskAdjustScaledModelMarkers, marker_adjustments)
+    subject.add_task(tasks.TaskAdjustScaledModel, marker_adjustments)
     subject.scaled_model_fpath = os.path.join(subject.results_exp_path,
         '%s_final.osim' % subject.name)
 
     # unperturbed condition (left foot gait cycle)
     # ---------------------------------------------
     unperturbed = subject.add_condition('unperturbed')
-    start_time = 7.25
-    end_time = 8.25 # 9.29 (for two gait cycles, ~13 hours)
+    start_time = 6.74
+    end_time = 8.77
     gait_cycle_duration = end_time - start_time
 
     interval = dict()
@@ -219,33 +219,32 @@ def add_to_study(study):
 
     ik_setup_task, id_setup_task = helpers.generate_main_tasks(
         unperturbed_trial)
-    unperturbed_guess_fpath = os.path.join(
-            unperturbed_trial.results_exp_path, 'guess', 
-            'unperturbed_guess.sto')
-    unperturbed_trial.add_task(tasks.TaskMocoUnperturbedWalkingGuess,
-        ik_setup_task, id_setup_task, mesh_interval=0.02, 
-        walking_speed=study.walking_speed)
-    unperturbed_fpath = os.path.join(
-            unperturbed_trial.results_exp_path, 'moco', 
-            'unperturbed.sto')
-    unperturbed_trial.add_task(tasks.TaskMocoUnperturbedWalking,
-        ik_setup_task, id_setup_task, mesh_interval=0.02, 
-        walking_speed=study.walking_speed,
-        guess_fpath=unperturbed_fpath,
-        periodic=True)
+    # unperturbed_guess_fpath = os.path.join(
+    #         unperturbed_trial.results_exp_path, 'guess', 
+    #         'unperturbed_guess.sto')
+    # unperturbed_trial.add_task(tasks.TaskMocoUnperturbedWalkingGuess,
+    #     ik_setup_task, id_setup_task, mesh_interval=0.02, 
+    #     walking_speed=study.walking_speed)
+    # unperturbed_fpath = os.path.join(
+    #         unperturbed_trial.results_exp_path, 'moco', 
+    #         'unperturbed.sto')
+    # unperturbed_trial.add_task(tasks.TaskMocoUnperturbedWalking,
+    #     ik_setup_task, id_setup_task, mesh_interval=0.02, 
+    #     walking_speed=study.walking_speed,
+    #     guess_fpath=unperturbed_fpath,
+    #     periodic=True)
 
-    delays = np.arange(0.0, 1.1, 0.1)
-    for torque in [0.25, 0.5, 0.75, 1.0]:
-        for time in [0.3, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6]:
-            for delay in delays:
-                torque_parameters = [torque, time, 0.25, 0.1]
-                unperturbed_trial.add_task(tasks.TaskMocoAnkleTorquePerturbedWalking,
-                    ik_setup_task, id_setup_task, unperturbed_fpath, 
-                    mesh_interval=0.02, 
-                    torque_parameters=torque_parameters,
-                    walking_speed=study.walking_speed,
-                    perturb_response_delay=delay)
-                unperturbed_trial.add_task(
-                    tasks.TaskMocoAnkleTorquePerturbedWalkingPost,
-                    unperturbed_trial.tasks[-1])
+    # delay = 400
+    # for torque in [0.25, 0.5, 0.75, 1.0]:
+    #     for time in [0.3, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6]:
+    #         torque_parameters = [torque, time, 0.25, 0.1]
+    #         unperturbed_trial.add_task(tasks.TaskMocoAnkleTorquePerturbedWalking,
+    #             ik_setup_task, id_setup_task, unperturbed_fpath, 
+    #             mesh_interval=0.02, 
+    #             torque_parameters=torque_parameters,
+    #             walking_speed=study.walking_speed,
+    #             perturb_response_delay=delay)
+    #         unperturbed_trial.add_task(
+    #             tasks.TaskMocoAnkleTorquePerturbedWalkingPost,
+    #             unperturbed_trial.tasks[-1])
     
