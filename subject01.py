@@ -216,7 +216,7 @@ def add_to_study(study):
     ik_setup_task, id_setup_task = helpers.generate_main_tasks(
         unperturbed_trial)
 
-    mesh_intervals = [0.075, 0.05, 0.035]
+    mesh_intervals = [0.075, 0.05]
     unperturbed_guess_fpath = None
     for mesh_interval in mesh_intervals:
         unperturbed_trial.add_task(tasks.TaskMocoUnperturbedWalkingGuess,
@@ -230,8 +230,8 @@ def add_to_study(study):
 
     unperturbed_guess_fpath = os.path.join(study.config['results_path'],
                 'guess', subject.name, 
-                f'unperturbed_guess_mesh35.sto')
-    mesh_intervals = [0.035, 0.02, 0.01]
+                f'unperturbed_guess_mesh50.sto')
+    mesh_intervals = [0.05, 0.035, 0.02, 0.01]
     for mesh_interval in mesh_intervals:
         unperturbed_trial.add_task(tasks.TaskMocoUnperturbedWalking,
             ik_setup_task, id_setup_task, mesh_interval=mesh_interval, 

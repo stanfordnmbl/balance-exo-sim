@@ -238,3 +238,6 @@ controls*.sto
 # Run taks config file
 run_tasks.ps1
 
+# Results file
+/results
+
