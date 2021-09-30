@@ -40,7 +40,7 @@ from tasks import *
 # Custom helper functions for this project
 from helpers import *
 
-model_fname = 'Rajagopal2015_passiveCal_hipAbdMoved_noArms_30musc_optMaxIsoForces.osim'
+model_fname = 'Rajagopal2015_passiveCal_hipAbdMoved_noArms_mtp_subtalar_36musc_optMaxIsoForces.osim'
 generic_model_fpath = os.path.join('model', model_fname)
 study = osp.Study('ankle_perturb_sim', generic_model_fpath=generic_model_fpath)
 
@@ -84,7 +84,7 @@ subjects = [1]
 # 40: cross over with slight hop in recovery (Pert at heelstrike, left-front)
 # 43: almost places swing leg, then changes position (Pert at mid swing, front left)
 # trials = [5, 8, 17, 25, 26, 28, 31, 39, 40, 43]
-unperturbed_trial = 4
+unperturbed_trial = 8
 study.add_task(TaskCopyMotionCaptureData, subjects, unperturbed_trial)
 study.add_task(TaskTransformExperimentalData, subjects)
 study.add_task(TaskFilterAndShiftGroundReactions, subjects)

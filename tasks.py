@@ -904,16 +904,24 @@ class TaskAdjustScaledModel(osp.SubjectTask):
 class TaskMocoUnperturbedWalkingGuess(osp.TrialTask):
     REGISTRY = []
     def __init__(self, trial, ik_setup_task, id_setup_task, mesh_interval=0.02,
-                walking_speed=1.25, constrain_average_speed=True, 
-                constrain_initial_state=False, periodic=True, **kwargs):
+                walking_speed=1.25, constrain_average_speed=True, guess_fpath=None, 
+                constrain_initial_state=False, periodic=True, 
+                costs_enabled=True, pelvis_boundary_conditions=True, **kwargs):
         super(TaskMocoUnperturbedWalkingGuess, self).__init__(trial)
-        self.name = trial.id + f'_moco_unperturbed_walking_guess_mesh{int(1000*mesh_interval)}'
+        config_name = f'unperturbed_guess_mesh{int(1000*mesh_interval)}'
+        if not costs_enabled: config_name += f'_costsDisabled'
+        if periodic: config_name += f'_periodic'
+        self.config_name = config_name
+        self.name = trial.subject.name + '_moco_' + config_name
         self.mesh_interval = mesh_interval
         self.walking_speed = walking_speed
         self.root_dir = trial.study.config['doit_path']
         self.constrain_initial_state = constrain_initial_state
         self.constrain_average_speed = constrain_average_speed
         self.periodic = periodic
+        self.costs_enabled = costs_enabled
+        self.pelvis_boundary_conditions = pelvis_boundary_conditions
+        self.guess_fpath = guess_fpath
 
         self.result_fpath = os.path.join(self.study.config['results_path'],
             'guess', trial.subject.name)
@@ -934,35 +942,37 @@ class TaskMocoUnperturbedWalkingGuess(osp.TrialTask):
                          self.grf_fpath,
                          self.emg_fpath],
                         [os.path.join(self.result_fpath, 
-                            f'unperturbed_guess_mesh{int(1000*mesh_interval)}.sto')],
+                            self.config_name + '.sto')],
                         self.run_tracking_problem)
 
     def run_tracking_problem(self, file_dep, target):
 
         weights = {
-            'state_tracking_weight'  : 1e-2,
-            'control_weight'         : 1e-2,
-            'grf_tracking_weight'    : 1e-4,
-            'com_tracking_weight'    : 0,
+            'state_tracking_weight'  : 1e-3,
+            'control_weight'         : 1e0,
+            'grf_tracking_weight'    : 1e-2,
+            'com_tracking_weight'    : 1e-2,
             'base_of_support_weight' : 0,
             'head_accel_weight'      : 0,
             'upright_torso_weight'   : 0,
-            'torso_tracking_weight'  : 0,
-            'foot_tracking_weight'   : 0, 
+            'torso_tracking_weight'  : 1e-4,
+            'foot_tracking_weight'   : 1e-4, 
             'pelvis_tracking_weight' : 0,
-            'aux_deriv_weight'       : 1e-1,
+            'aux_deriv_weight'       : 1e-3,
             'metabolics_weight'      : 0,
             'accel_weight'           : 0,
             'regularization_weight'  : 0
         }
 
-        config_name = f'unperturbed_guess_mesh{int(1000*self.mesh_interval)}'
         config = MocoTrackConfig(
-            config_name, config_name, 'black', weights,
+            self.config_name, self.config_name, 'black', weights,
             constrain_average_speed=self.constrain_average_speed,
             constrain_initial_state=self.constrain_initial_state,
+            pelvis_boundary_conditions=self.pelvis_boundary_conditions,
             periodic=self.periodic,
-            guess=None,
+            guess=self.guess_fpath,
+            effort_enabled=self.costs_enabled,
+            tracking_enabled=self.costs_enabled
             )
 
         cycles = list()
@@ -998,7 +1008,8 @@ class TaskMocoUnperturbedWalking(osp.TrialTask):
                 constrain_initial_state=False,
                 periodic=False, **kwargs):
         super(TaskMocoUnperturbedWalking, self).__init__(trial)
-        self.name = trial.id + f'_moco_unperturbed_walking_mesh{int(1000*mesh_interval)}'
+        self.config_name = f'unperturbed_mesh{int(1000*mesh_interval)}'
+        self.name = trial.subject.name + f'_moco_' + self.config_name
         self.mesh_interval = mesh_interval
         self.walking_speed = walking_speed
         self.constrain_average_speed = constrain_average_speed
@@ -1028,7 +1039,7 @@ class TaskMocoUnperturbedWalking(osp.TrialTask):
                          self.grf_fpath,
                          self.emg_fpath],
                         [os.path.join(self.result_fpath, 
-                            f'unperturbed_mesh{int(1000*mesh_interval)}.sto')],
+                            self.config_name + '.sto')],
                         self.run_tracking_problem)
 
     def run_tracking_problem(self, file_dep, target):
@@ -1037,12 +1048,8 @@ class TaskMocoUnperturbedWalking(osp.TrialTask):
         if not self.track_grfs:    
             weights['grf_tracking_weight'] = 0.0
 
-        weights['torso_tracking_weight'] = 0.0
-        weights['foot_tracking_weight'] = 0.0
-
-        config_name = f'unperturbed_mesh{int(1000*self.mesh_interval)}'
         config = MocoTrackConfig(
-            config_name, config_name, 'black', weights,
+            self.config_name, self.config_name, 'black', weights,
             constrain_average_speed=self.constrain_average_speed,
             constrain_initial_state=self.constrain_initial_state,
             periodic=self.periodic,
@@ -1062,7 +1069,7 @@ class TaskMocoUnperturbedWalking(osp.TrialTask):
             file_dep[3], # GRF MOT file
             file_dep[4], # EMG data
             self.trial.cycles[0].start,
-            self.trial.cycles[0].end, 
+            self.trial.cycles[-1].end, 
             cycles,
             self.trial.right_strikes,
             self.trial.left_strikes,
