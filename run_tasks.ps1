@@ -27,7 +27,7 @@
 # -------------------
 # doit subject01_moco_unperturbed_guess_mesh20_costsDisabled
 # doit subject01_moco_unperturbed_guess_mesh20_costsDisabled_periodic
-doit subject01_moco_unperturbed_guess_mesh20_periodic
+# doit subject01_moco_unperturbed_guess_mesh20_periodic
 doit subject01_moco_unperturbed_mesh20
 
 # Perturbations at 350ms muscle delay
