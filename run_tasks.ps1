@@ -22,13 +22,17 @@
 # doit subject01_unperturbed_ik_setup
 # doit subject01_unperturbed_id                                 
 # doit subject01_unperturbed_id_setup   
+# doit subject01_unperturbed_joint_angle_standard_deviations
+# doit subject01_unperturbed_trim_tracking_data
 
 # Unperturbed walking
 # -------------------
-# doit subject01_moco_unperturbed_guess_mesh20_costsDisabled
-# doit subject01_moco_unperturbed_guess_mesh20_costsDisabled_periodic
-# doit subject01_moco_unperturbed_guess_mesh20_periodic
-doit subject01_moco_unperturbed_mesh20
+# doit subject01_moco_unperturbed_guess_mesh50_costsDisabled
+# doit subject01_moco_unperturbed_guess_mesh35_costsDisabled_periodic
+# doit subject01_moco_unperturbed_guess_mesh35_periodic
+doit subject01_moco_unperturbed_mesh35
+# doit subject01_moco_unperturbed_mesh20
+# doit subject01_moco_unperturbed_mesh10
 
 # Perturbations at 350ms muscle delay
 # -----------------------------------

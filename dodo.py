@@ -40,7 +40,7 @@ from tasks import *
 # Custom helper functions for this project
 from helpers import *
 
-model_fname = 'Rajagopal2015_passiveCal_hipAbdMoved_noArms_mtp_subtalar_36musc_optMaxIsoForces.osim'
+model_fname = 'Rajagopal2015_passiveCal_hipAbdMoved_noArms_subtalar_36musc_optMaxIsoForces.osim'
 generic_model_fpath = os.path.join('model', model_fname)
 study = osp.Study('ankle_perturb_sim', generic_model_fpath=generic_model_fpath)
 
@@ -104,19 +104,19 @@ error_markers.append('C7')
 study.error_markers = error_markers
 
 study.weights = {
-    'state_tracking_weight'  : 1e0,
-    'control_weight'         : 5e1,
+    'state_tracking_weight'  : 1e3,
+    'control_weight'         : 1e2,
     'grf_tracking_weight'    : 5e-1,
-    'com_tracking_weight'    : 5e2,
+    'com_tracking_weight'    : 1e2,
     'base_of_support_weight' : 0,
     'head_accel_weight'      : 0,
     'upright_torso_weight'   : 0,
-    'torso_tracking_weight'  : 1e2,
-    'foot_tracking_weight'   : 1e2,
+    'torso_tracking_weight'  : 1e1,
+    'foot_tracking_weight'   : 1e1,
     'pelvis_tracking_weight' : 0, 
     'aux_deriv_weight'       : 1e-1,
     'metabolics_weight'      : 0,
-    'accel_weight'           : 0,
+    'accel_weight'           : 1e-2,
     'regularization_weight'  : 0
     }
 
@@ -127,7 +127,7 @@ import subject01
 subject01.add_to_study(study)
 
 # Analysis
-# --------
+# -------=
 subjects = ['subject01']
 times = [30, 40, 50, 60]
 cmap_indices = [0.1, 0.3, 0.5, 0.9]

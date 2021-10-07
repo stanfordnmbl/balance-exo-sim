@@ -890,9 +890,9 @@ class TaskAdjustScaledModel(osp.SubjectTask):
         markerSet.adoptAndAppend(REXO)
         model.finalizeConnections()
 
-        print('Unlocking subtalar and mtp joints...')
+        print('Unlocking subtalar joints...')
         coordSet = model.updCoordinateSet()
-        for coordName in ['subtalar_angle', 'mtp_angle']:
+        for coordName in ['subtalar_angle']:
             for side in ['_l', '_r']:
                 coord = coordSet.get(f'{coordName}{side}')
                 coord.set_locked(False)
@@ -901,9 +901,84 @@ class TaskAdjustScaledModel(osp.SubjectTask):
         model.finalizeConnections()
         model.printToXML(target[0])
 
+class TaskComputeJointAngleStandardDeviations(osp.TrialTask):
+    REGISTRY = []
+    def __init__(self, trial, ik_setup_task):
+        super(TaskComputeJointAngleStandardDeviations, self).__init__(trial)
+        self.name = trial.id + '_joint_angle_standard_deviations'
+        self.trial = trial
+        self.ik_solution_fpath = ik_setup_task.solution_fpath
+
+        self.add_action([self.ik_solution_fpath],
+                        [os.path.join(trial.results_exp_path, f'{trial.id}_joint_angle_standard_deviations.csv')],
+                        self.compute_joint_angle_standard_deviations)
+
+    def compute_joint_angle_standard_deviations(self, file_dep, target):
+        
+        kinematics = osim.TimeSeriesTable(file_dep[0])
+        labels = kinematics.getColumnLabels()
+        angles = np.ndarray(shape=(100, len(labels), len(self.trial.cycles)))     
+        for icycle, cycle in enumerate(self.trial.cycles):
+            istart = kinematics.getNearestRowIndexForTime(cycle.start)
+            iend = kinematics.getNearestRowIndexForTime(cycle.end)+1
+            time = kinematics.getIndependentColumn()[istart:iend]
+            timeInterp = np.linspace(cycle.start, cycle.end, 100)
+            for ilabel, label in enumerate(labels):
+                col = kinematics.getDependentColumn(label).to_numpy()[istart:iend]
+                colInterp = np.interp(timeInterp, time, col)
+                angles[:, ilabel, icycle] = colInterp
+
+        angles_std = np.std(angles, axis=2)
+        angles_std_mean = np.mean(angles_std, axis=0)
+        df = pd.DataFrame(data=angles_std_mean, index=labels)
+        df.to_csv(target[0])
+
+class TaskTrimTrackingData(osp.TrialTask):
+    REGISTRY = []
+    def __init__(self, trial, ik_setup_task, id_setup_task, initial_time, final_time):
+        super(TaskTrimTrackingData, self).__init__(trial)
+        self.name = trial.id + '_trim_tracking_data'
+        self.trial = trial
+        self.ik_solution_fpath = ik_setup_task.solution_fpath
+        self.extloads_fpath = id_setup_task.results_extloads_fpath
+        self.grf_fpath = os.path.join(trial.results_exp_path, 'expdata', 
+            'ground_reaction.mot')
+        self.initial_time = initial_time
+        self.final_time = final_time
+
+        expdata_dir = os.path.join(trial.results_exp_path, 'tracking_data', 'expdata')
+        extloads_dir = os.path.join(trial.results_exp_path, 'tracking_data', 'extloads')
+        self.tracking_coordinates_fpath = os.path.join(expdata_dir, 'coordinates.sto')
+        self.tracking_extloads_fpath = os.path.join(extloads_dir, 'external_loads.xml')
+        self.tracking_grfs_fpath = os.path.join(expdata_dir, 'ground_reaction.mot')
+
+        if not os.path.exists(expdata_dir): os.makedirs(expdata_dir)
+        if not os.path.exists(extloads_dir): os.makedirs(extloads_dir)
+
+        self.add_action([self.ik_solution_fpath,
+                         self.extloads_fpath,
+                         self.grf_fpath],
+                        [self.tracking_coordinates_fpath,
+                         self.tracking_extloads_fpath,
+                         self.tracking_grfs_fpath],
+                        self.trim_tracking_data)
+
+    def trim_tracking_data(self, file_dep, target):
+        
+        self.copy_file([file_dep[1]], [target[1]])
+
+        sto = osim.STOFileAdapter()
+        kinematics = osim.TimeSeriesTable(file_dep[0])
+        kinematics.trim(self.initial_time, self.final_time)
+        sto.write(kinematics, target[0])
+
+        grfs = osim.TimeSeriesTable(file_dep[2])
+        grfs.trim(self.initial_time, self.final_time)
+        sto.write(grfs, target[2])
+
 class TaskMocoUnperturbedWalkingGuess(osp.TrialTask):
     REGISTRY = []
-    def __init__(self, trial, ik_setup_task, id_setup_task, mesh_interval=0.02,
+    def __init__(self, trial, initial_time, final_time, mesh_interval=0.02,
                 walking_speed=1.25, constrain_average_speed=True, guess_fpath=None, 
                 constrain_initial_state=False, periodic=True, 
                 costs_enabled=True, pelvis_boundary_conditions=True, **kwargs):
@@ -913,6 +988,8 @@ class TaskMocoUnperturbedWalkingGuess(osp.TrialTask):
         if periodic: config_name += f'_periodic'
         self.config_name = config_name
         self.name = trial.subject.name + '_moco_' + config_name
+        self.initial_time = initial_time
+        self.final_time = final_time
         self.mesh_interval = mesh_interval
         self.walking_speed = walking_speed
         self.root_dir = trial.study.config['doit_path']
@@ -922,6 +999,14 @@ class TaskMocoUnperturbedWalkingGuess(osp.TrialTask):
         self.costs_enabled = costs_enabled
         self.pelvis_boundary_conditions = pelvis_boundary_conditions
         self.guess_fpath = guess_fpath
+
+        expdata_dir = os.path.join(trial.results_exp_path, 'tracking_data', 'expdata')
+        extloads_dir = os.path.join(trial.results_exp_path, 'tracking_data', 'extloads')
+        self.tracking_coordinates_fpath = os.path.join(expdata_dir, 'coordinates.sto')
+        self.coordinates_std_fpath = os.path.join(trial.results_exp_path, 
+            f'{trial.id}_joint_angle_standard_deviations.csv')
+        self.tracking_extloads_fpath = os.path.join(extloads_dir, 'external_loads.xml')
+        self.tracking_grfs_fpath = os.path.join(expdata_dir, 'ground_reaction.mot')
 
         self.result_fpath = os.path.join(self.study.config['results_path'],
             'guess', trial.subject.name)
@@ -937,9 +1022,10 @@ class TaskMocoUnperturbedWalkingGuess(osp.TrialTask):
             'emg.sto')
 
         self.add_action([trial.subject.scaled_model_fpath,
-                         ik_setup_task.solution_fpath,
-                         id_setup_task.results_extloads_fpath,
-                         self.grf_fpath,
+                         self.tracking_coordinates_fpath,
+                         self.coordinates_std_fpath,
+                         self.tracking_extloads_fpath,
+                         self.tracking_grfs_fpath,
                          self.emg_fpath],
                         [os.path.join(self.result_fpath, 
                             self.config_name + '.sto')],
@@ -948,19 +1034,19 @@ class TaskMocoUnperturbedWalkingGuess(osp.TrialTask):
     def run_tracking_problem(self, file_dep, target):
 
         weights = {
-            'state_tracking_weight'  : 1e-3,
-            'control_weight'         : 1e0,
-            'grf_tracking_weight'    : 1e-2,
+            'state_tracking_weight'  : 1e-2,
+            'control_weight'         : 1e-2,
+            'grf_tracking_weight'    : 1e-4,
             'com_tracking_weight'    : 1e-2,
             'base_of_support_weight' : 0,
             'head_accel_weight'      : 0,
             'upright_torso_weight'   : 0,
-            'torso_tracking_weight'  : 1e-4,
-            'foot_tracking_weight'   : 1e-4, 
+            'torso_tracking_weight'  : 0,
+            'foot_tracking_weight'   : 0, 
             'pelvis_tracking_weight' : 0,
             'aux_deriv_weight'       : 1e-3,
             'metabolics_weight'      : 0,
-            'accel_weight'           : 0,
+            'accel_weight'           : 1e-2,
             'regularization_weight'  : 0
         }
 
@@ -984,11 +1070,12 @@ class TaskMocoUnperturbedWalkingGuess(osp.TrialTask):
             self.result_fpath, # result directory
             file_dep[0], # model file path
             file_dep[1], # IK coordinates path
-            file_dep[2], # external loads file 
-            file_dep[3], # GRF MOT file
-            file_dep[4], # EMG data
-            self.trial.cycles[0].start,
-            self.trial.cycles[-1].end, 
+            file_dep[2], # Coordinates standard deviations
+            file_dep[3], # external loads file 
+            file_dep[4], # GRF MOT file
+            file_dep[5], # EMG data
+            self.initial_time,
+            self.final_time, 
             cycles,
             self.trial.right_strikes,
             self.trial.left_strikes,
@@ -1002,7 +1089,7 @@ class TaskMocoUnperturbedWalkingGuess(osp.TrialTask):
 
 class TaskMocoUnperturbedWalking(osp.TrialTask):
     REGISTRY = []
-    def __init__(self, trial, ik_setup_task, id_setup_task, mesh_interval=0.02,
+    def __init__(self, trial, initial_time, final_time, mesh_interval=0.02,
                 walking_speed=1.25, constrain_average_speed=False,
                 guess_fpath=None, track_grfs=True, 
                 constrain_initial_state=False,
@@ -1010,6 +1097,8 @@ class TaskMocoUnperturbedWalking(osp.TrialTask):
         super(TaskMocoUnperturbedWalking, self).__init__(trial)
         self.config_name = f'unperturbed_mesh{int(1000*mesh_interval)}'
         self.name = trial.subject.name + f'_moco_' + self.config_name
+        self.initial_time = initial_time
+        self.final_time = final_time
         self.mesh_interval = mesh_interval
         self.walking_speed = walking_speed
         self.constrain_average_speed = constrain_average_speed
@@ -1019,6 +1108,14 @@ class TaskMocoUnperturbedWalking(osp.TrialTask):
         self.constrain_initial_state = constrain_initial_state
         self.periodic = periodic
         self.weights = trial.study.weights
+
+        expdata_dir = os.path.join(trial.results_exp_path, 'tracking_data', 'expdata')
+        extloads_dir = os.path.join(trial.results_exp_path, 'tracking_data', 'extloads')
+        self.tracking_coordinates_fpath = os.path.join(expdata_dir, 'coordinates.sto')
+        self.coordinates_std_fpath = os.path.join(trial.results_exp_path, 
+            f'{trial.id}_joint_angle_standard_deviations.csv')
+        self.tracking_extloads_fpath = os.path.join(extloads_dir, 'external_loads.xml')
+        self.tracking_grfs_fpath = os.path.join(expdata_dir, 'ground_reaction.mot')
 
         self.result_fpath = os.path.join(self.study.config['results_path'],
             'unperturbed', trial.subject.name)
@@ -1033,10 +1130,14 @@ class TaskMocoUnperturbedWalking(osp.TrialTask):
         self.emg_fpath = os.path.join(trial.results_exp_path, 'expdata', 
             'emg.sto')
 
+        self.coordinates_std_fpath = os.path.join(trial.results_exp_path, 
+            f'{trial.id}_joint_angle_standard_deviations.csv')
+
         self.add_action([trial.subject.scaled_model_fpath,
-                         ik_setup_task.solution_fpath,
-                         id_setup_task.results_extloads_fpath,
-                         self.grf_fpath,
+                         self.tracking_coordinates_fpath,
+                         self.coordinates_std_fpath,
+                         self.tracking_extloads_fpath,
+                         self.tracking_grfs_fpath,
                          self.emg_fpath],
                         [os.path.join(self.result_fpath, 
                             self.config_name + '.sto')],
@@ -1065,11 +1166,12 @@ class TaskMocoUnperturbedWalking(osp.TrialTask):
             self.result_fpath, # result directory
             file_dep[0], # model file path
             file_dep[1], # IK coordinates path
-            file_dep[2], # external loads file 
-            file_dep[3], # GRF MOT file
-            file_dep[4], # EMG data
-            self.trial.cycles[0].start,
-            self.trial.cycles[-1].end, 
+            file_dep[2], # Coordinates standard deviations
+            file_dep[3], # external loads file 
+            file_dep[4], # GRF MOT file
+            file_dep[5], # EMG data
+            self.initial_time,
+            self.final_time, 
             cycles,
             self.trial.right_strikes,
             self.trial.left_strikes,
