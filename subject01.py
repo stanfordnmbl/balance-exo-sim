@@ -219,6 +219,8 @@ def add_to_study(study):
 
     initial_time = 3.93
     final_time = 5.02
+    right_strikes = [3.93, 5.02]
+    left_strikes = [4.49]
     unperturbed_trial.add_task(tasks.TaskComputeJointAngleStandardDeviations, ik_setup_task)
     unperturbed_trial.add_task(tasks.TaskTrimTrackingData, ik_setup_task, id_setup_task, 
         initial_time, final_time)
@@ -268,6 +270,15 @@ def add_to_study(study):
         unperturbed_guess_fpath = os.path.join(study.config['results_path'],
                 'unperturbed', subject.name, 
                 f'unperturbed_mesh{int(1000*mesh_interval)}.sto')
+
+    unperturbed_fpath = os.path.join(study.config['results_path'],
+            'unperturbed', subject.name, f'unperturbed_mesh20.sto')
+    unperturbed_trial.add_task(tasks.TaskMocoAnkleTorqueBaselineWalking,
+            initial_time, final_time, right_strikes, left_strikes,
+            unperturbed_fpath,
+            mesh_interval=0.02, 
+            walking_speed=study.walking_speed,
+            periodic=True)
 
     # delay = 400
     # for torque in [0.25, 0.5, 0.75, 1.0]:

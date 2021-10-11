@@ -1183,6 +1183,106 @@ class TaskMocoUnperturbedWalking(osp.TrialTask):
         result.generate_results(self.result_fpath)
         result.report_results(self.result_fpath)
 
+class TaskMocoAnkleTorqueBaselineWalking(osp.TrialTask):
+    REGISTRY = []
+    def __init__(self, trial, initial_time, final_time, right_strikes, left_strikes, 
+                guess_fpath, mesh_interval=0.02, walking_speed=1.25, 
+                track_grfs=True, side='both',
+                right_torque_parameters=[0.5, 0.5, 0.25, 0.1],
+                left_torque_parameters=[0.5, 0.5, 0.25, 0.1], **kwargs):
+        super(TaskMocoAnkleTorqueBaselineWalking, self).__init__(trial)
+        self.name = trial.subject.name + '_moco_baseline_ankle_torque'
+        self.mesh_interval = mesh_interval
+        self.walking_speed = walking_speed
+        self.guess_fpath = guess_fpath
+        self.track_grfs = track_grfs
+        self.root_dir = trial.study.config['doit_path']
+        self.weights = trial.study.weights
+        self.left_torque_parameters = left_torque_parameters
+        self.right_torque_parameters = right_torque_parameters
+        self.side = side
+        self.initial_time = initial_time
+        self.final_time = final_time
+        self.right_strikes = right_strikes
+        self.left_strikes = left_strikes
+        self.model_fpath = trial.subject.scaled_model_fpath
+
+        expdata_dir = os.path.join(trial.results_exp_path, 'tracking_data', 'expdata')
+        extloads_dir = os.path.join(trial.results_exp_path, 'tracking_data', 'extloads')
+        self.tracking_coordinates_fpath = os.path.join(expdata_dir, 'coordinates.sto')
+        self.coordinates_std_fpath = os.path.join(trial.results_exp_path, 
+            f'{trial.id}_joint_angle_standard_deviations.csv')
+        self.tracking_extloads_fpath = os.path.join(extloads_dir, 'external_loads.xml')
+        self.tracking_grfs_fpath = os.path.join(expdata_dir, 'ground_reaction.mot')
+
+        self.result_fpath = os.path.join(self.study.config['results_path'],
+            'baseline_torque', trial.subject.name)
+        if not os.path.exists(self.result_fpath): os.makedirs(self.result_fpath)
+
+        self.archive_fpath = os.path.join(self.study.config['results_path'],
+            'baseline_torque', trial.subject.name, 'archive')
+        if not os.path.exists(self.archive_fpath): os.makedirs(self.archive_fpath)
+
+        self.grf_fpath = os.path.join(trial.results_exp_path, 'expdata', 
+            'ground_reaction.mot')
+        self.emg_fpath = os.path.join(trial.results_exp_path, 'expdata', 
+            'emg.sto')
+
+        self.solution_name = 'baseline_torque.sto'
+        self.solution_fpath = os.path.join(self.result_fpath, self.solution_name)
+        self.add_action([self.model_fpath,
+                         self.tracking_coordinates_fpath,
+                         self.coordinates_std_fpath,
+                         self.tracking_extloads_fpath,
+                         self.tracking_grfs_fpath,
+                         self.emg_fpath,
+                         self.guess_fpath],
+                        [self.solution_fpath],
+                        self.run_tracking_problem)
+
+    def run_tracking_problem(self, file_dep, target):
+
+        weights = copy.deepcopy(self.weights)
+        if not self.track_grfs:    
+            weights['grf_tracking_weight'] = 0.0
+        
+        config_name = 'baseline_torque'
+        config = MocoTrackConfig(
+            config_name, config_name, 'black', weights,
+            guess=file_dep[5],
+            ankle_torque_perturbation=True,
+            ankle_torque_left_parameters=self.left_torque_parameters,
+            ankle_torque_right_parameters=self.right_torque_parameters,
+            ankle_torque_first_cycle_only=False,
+            ankle_torque_side=self.side,
+            )
+
+        cycles = list()
+        for cycle in self.trial.cycles:
+            cycles.append([cycle.start, cycle.end])
+
+        result = MotionTrackingWalking(
+            self.root_dir, # root directory
+            self.result_fpath, # result directory
+            file_dep[0], # model file path
+            file_dep[1], # IK coordinates path
+            file_dep[2], # Coord stds
+            file_dep[3], # external loads file 
+            file_dep[4], # GRF MOT file
+            file_dep[5], # EMG data
+            self.initial_time,
+            self.final_time, 
+            cycles,
+            self.right_strikes,
+            self.left_strikes,
+            self.mesh_interval, 
+            self.walking_speed,
+            [config],
+        )
+
+        result.generate_results(self.result_fpath)
+        result.report_results(self.result_fpath)
+
 class TaskMocoAnkleTorquePerturbedWalking(osp.TrialTask):
     REGISTRY = []
     def __init__(self, trial, ik_setup_task, id_setup_task, guess_fpath, 

@@ -104,10 +104,10 @@ error_markers.append('C7')
 study.error_markers = error_markers
 
 study.weights = {
-    'state_tracking_weight'  : 1e3,
+    'state_tracking_weight'  : 5e3,
     'control_weight'         : 1e2,
     'grf_tracking_weight'    : 5e-1,
-    'com_tracking_weight'    : 1e2,
+    'com_tracking_weight'    : 5e3,
     'base_of_support_weight' : 0,
     'head_accel_weight'      : 0,
     'upright_torso_weight'   : 0,

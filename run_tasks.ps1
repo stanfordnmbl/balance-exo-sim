@@ -30,8 +30,9 @@
 # doit subject01_moco_unperturbed_guess_mesh50_costsDisabled
 # doit subject01_moco_unperturbed_guess_mesh35_costsDisabled_periodic
 # doit subject01_moco_unperturbed_guess_mesh35_periodic
-doit subject01_moco_unperturbed_mesh35
+# doit subject01_moco_unperturbed_mesh35
 # doit subject01_moco_unperturbed_mesh20
+doit subject01_moco_baseline_ankle_torque
 # doit subject01_moco_unperturbed_mesh10
 
 # Perturbations at 350ms muscle delay
