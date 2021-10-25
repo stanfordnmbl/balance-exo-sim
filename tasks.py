@@ -1411,9 +1411,8 @@ class TaskMocoAnkleTorquePerturbedWalkingPost(osp.TrialTask):
 
         configs = list()
         config = MocoTrackConfig(
-            'unperturbed', 'unperturbed', 'black', self.weights,
-            guess=file_dep[5],
-            )
+            f'unperturbed{self.suffix}', f'unperturbed{self.suffix}', 'black', 
+            self.weights, guess=file_dep[5])
         configs.append(config)
 
         config = MocoTrackConfig(

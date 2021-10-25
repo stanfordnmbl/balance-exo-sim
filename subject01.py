@@ -391,7 +391,7 @@ def add_to_study(study):
                 walking_speed=study.walking_speed,
                 perturb_response_delay=0.400,
                 side='right', two_cycles=True,
-                periodic=True)
+                periodic=False)
             unperturbed_trial.add_task(
                 tasks.TaskMocoAnkleTorquePerturbedWalkingPost,
                 unperturbed_trial.tasks[-1])
@@ -404,7 +404,7 @@ def add_to_study(study):
         walking_speed=study.walking_speed,
         constrain_initial_state=True,
         torque_parameters=[0.5, 0.5, 0.25, 0.1],
-        periodic=True, two_cycles=True)
+        periodic=False, two_cycles=True)
 
     baseline_torque_fpath = os.path.join(
             study.config['results_path'], 'baseline_torque_two_cycles', 
@@ -427,4 +427,4 @@ def add_to_study(study):
             walking_speed=study.walking_speed,
             perturb_response_delay=0.400,
             two_cycles=True,
-            periodic=True)
+            periodic=False)

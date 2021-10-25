@@ -107,7 +107,7 @@ study.weights = {
     'state_tracking_weight':  1e3 * scale,
     'control_weight':         1e3 * scale,
     'grf_tracking_weight':    1e-1 * scale,
-    'com_tracking_weight':    0 * scale,
+    'com_tracking_weight':    1e2 * scale,
     'base_of_support_weight': 0 * scale,
     'head_accel_weight':      0 * scale,
     'upright_torso_weight':   1e3 * scale,
