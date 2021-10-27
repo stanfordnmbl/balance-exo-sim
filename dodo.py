@@ -8,7 +8,7 @@ import os
 import yaml
 with open('config.yaml') as f:
     config = yaml.safe_load(f)
-if not 'opensim_home' in config:
+if 'opensim_home' not in config:
     raise Exception('You must define the field `opensim_home` in config.yaml '
                     'to point to the root of your OpenSim 4.0 (or later) '
                     'installation.')
@@ -20,7 +20,6 @@ DOIT_CONFIG = {
         }
 
 # Settings for plots.
-import matplotlib
 import matplotlib.pyplot as plt
 plt.rc('font', family='Helvetica, Arial, sans-serif', size=8)
 plt.rc('errorbar', capsize=1.5)
@@ -38,25 +37,26 @@ from tasks import *
 # Custom helper functions for this project
 from helpers import *
 
-model_fname = 'Rajagopal2015_passiveCal_hipAbdMoved_noArms_subtalar_36musc_optMaxIsoForces.osim'
+model_fname = ('Rajagopal2015_passiveCal_hipAbdMoved_noArms'
+               '_subtalar_36musc_optMaxIsoForces.osim')
 generic_model_fpath = os.path.join('model', model_fname)
 study = osp.Study('ankle_perturb_sim', generic_model_fpath=generic_model_fpath)
 
 # Bump'em module locations
 # ------------------------
+import opensim as osim
 study.module0 = osim.Vec3(2.0870, 0.9810, -0.9907)
 study.module1 = osim.Vec3(0.5568, 0.9748, -2.6964)
 study.module2 = osim.Vec3(-0.8451, 1.0016, -0.9612)
 study.module3 = osim.Vec3(0.6447, 0.9897, 0.4308)
 
 # Rotate the module location to match the data transformation
-# performed by TaskTransformExperimentalData below
-import opensim as osim
+# performed by TaskTransformExperimentalData below.
+import numpy as np
 def rotateVec(vec):
     R = osim.Rotation(np.deg2rad(-90), osim.CoordinateAxis(1))
     vec_rotated = R.multiply(vec)
     return vec_rotated
-
 
 study.module0 = rotateVec(study.module0)
 study.module1 = rotateVec(study.module1)
@@ -88,7 +88,7 @@ unperturbed_trial = 8
 study.add_task(TaskCopyMotionCaptureData, subjects, unperturbed_trial)
 study.add_task(TaskTransformExperimentalData, subjects)
 study.add_task(TaskFilterAndShiftGroundReactions, subjects)
-lowpass_freq = 7.0 / 1.25 # Based on Bianco et al. 2018
+lowpass_freq = 7.0 / 1.25  # Based on Bianco et al. 2018
 study.add_task(TaskExtractAndFilterEMG, subjects, 
     frequency_band=[10.0, 400.0], filter_order=4.0, lowpass_freq=lowpass_freq)
 study.add_task(TaskExtractAndFilterPerturbationForces, subjects, 
@@ -112,7 +112,7 @@ study.weights = {
     'head_accel_weight':      0 * scale,
     'upright_torso_weight':   1e3 * scale,
     'torso_tracking_weight':  0 * scale,
-    'foot_tracking_weight':   1e2 * scale,
+    'foot_tracking_weight':   0 * scale,
     'pelvis_tracking_weight': 0 * scale, 
     'aux_deriv_weight':       1e3 * scale,
     'metabolics_weight':      0 * scale,
@@ -136,24 +136,30 @@ colormap = 'nipy_spectral'
 
 study.add_task(TaskPlotCOMTrackingErrorsAnklePerturb, subjects, times, 
     colormap, cmap_indices, delay, torques=[100])
-# study.add_task(TaskPlotNormalizedImpulseAnklePerturb, subjects, times, colormap,
-#     cmap_indices, delay)
-study.add_task(TaskPlotGroundReactionsAnklePerturb, subjects[0], times, colormap,
-    cmap_indices, delay)
-study.add_task(TaskPlotCOMVersusAnklePerturbTime, subjects, 100, times, colormap,
-    cmap_indices, delay)
-# study.add_task(TaskPlotCOMVersusAnklePerturbTorque, subjects, 40, delay=delay)
-# study.add_task(TaskPlotCOMVersusAnklePerturbTorque, subjects, 50, delay=delay)
-# study.add_task(TaskPlotCOMVersusAnklePerturbTorque, subjects, 60, delay=delay)
+# study.add_task(TaskPlotNormalizedImpulseAnklePerturb, subjects, times, 
+#     colormap, cmap_indices, delay)
+study.add_task(TaskPlotGroundReactionsAnklePerturb, subjects[0], times, 
+    colormap, cmap_indices, delay)
+study.add_task(TaskPlotCOMVersusAnklePerturbTime, subjects, 100, times, 
+    colormap, cmap_indices, delay)
+# study.add_task(TaskPlotCOMVersusAnklePerturbTorque, subjects, 40, delay=0.4)
+# study.add_task(TaskPlotCOMVersusAnklePerturbTorque, subjects, 50, delay=0.4)
+# study.add_task(TaskPlotCOMVersusAnklePerturbTorque, subjects, 60, delay=0.4)
 # delays40 = np.arange(0.0, 1.1, 0.1)
 # delays50 = np.arange(0.0, 1.1, 0.1)
 # delays60 = np.arange(0.0, 0.8, 0.1)
-# study.add_task(TaskPlotCOMVersusAnklePerturbDelay, subjects, delays40, 100, 40)
-# study.add_task(TaskPlotCOMVersusAnklePerturbDelay, subjects, delays50, 100, 50)
-# study.add_task(TaskPlotCOMVersusAnklePerturbDelay, subjects, delays60, 100, 60)
-# study.add_task(TaskPlotCOMTrackingErrorsAnklePerturbDelay, subjects, delays40, 100, 40)
-# study.add_task(TaskPlotCOMTrackingErrorsAnklePerturbDelay, subjects, delays50, 100, 50)
-# study.add_task(TaskPlotCOMTrackingErrorsAnklePerturbDelay, subjects, delays60, 100, 60)
+# study.add_task(TaskPlotCOMVersusAnklePerturbDelay, 
+#     subjects, delays40, 100, 40)
+# study.add_task(TaskPlotCOMVersusAnklePerturbDelay, 
+#     subjects, delays50, 100, 50)
+# study.add_task(TaskPlotCOMVersusAnklePerturbDelay, 
+#     subjects, delays60, 100, 60)
+# study.add_task(TaskPlotCOMTrackingErrorsAnklePerturbDelay, 
+#     subjects, delays40, 100, 40)
+# study.add_task(TaskPlotCOMTrackingErrorsAnklePerturbDelay, 
+#     subjects, delays50, 100, 50)
+# study.add_task(TaskPlotCOMTrackingErrorsAnklePerturbDelay, 
+#     subjects, delays60, 100, 60)
 
 # conditions = ['walk2']
 # # Experiment results
@@ -170,5 +176,3 @@ study.add_task(TaskPlotCOMVersusAnklePerturbTime, subjects, 100, times, colormap
 # study.add_task(TaskValidateMuscleActivity, cond_names=conditions)
 # study.add_task(TaskValidateKinematics, cond_name=conditions[0])
 # study.add_task(TaskValidateKinetics, cond_name=conditions[0])
-
-

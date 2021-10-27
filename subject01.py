@@ -379,7 +379,7 @@ def add_to_study(study):
         study.config['results_path'],
         'unperturbed_two_cycles', subject.name, 
         'unperturbed_two_cycles_mesh20.sto')
-    for torque in [1.0]:
+    for torque in [0.25, 0.50, 0.75, 1.0]:
         for time in [0.3, 0.4, 0.5, 0.6]:
             torque_parameters = [torque, time, 0.25, 0.1]
             unperturbed_trial.add_task(
@@ -413,8 +413,10 @@ def add_to_study(study):
         ankle_torque_right_parameters = list()
         ankle_torque_right_parameters.append([torque, 0.5, 0.25, 0.1])
         ankle_torque_right_parameters.append([0.5, 0.5, 0.25, 0.1])
+        ankle_torque_right_parameters.append([0.5, 0.5, 0.25, 0.1])
 
         ankle_torque_left_parameters = list()
+        ankle_torque_left_parameters.append([0.5, 0.5, 0.25, 0.1])
         ankle_torque_left_parameters.append([0.5, 0.5, 0.25, 0.1])
 
         unperturbed_trial.add_task(
@@ -428,3 +430,6 @@ def add_to_study(study):
             perturb_response_delay=0.400,
             two_cycles=True,
             periodic=False)
+        unperturbed_trial.add_task(
+            tasks.TaskMocoAnkleTorquePerturbedFromBaselineWalkingPost,
+            unperturbed_trial.tasks[-1])
