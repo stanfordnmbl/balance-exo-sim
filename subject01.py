@@ -427,7 +427,7 @@ def add_to_study(study):
             guess_fpath=baseline_torque_fpath,
             mesh_interval=0.02, 
             walking_speed=study.walking_speed,
-            perturb_response_delay=0.400,
+            perturb_response_delay=0.500,
             two_cycles=True,
             periodic=False)
         unperturbed_trial.add_task(

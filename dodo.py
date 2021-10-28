@@ -104,10 +104,10 @@ study.error_markers = error_markers
 
 scale = 0.01
 study.weights = {
-    'state_tracking_weight':  1e3 * scale,
+    'state_tracking_weight':  1e4 * scale,
     'control_weight':         1e3 * scale,
     'grf_tracking_weight':    1e-1 * scale,
-    'com_tracking_weight':    1e2 * scale,
+    'com_tracking_weight':    0 * scale,
     'base_of_support_weight': 0 * scale,
     'head_accel_weight':      0 * scale,
     'upright_torso_weight':   1e3 * scale,
@@ -129,37 +129,27 @@ subject01.add_to_study(study)
 # Analysis
 # -------=
 subjects = ['subject01']
+masses = [study.get_subject(1).mass]
 times = [30, 40, 50, 60]
 cmap_indices = [0.1, 0.3, 0.5, 0.9]
 delay = 0.400
 colormap = 'nipy_spectral'
+cmap = plt.get_cmap(colormap)
 
 study.add_task(TaskPlotCOMTrackingErrorsAnklePerturb, subjects, times, 
     colormap, cmap_indices, delay, torques=[100])
 # study.add_task(TaskPlotNormalizedImpulseAnklePerturb, subjects, times, 
 #     colormap, cmap_indices, delay)
-study.add_task(TaskPlotGroundReactionsAnklePerturb, subjects[0], times, 
-    colormap, cmap_indices, delay)
+study.add_task(TaskPlotGroundReactionsAnklePerturb, subjects[0], 50, 
+    [25, 50, 75, 100], cmap(0.5), delay, two_cycles)
+
 study.add_task(TaskPlotCOMVersusAnklePerturbTime, subjects, 100, times, 
-    colormap, cmap_indices, delay)
-# study.add_task(TaskPlotCOMVersusAnklePerturbTorque, subjects, 40, delay=0.4)
-# study.add_task(TaskPlotCOMVersusAnklePerturbTorque, subjects, 50, delay=0.4)
-# study.add_task(TaskPlotCOMVersusAnklePerturbTorque, subjects, 60, delay=0.4)
-# delays40 = np.arange(0.0, 1.1, 0.1)
-# delays50 = np.arange(0.0, 1.1, 0.1)
-# delays60 = np.arange(0.0, 0.8, 0.1)
-# study.add_task(TaskPlotCOMVersusAnklePerturbDelay, 
-#     subjects, delays40, 100, 40)
-# study.add_task(TaskPlotCOMVersusAnklePerturbDelay, 
-#     subjects, delays50, 100, 50)
-# study.add_task(TaskPlotCOMVersusAnklePerturbDelay, 
-#     subjects, delays60, 100, 60)
-# study.add_task(TaskPlotCOMTrackingErrorsAnklePerturbDelay, 
-#     subjects, delays40, 100, 40)
-# study.add_task(TaskPlotCOMTrackingErrorsAnklePerturbDelay, 
-#     subjects, delays50, 100, 50)
-# study.add_task(TaskPlotCOMTrackingErrorsAnklePerturbDelay, 
-#     subjects, delays60, 100, 60)
+    colormap, cmap_indices, delay, two_cycles=True)
+study.add_task(TaskPlotCOMVersusAnklePerturbTorque, subjects, 50, 
+    [25, 50, 75, 100], cmap(0.5), delay, two_cycles=True)
+
+# study.add_task(TaskPlotPerturbFromBaselineResults, subjects, masses, 50, 
+#     [30, 40, 50, 60, 70], 0.500, two_cycles=True)
 
 # conditions = ['walk2']
 # # Experiment results

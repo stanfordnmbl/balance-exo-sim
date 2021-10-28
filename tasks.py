@@ -3,6 +3,7 @@ import os
 import numpy as np
 import pylab as pl
 import pandas as pd
+import math
 from scipy.io import loadmat
 from scipy.ndimage import gaussian_filter1d
 import matplotlib.pyplot as plt
@@ -1532,6 +1533,7 @@ class TaskMocoAnkleTorqueBaselineWalking(osp.TrialTask):
         config = MocoTrackConfig(
             self.config_name, self.config_name, 'black', self.weights,
             guess=self.guess_fpath,
+            constrain_average_speed=True,
             constrain_initial_state=self.constrain_initial_state,
             use_guess_for_initial_muscle_states=self.constrain_initial_state,
             use_guess_for_initial_kinematic_states=self.constrain_initial_state,
@@ -1650,9 +1652,12 @@ class TaskMocoAnkleTorquePerturbedFromBaselineWalking(osp.TrialTask):
 
     def run_tracking_problem(self, file_dep, target):
 
+        weights = copy.deepcopy(self.weights)
+        weights['grf_tracking_weight'] = 0
         config = MocoTrackConfig(
-            self.config_name, self.config_name, 'black', self.weights,
+            self.config_name, self.config_name, 'black', weights,
             guess=self.guess_fpath,
+            constrain_average_speed=True,
             constrain_initial_state=self.constrain_initial_state,
             use_guess_for_initial_muscle_states=True,
             use_guess_for_initial_kinematic_states=True,
@@ -1815,6 +1820,7 @@ class TaskMocoAnkleTorquePerturbedFromBaselineWalkingPost(osp.TrialTask):
         )
 
         result.report_results(self.result_fpath)
+
 
 class TaskBodyKinematicsSetup(osp.SetupTask):
     REGISTRY = []
@@ -2379,7 +2385,8 @@ class TaskPlotCOMTrackingErrorsAnklePerturb(osp.StudyTask):
             'experiments')
         self.analysis_path = os.path.join(study.config['analysis_path'],
             'com_tracking_errors', 'ankle_perturb')
-        if not os.path.exists(self.analysis_path): os.makedirs(self.analysis_path)
+        if not os.path.exists(self.analysis_path): 
+            os.makedirs(self.analysis_path)
         self.subjects = subjects
         self.torques = torques
         self.times = times
@@ -2597,13 +2604,15 @@ class TaskPlotNormalizedImpulseAnklePerturb(osp.StudyTask):
 class TaskPlotCOMVersusAnklePerturbTime(osp.StudyTask):
     REGISTRY = []
     def __init__(self, study, subjects, torque, times, colormap, cmap_indices,
-            delay):
+            delay, two_cycles=False):
         super(TaskPlotCOMVersusAnklePerturbTime, self).__init__(study)
-        self.name = 'plot_com_versus_ankle_perturb_time'
+        self.two_cycles = two_cycles
+        self.suffix = '_two_cycles' if self.two_cycles else ''
+        self.name = f'plot_com_versus_ankle_perturb_time{self.suffix}'
         self.results_path = os.path.join(study.config['results_path'], 
             'experiments')
         self.analysis_path = os.path.join(study.config['analysis_path'],
-            'com_versus_ankle_perturb_time', 'ankle_perturb')
+            f'com_versus_ankle_perturb_time{self.suffix}')
         if not os.path.exists(self.analysis_path): 
             os.makedirs(self.analysis_path)
         self.subjects = subjects
@@ -2614,33 +2623,38 @@ class TaskPlotCOMVersusAnklePerturbTime(osp.StudyTask):
         self.labels.append('unperturbed')
         self.colors = list()
         self.colors.append('black')
+        self.linewidths = list()
+        self.linewidths.append(3)
         cmap = plt.get_cmap(colormap)
         deps = list()
         for subject in subjects:
             # Unperturbed solution
             deps.append(
                 os.path.join(
-                    self.study.config['results_path'], 'unperturbed', subject,
-                    'tracking_unperturbed_mesh20_center_of_mass.sto'))
+                    self.study.config['results_path'], 
+                    f'unperturbed{self.suffix}', subject,
+                    (f'tracking_unperturbed{self.suffix}'
+                     f'_mesh20_center_of_mass.sto')))
             # Perturbed solutions
             for time, cmap_idx in zip(self.times, cmap_indices):
-                label = f'torque{self.torque}_time{time}_delay{int(1000*delay)}'
+                label = (f'torque{self.torque}_time{time}'
+                         f'_delay{int(1000*delay)}')
                 deps.append(
                     os.path.join(
                         self.study.config['results_path'], 
-                        f'ankle_perturb_{label}', subject,
-                        f'tracking_perturb_{label}_center_of_mass.sto')
+                        f'perturb{self.suffix}_{label}', subject,
+                        (f'tracking_perturb{self.suffix}'
+                         f'_{label}_center_of_mass.sto'))
                     )
                 self.labels.append(f'{time}%')
                 self.colors.append(cmap(cmap_idx))
+                self.linewidths.append(2)
 
         self.add_action(deps, 
                         [os.path.join(self.analysis_path, 
-                            'com_versus_perturb_time_position.png'), 
+                            'com_versus_perturb_time_position_zx.png'), 
                          os.path.join(self.analysis_path, 
-                            'com_versus_perturb_time_velocity.png'),
-                         os.path.join(self.analysis_path, 
-                            'com_versus_perturb_time_acceleration.png'),
+                            'com_versus_perturb_time_position_xy.png'),
                          os.path.join(self.analysis_path, 
                             'com_versus_perturb_time_z_pos_vel_acc.png'), 
                          os.path.join(self.analysis_path, 
@@ -2657,47 +2671,64 @@ class TaskPlotCOMVersusAnklePerturbTime(osp.StudyTask):
         max_diff_acc = np.zeros((numLabels, 3, numSubjects))
         peak_diff_vel = np.zeros((numLabels, 3, numSubjects))
         peak_diff_acc = np.zeros((numLabels, 3, numSubjects))
-        delay_diff_vel = np.zeros((numLabels, 3, numSubjects))
-        delay_diff_acc = np.zeros((numLabels, 3, numSubjects))
-        fig = plt.figure(figsize=(6, 3*numSubjects))
-        fig2 = plt.figure(figsize=(6, 3*numSubjects))
-        fig3 = plt.figure(figsize=(6, 3*numSubjects))
-        fig4 = plt.figure(figsize=(3.5, 5))
+        fig0 = plt.figure(figsize=(5, 3*numSubjects))
+        fig1 = plt.figure(figsize=(5, 3*numSubjects))
+        fig2 = plt.figure(figsize=(5, 7))
 
+
+        def update_lims(pos, min_pos, max_pos):
+            if np.min(pos) < min_pos:
+                min_pos = math.floor(np.min(pos))
+            if np.max(pos) > max_pos:
+                max_pos = math.ceil(np.max(pos))
+
+            return min_pos, max_pos
+
+        min_pos_z = -2
+        max_pos_z = 2
         for isubj, subject in enumerate(self.subjects):
             refTable = osim.TimeSeriesTable(file_dep[isubj*numLabels])
-            ref_pos_x = refTable.getDependentColumn('/|com_position_x').to_numpy()
-            ref_pos_y = refTable.getDependentColumn('/|com_position_y').to_numpy()
-            ref_pos_z = refTable.getDependentColumn('/|com_position_z').to_numpy()
-            ref_vel_x = refTable.getDependentColumn('/|com_velocity_x').to_numpy()
-            ref_vel_y = refTable.getDependentColumn('/|com_velocity_y').to_numpy()
-            ref_vel_z = refTable.getDependentColumn('/|com_velocity_z').to_numpy()
-            ref_acc_x = refTable.getDependentColumn('/|com_acceleration_x').to_numpy()
-            ref_acc_y = refTable.getDependentColumn('/|com_acceleration_y').to_numpy()
-            ref_acc_z = refTable.getDependentColumn('/|com_acceleration_z').to_numpy()
-            ax_xz_pos = fig.add_subplot(numSubjects, 2, isubj+1)
-            ax_xy_pos = fig.add_subplot(numSubjects, 2, 2*(isubj+1))
-            ax_xz_vel = fig2.add_subplot(numSubjects, 2, isubj+1)
-            ax_xy_vel = fig2.add_subplot(numSubjects, 2, 2*(isubj+1))
-            ax_xz_acc = fig3.add_subplot(numSubjects, 2, isubj+1)
-            ax_xy_acc = fig3.add_subplot(numSubjects, 2, 2*(isubj+1))
+            ref_vel_x = refTable.getDependentColumn(
+                '/|com_velocity_x').to_numpy()
+            ref_vel_y = refTable.getDependentColumn(
+                '/|com_velocity_y').to_numpy()
+            ref_vel_z = refTable.getDependentColumn(
+                '/|com_velocity_z').to_numpy()
+            ref_acc_x = refTable.getDependentColumn(
+                '/|com_acceleration_x').to_numpy()
+            ref_acc_y = refTable.getDependentColumn(
+                '/|com_acceleration_y').to_numpy()
+            ref_acc_z = refTable.getDependentColumn(
+                '/|com_acceleration_z').to_numpy()
+            ax_xz_pos = fig0.add_subplot(numSubjects, 1, isubj+1)
+            ax_xy_pos = fig1.add_subplot(numSubjects, 1, isubj+1)
 
-            ax_pos = fig4.add_subplot(3, numSubjects, isubj+1)
-            ax_vel = fig4.add_subplot(3, numSubjects, 2*(isubj+1))
-            ax_acc = fig4.add_subplot(3, numSubjects, 3*(isubj+1))
+            ax_pos = fig2.add_subplot(3, numSubjects, isubj+1)
+            ax_vel = fig2.add_subplot(3, numSubjects, 2*(isubj+1))
+            ax_acc = fig2.add_subplot(3, numSubjects, 3*(isubj+1))
 
-            for i, (label, color, percent) in enumerate(zip(self.labels, self.colors, percents)):
+            zipped = zip(self.labels, self.colors, percents, self.linewidths)
+            for i, (label, color, percent, lw) in enumerate(zipped):
                 currTable = osim.TimeSeriesTable(
                     file_dep[isubj*numLabels + i])
-                curr_pos_x = currTable.getDependentColumn('/|com_position_x').to_numpy()
-                curr_pos_y = currTable.getDependentColumn('/|com_position_y').to_numpy()
-                curr_pos_z = currTable.getDependentColumn('/|com_position_z').to_numpy()
-                curr_vel_x = currTable.getDependentColumn('/|com_velocity_x').to_numpy()
-                curr_vel_y = currTable.getDependentColumn('/|com_velocity_y').to_numpy()
-                curr_vel_z = currTable.getDependentColumn('/|com_velocity_z').to_numpy()
-                curr_acc_x = currTable.getDependentColumn('/|com_acceleration_x').to_numpy()
-                curr_acc_y = currTable.getDependentColumn('/|com_acceleration_y').to_numpy()
-                curr_acc_z = currTable.getDependentColumn('/|com_acceleration_z').to_numpy()
+                curr_pos_x = currTable.getDependentColumn(
+                    '/|com_position_x').to_numpy()
+                curr_pos_y = currTable.getDependentColumn(
+                    '/|com_position_y').to_numpy()
+                curr_pos_z = currTable.getDependentColumn(
+                    '/|com_position_z').to_numpy()
+                curr_vel_x = currTable.getDependentColumn(
+                    '/|com_velocity_x').to_numpy()
+                curr_vel_y = currTable.getDependentColumn(
+                    '/|com_velocity_y').to_numpy()
+                curr_vel_z = currTable.getDependentColumn(
+                    '/|com_velocity_z').to_numpy()
+                curr_acc_x = currTable.getDependentColumn(
+                    '/|com_acceleration_x').to_numpy()
+                curr_acc_y = currTable.getDependentColumn(
+                    '/|com_acceleration_y').to_numpy()
+                curr_acc_z = currTable.getDependentColumn(
+                    '/|com_acceleration_z').to_numpy()
 
                 diff_vel_x = curr_vel_x - ref_vel_x 
                 diff_vel_y = curr_vel_y - ref_vel_y 
@@ -2728,7 +2759,7 @@ class TaskPlotCOMVersusAnklePerturbTime(osp.StudyTask):
                 max_diff_acc[i, 2, isubj] = diff_acc_z[max_diff_acc_z_idx]
 
                 # Compute change in COM kinematics at peak perturbation
-                percent_time = initial_time + duration * (percent / 100.0)
+                percent_time = initial_time + duration * (0.5*percent / 100.0)
                 index = refTable.getNearestRowIndexForTime(percent_time)
                 peak_diff_vel[i, 0, isubj] = diff_vel_x[index]
                 peak_diff_vel[i, 1, isubj] = diff_vel_y[index]
@@ -2741,157 +2772,102 @@ class TaskPlotCOMVersusAnklePerturbTime(osp.StudyTask):
                 plot_pos_y = curr_pos_y - curr_pos_y[0]
                 plot_pos_z = curr_pos_z - curr_pos_z[0]
 
-                # diff_pos_x = np.diff(curr_pos_x)
-                # diff_pos_y = np.diff(curr_pos_y)
-                # diff_pos_z = np.diff(curr_pos_z)
-                # imax = np.argmax(diff_pos_x)
-                # diff_pos_x[imax] = (diff_pos_x[imax-1] + diff_pos_x[imax+1]) / 2.0
-                # diff_pos_y[imax] = (diff_pos_y[imax-1] + diff_pos_y[imax+1]) / 2.0
-                # diff_pos_z[imax] = (diff_pos_z[imax-1] + diff_pos_z[imax+1]) / 2.0
-
-                # diff_vel_x = diff_pos_x / np.diff(time)
-                # diff_vel_y = diff_pos_y / np.diff(time)
-                # diff_vel_z = diff_pos_z / np.diff(time)
-
-                # temp_diff_vel_x = np.diff(diff_vel_x)
-                # temp_diff_vel_y = np.diff(diff_vel_y)
-                # temp_diff_vel_z = np.diff(diff_vel_z)
-                # imax = np.argmin(temp_diff_vel_x)
-                # temp_diff_vel_x[imax] = (temp_diff_vel_x[imax-1] + temp_diff_vel_x[imax+1]) / 2.0
-                # temp_diff_vel_y[imax] = (temp_diff_vel_y[imax-1] + temp_diff_vel_y[imax+1]) / 2.0
-                # temp_diff_vel_z[imax] = (temp_diff_vel_z[imax-1] + temp_diff_vel_z[imax+1]) / 2.0
-
-                # diff_acc_x = temp_diff_vel_x / np.diff(time)[1:]
-                # diff_acc_y = temp_diff_vel_y / np.diff(time)[1:]
-                # diff_acc_z = temp_diff_vel_z / np.diff(time)[1:]
-
-                # if i:
-                #     import pdb
-                #     pdb.set_trace()
-
-                # Position
-                ax_xz_pos.plot(plot_pos_z, plot_pos_x, color=color, linewidth=2,
-                    zorder=0)
-                ax_xz_pos.scatter(plot_pos_z[0], plot_pos_x[0], s=50, color=color, 
-                    marker='o')
-                ax_xz_pos.scatter(plot_pos_z[-1], plot_pos_x[-1], s=50, color=color, 
-                    marker='X')
-                util.publication_spines(ax_xz_pos)
-                ax_xz_pos.set_xlim(-0.05, 0.05)
-                ax_xz_pos.set_xticks([-0.05, -0.025, 0, 0.025, 0.05])
-                ax_xz_pos.set_ylim(-0.1, 1.5)
-                ax_xz_pos.set_yticks([0, 0.5, 1.0, 1.5])
-                ax_xz_pos.set_xlabel('medio-lateral COM position (m)')
+                # Position: anterior-posterior vs medio-lateral
+                s = 35
+                min_pos_z, max_pos_z = update_lims(
+                    100*plot_pos_z, min_pos_z, max_pos_z)
+                ax_xz_pos.plot(100*plot_pos_z, plot_pos_x, color=color, 
+                    linewidth=lw, zorder=0, solid_capstyle='round', 
+                    clip_on=False)
+                ax_xz_pos.scatter(100*plot_pos_z[0], plot_pos_x[0], s=s, 
+                    color=color, marker='o', clip_on=False)
+                ax_xz_pos.scatter(100*plot_pos_z[-1], plot_pos_x[-1], s=s, 
+                    color=color, marker='X', clip_on=False)
+                ax_xz_pos.set_xlim(min_pos_z, max_pos_z)
+                ax_xz_pos.set_xticks(
+                    np.linspace(min_pos_z, max_pos_z, 
+                                max_pos_z - min_pos_z + 1))
+                ax_xz_pos.set_xticks([-8, -6, -4, -2, 0, 2, 4, 6, 8])
+                xf = math.ceil(1.25 * duration)
+                ax_xz_pos.set_ylim(0, xf)
+                ax_xz_pos.set_xlabel('medio-lateral COM position (cm)')
                 ax_xz_pos.set_ylabel('anterior-posterior COM position (m)')
+                util.publication_spines(ax_xz_pos, True)
+                fig0.tight_layout()
+                fig0.savefig(target[0], dpi=600)
+                plt.close()
 
-                ax_xy_pos.plot(plot_pos_x, plot_pos_y, color=color, linewidth=2,
-                    zorder=0)
-                ax_xy_pos.scatter(plot_pos_x[0], plot_pos_y[0], s=50, color=color, 
-                    marker='o')
-                ax_xy_pos.scatter(plot_pos_x[-1], plot_pos_y[-1], s=50, color=color, 
-                    marker='X')
-                util.publication_spines(ax_xy_pos)
-                
+                # Position: superior-inferior vs anterior-posterior
+                ax_xy_pos.plot(plot_pos_x, 100*plot_pos_y, color=color, 
+                    linewidth=lw, zorder=0, solid_capstyle='round', 
+                    clip_on=False)
+                ax_xy_pos.scatter(plot_pos_x[0], 100*plot_pos_y[0], s=s, 
+                    color=color, marker='o', clip_on=False)
+                ax_xy_pos.scatter(plot_pos_x[-1], 100*plot_pos_y[-1], s=s, 
+                    color=color, marker='X', clip_on=False)                
                 ax_xy_pos.set_xlabel('anterior-posterior COM position (m)')
-                ax_xy_pos.set_xlim(-0.1, 1.5)
-                ax_xy_pos.set_xticks([0, 0.5, 1.0, 1.5])
-                ax_xy_pos.set_ylabel('superior-inferior COM position (m)')
-
-                fig.tight_layout()
-                fig.savefig(target[0], dpi=600)
+                ax_xy_pos.set_xlim(0, xf)
+                ax_xy_pos.set_ylabel('superior-inferior COM position (cm)')
+                ax_xy_pos.set_ylim(-2, 6)
+                util.publication_spines(ax_xy_pos, True)
+                fig1.tight_layout()
+                fig1.savefig(target[1], dpi=600)
                 plt.close()
-
-                # Velocity
-                ax_xz_vel.plot(curr_vel_z, curr_vel_x, color=color, linewidth=2,
-                    zorder=0)
-                # ax_xz_vel.plot(diff_vel_z, diff_vel_x, color=color, linewidth=2,
-                #     linestyle='--')
-                ax_xz_vel.scatter(curr_vel_z[0], curr_vel_x[0], s=50, color=color, 
-                    marker='o')
-                ax_xz_vel.scatter(curr_vel_z[-1], curr_vel_x[-1], s=50, color=color, 
-                    marker='X')
-                util.publication_spines(ax_xz_vel)
-                # ax_xz_vel.set_xlim(-0.05, 0.05)
-                # ax_xz_vel.set_xticks([-0.05, -0.025, 0, 0.025, 0.05])
-                # ax_xz_vel.set_ylim(-0.1, 1.5)
-                # ax_xz_vel.set_yticks([0, 0.5, 1.0, 1.5])
-                ax_xz_vel.set_xlabel('medio-lateral COM velocity (m/s)')
-                ax_xz_vel.set_ylabel('anterior-posterior COM velocity (m/s)')
-
-                ax_xy_vel.plot(curr_vel_x, curr_vel_y, color=color, linewidth=2,
-                    zorder=0)
-                ax_xy_vel.scatter(curr_vel_x[0], curr_vel_y[0], s=50, color=color, 
-                    marker='o')
-                ax_xy_vel.scatter(curr_vel_x[-1], curr_vel_y[-1], s=50, color=color, 
-                    marker='X')
-                util.publication_spines(ax_xy_vel)
-                
-                ax_xy_vel.set_xlabel('anterior-posterior COM velocity (m/s)')
-                # ax_xy_vel.set_xlim(-0.1, 1.5)
-                # ax_xy_vel.set_xticks([0, 0.5, 1.0, 1.5])
-                ax_xy_vel.set_ylabel('superior-inferior COM velocity (m/s)')
-
-                fig2.tight_layout()
-                fig2.savefig(target[1], dpi=600)
-                plt.close()
-
-                # Acceleration
-                ax_xz_acc.plot(curr_acc_z, curr_acc_x, color=color, linewidth=2,
-                    zorder=0)
-                # ax_xz_acc.plot(diff_acc_z, diff_acc_x, color=color, linewidth=2,
-                #     linestyle='--')
-                ax_xz_acc.scatter(curr_acc_z[0], curr_acc_x[0], s=50, color=color, 
-                    marker='o')
-                ax_xz_acc.scatter(curr_acc_z[-1], curr_acc_x[-1], s=50, color=color, 
-                    marker='X')
-                util.publication_spines(ax_xz_acc)
-                # ax_xz_acc.set_xlim(-0.05, 0.05)
-                # ax_xz_acc.set_xticks([-0.05, -0.025, 0, 0.025, 0.05])
-                # ax_xz_acc.set_ylim(-0.1, 1.5)
-                # ax_xz_acc.set_yticks([0, 0.5, 1.0, 1.5])
-                ax_xz_acc.set_xlabel('medio-lateral COM acceleration (m/s^2)')
-                ax_xz_acc.set_ylabel('anterior-posterior COM acceleration (m/s^2)')
-
-                ax_xy_acc.plot(curr_acc_x, curr_acc_y, color=color, linewidth=2,
-                    zorder=0)
-                ax_xy_acc.scatter(curr_acc_x[0], curr_acc_y[0], s=50, color=color, 
-                    marker='o')
-                ax_xy_acc.scatter(curr_acc_x[-1], curr_acc_y[-1], s=50, color=color, 
-                    marker='X')
-                util.publication_spines(ax_xy_acc)
-                
-                ax_xy_acc.set_xlabel('anterior-posterior COM acceleration (m/s^2)')
-                # ax_xy_acc.set_xlim(-0.1, 1.5)
-                # ax_xy_acc.set_xticks([0, 0.5, 1.0, 1.5])
-                ax_xy_acc.set_ylabel('superior-inferior COM acceleration (m/s^2)')
-
-                fig3.tight_layout()
-                fig3.savefig(target[2], dpi=600)
-                plt.close()
-
 
                 # Position, velocity, acceleration versus time
-                pgc = np.linspace(0, 100, len(time))
-                ax_pos.plot(pgc, curr_pos_z, color=color, linewidth=1.5)
-                ax_pos.set_xticklabels([])
-                ax_pos.set_ylabel('position (m)')
-                ax_pos.set_xlim(0, 100)
+                final_per = 200 if self.two_cycles else 100
+                pgc = np.linspace(0, final_per, len(time))
+                ax_pos.plot(pgc, 100*plot_pos_z, color=color, linewidth=lw, 
+                            solid_capstyle='round', clip_on=False)
+                ax_pos.set_ylim(min_pos_z, max_pos_z)
+                ax_pos.set_yticks(
+                    np.linspace(min_pos_z, max_pos_z, 
+                                max_pos_z - min_pos_z + 1))
+                ax_pos.set_ylabel('position (cm)')
+                ax_pos.set_xlim(0, final_per)
+                ax_pos.axhline(y=0, color='gray', linestyle='--',
+                           linewidth=0.5, alpha=0.7, zorder=0)
+                ax_pos.axvline(x=percent, color=color, linestyle='--',
+                           linewidth=0.5, alpha=0.7, zorder=0)
                 util.publication_spines(ax_pos)
+                ax_pos.spines['bottom'].set_visible(False)
+                ax_pos.spines['left'].set_position(('outward', 10))
+                ax_pos.tick_params(axis='x', which='both', bottom=False, 
+                                   top=False, labelbottom=False)  
 
-                ax_vel.plot(pgc, curr_vel_z, color=color, linewidth=1.5)
+                ax_vel.plot(pgc, curr_vel_z, color=color, linewidth=lw,
+                            solid_capstyle='round', clip_on=False)
                 ax_vel.set_xticklabels([])
                 ax_vel.set_ylabel('velocity (m/s)')
-                ax_vel.set_xlim(0, 100)
+                ax_vel.set_xlim(0, final_per)
+                ax_vel.set_ylim(-0.3, 0.3)
+                ax_vel.set_yticks([-0.3, -0.2, -0.1, 0, 0.1, 0.2, 0.3])
+                ax_vel.axhline(y=0, color='gray', linestyle='--',
+                           linewidth=0.5, alpha=0.7, zorder=0)
+                ax_vel.axvline(x=percent, color=color, linestyle='--',
+                           linewidth=0.5, alpha=0.7, zorder=0)
                 util.publication_spines(ax_vel)
+                ax_vel.spines['bottom'].set_visible(False)
+                ax_vel.spines['left'].set_position(('outward', 10))
+                ax_vel.tick_params(axis='x', which='both', bottom=False, 
+                                   top=False, labelbottom=False)
 
-                ax_acc.plot(pgc, curr_acc_z, color=color, linewidth=1.5)
-                util.publication_spines(ax_acc)
+                ax_acc.plot(pgc, curr_acc_z, color=color, linewidth=lw,
+                            solid_capstyle='round', clip_on=False)
                 ax_acc.set_ylabel('acceleration (m/s^2)')
                 ax_acc.set_xlabel('time (% gait cycle)')
-                ax_acc.set_xlim(0, 100)
+                ax_acc.set_ylim(-2, 2)
+                ax_acc.axhline(y=0, color='gray', linestyle='--',
+                           linewidth=0.5, alpha=0.7, zorder=0)
+                ax_acc.axvline(x=percent, color=color, linestyle='--',
+                           linewidth=0.5, alpha=0.7, zorder=0)
+                ax_acc.set_xlim(0, final_per)
+                util.publication_spines(ax_acc)
+                ax_acc.spines['bottom'].set_position(('outward', 10))
+                ax_acc.spines['left'].set_position(('outward', 10))
 
-                fig4.tight_layout()
-                fig4.savefig(target[3], dpi=600)
+                fig2.tight_layout()
+                fig2.savefig(target[2], dpi=600)
                 plt.close()
 
         def plot_com_versus_time(axes, diff_vel, diff_acc, marker, 
@@ -2906,9 +2882,7 @@ class TaskPlotCOMVersusAnklePerturbTime(osp.StudyTask):
             diff_acc = diff_acc[1:, :, :]
 
             diff_vel_mean = np.mean(diff_vel, axis=2)
-            diff_vel_std = np.std(diff_vel, axis=2)
             diff_acc_mean = np.mean(diff_acc, axis=2)
-            diff_acc_std = np.std(diff_acc, axis=2)
 
             ax_vel_ml.bar(self.times,  diff_vel_mean[:, 2], color=colors,
                 width=7)
@@ -2945,67 +2919,85 @@ class TaskPlotCOMVersusAnklePerturbTime(osp.StudyTask):
             for ax in [ax_vel_ml, ax_vel_ap, ax_acc_ml, ax_acc_ap]:
                 util.publication_spines(ax)
                 ax.axhline(y=0, color='gray', linestyle='--',
-                            linewidth=0.5, alpha=0.7, zorder=0)
+                           linewidth=0.5, alpha=0.7, zorder=0)
 
-        fig = plt.figure(figsize=(4.5, 4.5))
-        ax_vel_ml = fig.add_subplot(221)
-        ax_vel_ap = fig.add_subplot(223)
-        ax_acc_ml = fig.add_subplot(222)
-        ax_acc_ap = fig.add_subplot(224)
+        fig3 = plt.figure(figsize=(4.5, 4.5))
+        ax_vel_ml = fig3.add_subplot(221)
+        ax_vel_ap = fig3.add_subplot(223)
+        ax_acc_ml = fig3.add_subplot(222)
+        ax_acc_ap = fig3.add_subplot(224)
         axes = [ax_vel_ml, ax_vel_ap, ax_acc_ml, ax_acc_ap]
         # plot_com_versus_time(axes, max_diff_vel, max_diff_acc, 'o', 'orange',
         #     'maximum change')
-        plot_com_versus_time(axes, peak_diff_vel, peak_diff_acc, 'o', self.colors[1:],
+        plot_com_versus_time(axes, peak_diff_vel, peak_diff_acc, 'o', 
+            self.colors[1:],
             'change at peak torque')
-        fig.tight_layout()
-        fig.savefig(target[4], dpi=600)
+        fig3.tight_layout()
+        fig3.savefig(target[3], dpi=600)
         plt.close()
 
 
 class TaskPlotCOMVersusAnklePerturbTorque(osp.StudyTask):
     REGISTRY = []
-    def __init__(self, study, subjects, time, torques=[25, 50, 75, 100],
-            delay=0.400):
+    def __init__(self, study, subjects, time, torques, color,
+                 delay, two_cycles=False):
         super(TaskPlotCOMVersusAnklePerturbTorque, self).__init__(study)
-        self.name = f'plot_com_versus_ankle_perturb_torque_for_time{time}'
+        self.two_cycles = two_cycles
+        self.suffix = '_two_cycles' if self.two_cycles else ''
+        self.name = f'plot_com_versus_ankle_perturb_torque{self.suffix}'
         self.results_path = os.path.join(study.config['results_path'], 
             'experiments')
         self.analysis_path = os.path.join(study.config['analysis_path'],
-            f'com_versus_ankle_perturb_torque_for_time{time}', 
-            'ankle_perturb')
-        if not os.path.exists(self.analysis_path): os.makedirs(self.analysis_path)
+            f'com_versus_ankle_perturb_torque{self.suffix}')
+        if not os.path.exists(self.analysis_path): 
+            os.makedirs(self.analysis_path)
         self.subjects = subjects
         self.torques = torques
         self.time = time
+        self.color = color
 
         self.labels = list()
         self.labels.append('unperturbed')
-        perturb_fpaths = list()
-        for torque in self.torques:
-            label = f'torque{torque}_time{self.time}_delay{int(1000*delay)}'
-            perturb_fpaths.append(
-                os.path.join('ankle_perturb', label, 
-                    f'tracking_perturb_{label}_center_of_mass.sto')
-                )
-            self.labels.append(f'{torque}%')
-
+        self.alphas = list()
+        self.alphas.append(1.0)
+        self.colors = list()
+        self.colors.append('black')
+        self.linewidths = list()
+        self.linewidths.append(3)
         deps = list()
         for subject in subjects:
-            condition_path = os.path.join(self.results_path, subject, 
-                'unperturbed')
             # Unperturbed solution
-            deps.append(os.path.join(condition_path, 'moco', 
-                'tracking_unperturbed_center_of_mass.sto'))
+            deps.append(
+                os.path.join(
+                    self.study.config['results_path'], 
+                    f'unperturbed{self.suffix}', subject,
+                    (f'tracking_unperturbed{self.suffix}'
+                     f'_mesh20_center_of_mass.sto')))
             # Perturbed solutions
-            for perturb_fpath in perturb_fpaths:
-                deps.append(os.path.join(condition_path, perturb_fpath))
+            for torque in self.torques:
+                label = (f'torque{torque}_time{self.time}'
+                         f'_delay{int(1000*delay)}')
+                deps.append(
+                    os.path.join(
+                        self.study.config['results_path'], 
+                        f'perturb{self.suffix}_{label}', subject,
+                        (f'tracking_perturb{self.suffix}'
+                         f'_{label}_center_of_mass.sto'))
+                    )
+                self.labels.append(f'{torque}%')
+                self.alphas.append(torque / 100.0)
+                self.colors.append(self.color)
+                self.linewidths.append(2)
 
         self.add_action(deps, 
                         [os.path.join(self.analysis_path, 
-                            'com_versus_perturb_torque_max.png'),
+                            'com_versus_perturb_torque_position_zx.png'), 
                          os.path.join(self.analysis_path, 
-                            'com_versus_perturb_torque_peak.png'),
-                        ], 
+                            'com_versus_perturb_torque_position_xy.png'),
+                         os.path.join(self.analysis_path, 
+                            'com_versus_perturb_torque_z_pos_vel_acc.png'), 
+                         os.path.join(self.analysis_path, 
+                            'com_versus_perturb_torque.png')], 
                         self.plot_com_tracking_errors)
 
     def plot_com_tracking_errors(self, file_dep, target):
@@ -3017,414 +3009,652 @@ class TaskPlotCOMVersusAnklePerturbTorque(osp.StudyTask):
         max_diff_acc = np.zeros((numLabels, 3, numSubjects))
         peak_diff_vel = np.zeros((numLabels, 3, numSubjects))
         peak_diff_acc = np.zeros((numLabels, 3, numSubjects))
-        delay_diff_vel = np.zeros((numLabels, 3, numSubjects))
-        delay_diff_acc = np.zeros((numLabels, 3, numSubjects))
+        fig0 = plt.figure(figsize=(4, 3*numSubjects))
+        fig1 = plt.figure(figsize=(4, 3*numSubjects))
+        fig2 = plt.figure(figsize=(5, 8))
+
+        def update_lims(pos, min_pos, max_pos):
+            if np.min(pos) < min_pos:
+                min_pos = math.floor(np.min(pos))
+            if np.max(pos) > max_pos:
+                max_pos = math.ceil(np.max(pos))
+
+            return min_pos, max_pos
+
+        min_pos_z = -2
+        max_pos_z = 2
         for isubj, subject in enumerate(self.subjects):
             refTable = osim.TimeSeriesTable(file_dep[isubj*numLabels])
-            ref_vel_x = refTable.getDependentColumn('/|com_velocity_x').to_numpy()
-            ref_vel_y = refTable.getDependentColumn('/|com_velocity_y').to_numpy()
-            ref_vel_z = refTable.getDependentColumn('/|com_velocity_z').to_numpy()
-            ref_acc_x = refTable.getDependentColumn('/|com_acceleration_x').to_numpy()
-            ref_acc_y = refTable.getDependentColumn('/|com_acceleration_y').to_numpy()
-            ref_acc_z = refTable.getDependentColumn('/|com_acceleration_z').to_numpy()
-            for i, label in enumerate(self.labels):
-                currTable = osim.TimeSeriesTable(file_dep[isubj*numLabels + i])
-                curr_vel_x = currTable.getDependentColumn('/|com_velocity_x').to_numpy()
-                curr_vel_y = currTable.getDependentColumn('/|com_velocity_y').to_numpy()
-                curr_vel_z = currTable.getDependentColumn('/|com_velocity_z').to_numpy()
-                curr_acc_x = currTable.getDependentColumn('/|com_acceleration_x').to_numpy()
-                curr_acc_y = currTable.getDependentColumn('/|com_acceleration_y').to_numpy()
-                curr_acc_z = currTable.getDependentColumn('/|com_acceleration_z').to_numpy()
+            ref_vel_x = refTable.getDependentColumn(
+                '/|com_velocity_x').to_numpy()
+            ref_vel_y = refTable.getDependentColumn(
+                '/|com_velocity_y').to_numpy()
+            ref_vel_z = refTable.getDependentColumn(
+                '/|com_velocity_z').to_numpy()
+            ref_acc_x = refTable.getDependentColumn(
+                '/|com_acceleration_x').to_numpy()
+            ref_acc_y = refTable.getDependentColumn(
+                '/|com_acceleration_y').to_numpy()
+            ref_acc_z = refTable.getDependentColumn(
+                '/|com_acceleration_z').to_numpy()
+            ax_xz_pos = fig0.add_subplot(numSubjects, 1, isubj+1)
+            ax_xy_pos = fig1.add_subplot(numSubjects, 1, isubj+1)
+
+            ax_pos = fig2.add_subplot(3, numSubjects, isubj+1)
+            ax_vel = fig2.add_subplot(3, numSubjects, 2*(isubj+1))
+            ax_acc = fig2.add_subplot(3, numSubjects, 3*(isubj+1))
+
+            zipped = zip(self.labels, self.colors, self.alphas, 
+                         self.linewidths)
+            for i, (label, color, alpha, lw) in enumerate(zipped):
+                currTable = osim.TimeSeriesTable(
+                    file_dep[isubj*numLabels + i])
+                curr_pos_x = currTable.getDependentColumn(
+                    '/|com_position_x').to_numpy()
+                curr_pos_y = currTable.getDependentColumn(
+                    '/|com_position_y').to_numpy()
+                curr_pos_z = currTable.getDependentColumn(
+                    '/|com_position_z').to_numpy()
+                curr_vel_x = currTable.getDependentColumn(
+                    '/|com_velocity_x').to_numpy()
+                curr_vel_y = currTable.getDependentColumn(
+                    '/|com_velocity_y').to_numpy()
+                curr_vel_z = currTable.getDependentColumn(
+                    '/|com_velocity_z').to_numpy()
+                curr_acc_x = currTable.getDependentColumn(
+                    '/|com_acceleration_x').to_numpy()
+                curr_acc_y = currTable.getDependentColumn(
+                    '/|com_acceleration_y').to_numpy()
+                curr_acc_z = currTable.getDependentColumn(
+                    '/|com_acceleration_z').to_numpy()
 
                 diff_vel_x = curr_vel_x - ref_vel_x 
                 diff_vel_y = curr_vel_y - ref_vel_y 
                 diff_vel_z = curr_vel_z - ref_vel_z 
                 diff_acc_x = curr_acc_x - ref_acc_x 
                 diff_acc_y = curr_acc_y - ref_acc_y 
-                diff_acc_z = curr_acc_z - ref_acc_z 
+                diff_acc_z = curr_acc_z - ref_acc_z
 
                 time = refTable.getIndependentColumn()
+                final_per = 200 if self.two_cycles else 100
+                pgc = np.linspace(0, final_per, len(time))
                 initial_time = time[0]
                 final_time = time[-1]
                 duration = final_time - initial_time
+
                 percent_time = initial_time + duration * (self.time / 100.0)
 
-                # Only find max values between torque onset and torque peak
-                temp_start_time = initial_time + duration * ((self.time - 25) / 100.0)
-                temp_start_end = initial_time + duration * ((self.time - 10) / 100.0)
-                temp_start = refTable.getNearestRowIndexForTime(temp_start_time)
-                temp_end = refTable.getNearestRowIndexForTime(temp_start_end)
-
-                temp_diff_vel_x = diff_vel_x[temp_start:temp_end] 
-                temp_diff_vel_y = diff_vel_y[temp_start:temp_end] 
-                temp_diff_vel_z = diff_vel_z[temp_start:temp_end] 
-                temp_diff_acc_x = diff_acc_x[temp_start:temp_end] 
-                temp_diff_acc_y = diff_acc_y[temp_start:temp_end] 
-                temp_diff_acc_z = diff_acc_z[temp_start:temp_end] 
-
-                max_diff_vel_x_idx = np.argmax(np.absolute(temp_diff_vel_x)) 
-                max_diff_vel_y_idx = np.argmax(np.absolute(temp_diff_vel_y)) 
-                max_diff_vel_z_idx = np.argmax(np.absolute(temp_diff_vel_z)) 
-                max_diff_acc_x_idx = np.argmax(np.absolute(temp_diff_acc_x)) 
-                max_diff_acc_y_idx = np.argmax(np.absolute(temp_diff_acc_y)) 
-                max_diff_acc_z_idx = np.argmax(np.absolute(temp_diff_acc_z)) 
+                max_diff_vel_x_idx = np.argmax(np.absolute(diff_vel_x)) 
+                max_diff_vel_y_idx = np.argmax(np.absolute(diff_vel_y)) 
+                max_diff_vel_z_idx = np.argmax(np.absolute(diff_vel_z)) 
+                max_diff_acc_x_idx = np.argmax(np.absolute(diff_acc_x)) 
+                max_diff_acc_y_idx = np.argmax(np.absolute(diff_acc_y)) 
+                max_diff_acc_z_idx = np.argmax(np.absolute(diff_acc_z)) 
 
                 # Compute max change in COM kinematics 
-                max_diff_vel[i, 0, isubj] = temp_diff_vel_x[max_diff_vel_x_idx]
-                max_diff_vel[i, 1, isubj] = temp_diff_vel_y[max_diff_vel_y_idx]
-                max_diff_vel[i, 2, isubj] = temp_diff_vel_z[max_diff_vel_z_idx]
-                max_diff_acc[i, 0, isubj] = temp_diff_acc_x[max_diff_acc_x_idx]
-                max_diff_acc[i, 1, isubj] = temp_diff_acc_y[max_diff_acc_y_idx]
-                max_diff_acc[i, 2, isubj] = temp_diff_acc_z[max_diff_acc_z_idx] 
+                max_diff_vel[i, 0, isubj] = diff_vel_x[max_diff_vel_x_idx]
+                max_diff_vel[i, 1, isubj] = diff_vel_y[max_diff_vel_y_idx]
+                max_diff_vel[i, 2, isubj] = diff_vel_z[max_diff_vel_z_idx]
+                max_diff_acc[i, 0, isubj] = diff_acc_x[max_diff_acc_x_idx]
+                max_diff_acc[i, 1, isubj] = diff_acc_y[max_diff_acc_y_idx]
+                max_diff_acc[i, 2, isubj] = diff_acc_z[max_diff_acc_z_idx]
 
                 # Compute change in COM kinematics at peak perturbation
-                perturb_time = initial_time + duration * ((self.time - 15) / 100.0)
-                index = refTable.getNearestRowIndexForTime(perturb_time)
+                percent_time = initial_time + duration * (0.5*self.time / 100.0)
+                index = refTable.getNearestRowIndexForTime(percent_time)
                 peak_diff_vel[i, 0, isubj] = diff_vel_x[index]
                 peak_diff_vel[i, 1, isubj] = diff_vel_y[index]
                 peak_diff_vel[i, 2, isubj] = diff_vel_z[index]
                 peak_diff_acc[i, 0, isubj] = diff_acc_x[index]
                 peak_diff_acc[i, 1, isubj] = diff_acc_y[index]
                 peak_diff_acc[i, 2, isubj] = diff_acc_z[index]
+                
+                plot_pos_x = curr_pos_x - curr_pos_x[0]
+                plot_pos_y = curr_pos_y - curr_pos_y[0]
+                plot_pos_z = curr_pos_z - curr_pos_z[0]
 
-        def plot_com_versus_torque(diff_vel, diff_acc, target):
-            fig = plt.figure(figsize=(4, 4))
-            ax_vel_ml = fig.add_subplot(221)
-            ax_vel_ap = fig.add_subplot(223)
-            ax_acc_ml = fig.add_subplot(222)
-            ax_acc_ap = fig.add_subplot(224)
+                # Position: anterior-posterior vs medio-lateral
+                s = 35
+                min_pos_z, max_pos_z = update_lims(
+                    100*plot_pos_z, min_pos_z, max_pos_z)
+                ax_xz_pos.plot(100*plot_pos_z, plot_pos_x, color=color, 
+                    linewidth=lw, zorder=0, solid_capstyle='round', 
+                    clip_on=False, alpha=alpha)
+                ax_xz_pos.scatter(100*plot_pos_z[0], plot_pos_x[0], s=s, 
+                    color=color, marker='o', clip_on=False, alpha=alpha)
+                ax_xz_pos.scatter(100*plot_pos_z[-1], plot_pos_x[-1], s=s, 
+                    color=color, marker='X', clip_on=False, alpha=alpha)
+                ax_xz_pos.set_xlim(min_pos_z, max_pos_z)
+                xf = math.ceil(1.25 * duration)
+                ax_xz_pos.set_ylim(0, xf)
+                ax_xz_pos.set_xlabel('medio-lateral COM position (cm)')
+                ax_xz_pos.set_ylabel('anterior-posterior COM position (m)')
+                util.publication_spines(ax_xz_pos, True)
+                fig0.tight_layout()
+                fig0.savefig(target[0], dpi=600)
+                plt.close()
+
+                # Position: superior-inferior vs anterior-posterior
+                ax_xy_pos.plot(plot_pos_x, 100*plot_pos_y, color=color, 
+                    linewidth=lw, zorder=0, solid_capstyle='round', 
+                    clip_on=False, alpha=alpha)
+                ax_xy_pos.scatter(plot_pos_x[0], 100*plot_pos_y[0], s=s, 
+                    color=color, marker='o', clip_on=False, alpha=alpha)
+                ax_xy_pos.scatter(plot_pos_x[-1], 100*plot_pos_y[-1], s=s, 
+                    color=color, marker='X', clip_on=False, alpha=alpha)                
+                ax_xy_pos.set_xlabel('anterior-posterior COM position (m)')
+                ax_xy_pos.set_xlim(0, xf)
+                ax_xy_pos.set_ylabel('superior-inferior COM position (cm)')
+                ax_xy_pos.set_ylim(-2, 6)
+                util.publication_spines(ax_xy_pos, True)
+                fig1.tight_layout()
+                fig1.savefig(target[1], dpi=600)
+                plt.close()
+
+                # Position, velocity, acceleration versus time
+                
+                ax_pos.plot(pgc, 100*plot_pos_z, color=color, linewidth=lw, 
+                            solid_capstyle='round', clip_on=False, alpha=alpha)
+                ax_pos.set_ylim(min_pos_z, max_pos_z)
+                ax_pos.set_yticks(
+                    np.linspace(min_pos_z, max_pos_z, 
+                                max_pos_z - min_pos_z + 1))
+                ax_pos.set_ylabel('position (cm)')
+                ax_pos.set_xlim(0, final_per)
+                ax_pos.axhline(y=0, color='gray', linestyle='--',
+                           linewidth=0.5, alpha=0.7, zorder=0)
+                ax_pos.axvline(x=self.time, color=color, linestyle='--',
+                           linewidth=0.5, alpha=0.7, zorder=0)
+                util.publication_spines(ax_pos)
+                ax_pos.spines['bottom'].set_visible(False)
+                ax_pos.spines['left'].set_position(('outward', 10))
+                ax_pos.tick_params(axis='x', which='both', bottom=False, 
+                                   top=False, labelbottom=False)  
+
+                ax_vel.plot(pgc, curr_vel_z, color=color, linewidth=lw,
+                            solid_capstyle='round', clip_on=False, alpha=alpha)
+                ax_vel.set_xticklabels([])
+                ax_vel.set_ylabel('velocity (m/s)')
+                ax_vel.set_xlim(0, final_per)
+                ax_vel.set_ylim(-0.3, 0.3)
+                ax_vel.set_yticks([-0.3, -0.2, -0.1, 0, 0.1, 0.2, 0.3])
+                ax_vel.axhline(y=0, color='gray', linestyle='--',
+                           linewidth=0.5, alpha=0.7, zorder=0)
+                ax_vel.axvline(x=self.time, color=color, linestyle='--',
+                           linewidth=0.5, alpha=0.7, zorder=0)
+                util.publication_spines(ax_vel)
+                ax_vel.spines['bottom'].set_visible(False)
+                ax_vel.spines['left'].set_position(('outward', 10))
+                ax_vel.tick_params(axis='x', which='both', bottom=False, 
+                                   top=False, labelbottom=False)
+
+                ax_acc.plot(pgc, curr_acc_z, color=color, linewidth=lw,
+                            solid_capstyle='round', clip_on=False, alpha=alpha)
+                ax_acc.set_ylabel('acceleration (m/s^2)')
+                ax_acc.set_xlabel('time (% gait cycle)')
+                ax_acc.set_ylim(-2, 2)
+                ax_acc.axhline(y=0, color='gray', linestyle='--',
+                           linewidth=0.5, alpha=0.7, zorder=0)
+                ax_acc.axvline(x=self.time, color=color, linestyle='--',
+                           linewidth=0.5, alpha=0.7, zorder=0)
+                ax_acc.set_xlim(0, final_per)
+                util.publication_spines(ax_acc)
+                ax_acc.spines['bottom'].set_position(('outward', 10))
+                ax_acc.spines['left'].set_position(('outward', 10))
+
+                fig2.tight_layout()
+                fig2.savefig(target[2], dpi=600)
+                plt.close()
+
+        def plot_com_versus_time(axes, diff_vel, diff_acc, marker, 
+                colors, label):
+            ax_vel_ml = axes[0]
+            ax_vel_ap = axes[1]
+            ax_acc_ml = axes[2]
+            ax_acc_ap = axes[3]
 
             # Remove elements with zero diffs
             diff_vel = diff_vel[1:, :, :]
             diff_acc = diff_acc[1:, :, :]
 
             diff_vel_mean = np.mean(diff_vel, axis=2)
-            diff_vel_std = np.std(diff_vel, axis=2)
             diff_acc_mean = np.mean(diff_acc, axis=2)
-            diff_acc_std = np.std(diff_acc, axis=2)
 
-            ax_vel_ml.scatter(self.torques,  diff_vel_mean[:, 2])
-            ax_vel_ml.set_ylabel('change in ML COM velocity (m/s)')
-            ax_vel_ml.set_ylim(-0.2, 0.2)
+            ax_vel_ml.bar(self.torques,  diff_vel_mean[:, 2], color=colors,
+                width=7)
+            ax_vel_ml.set_ylabel('medio-lateral')
+            # ax_vel_ml.set_ylim(-0.2, 0.2)
             ax_vel_ml.set_xticks(self.torques)
             ax_vel_ml.set_xticklabels([])
+            ax_vel_ml.legend(fontsize=6, fancybox=False, frameon=False)
+            ax_vel_ml.set_title('center-of-mass\nvelocity (m/s)', fontsize=8)
 
-            ax_vel_ap.scatter(self.torques,  diff_vel_mean[:, 0])
-            ax_vel_ap.set_ylabel('change in AP COM velocity (m/s)')
-            ax_vel_ap.set_ylim(-0.2, 0.2)
+            ax_vel_ap.bar(self.torques,  diff_vel_mean[:, 0], color=colors,
+                width=7)
+            ax_vel_ap.set_ylabel('anterior-posterior')
+            # ax_vel_ap.set_ylim(-0.2, 0.2)
             ax_vel_ap.set_xticks(self.torques)
             ax_vel_ap.set_xticklabels(self.labels[1:])
-            ax_vel_ap.set_xlabel('peak torque\n(%*mass N-m)')
+            ax_vel_ap.set_xlabel('peak torque\n(% BW)')
 
-            ax_acc_ml.scatter(self.torques,  diff_acc_mean[:, 2])
-            ax_acc_ml.set_ylabel('change in ML COM accel (m/s^2)')
-            ax_acc_ml.set_ylim(-2.0, 2.0)
+            ax_acc_ml.bar(self.torques,  diff_acc_mean[:, 2], color=colors,
+                width=7)
+            # ax_acc_ml.set_ylim(-2.0, 2.0)
             ax_acc_ml.set_xticks(self.torques)
             ax_acc_ml.set_xticklabels([])
+            ax_acc_ml.set_title('center-of-mass\nacceleration (m/s^2)', 
+                fontsize=8)
 
-            ax_acc_ap.scatter(self.torques,  diff_acc_mean[:, 0])
-            ax_acc_ap.set_ylabel('change in AP COM accel (m/s^2)')
-            ax_acc_ap.set_ylim(-2.0, 2.0)
+            ax_acc_ap.bar(self.torques,  diff_acc_mean[:, 0], color=colors,
+                width=7)
+            # ax_acc_ap.set_ylim(-2.0, 2.0)
             ax_acc_ap.set_xticks(self.torques)
             ax_acc_ap.set_xticklabels(self.labels[1:])
-            ax_acc_ap.set_xlabel('peak torque\n(%*mass N-m)')
+            ax_acc_ap.set_xlabel('peak torque\n(% BW)')
 
             for ax in [ax_vel_ml, ax_vel_ap, ax_acc_ml, ax_acc_ap]:
                 util.publication_spines(ax)
                 ax.axhline(y=0, color='gray', linestyle='--',
-                            linewidth=1, zorder=0)
+                           linewidth=0.5, alpha=0.7, zorder=0)
 
-            fig.tight_layout()
-            fig.savefig(target, dpi=600)
+        fig3 = plt.figure(figsize=(4.5, 4.5))
+        ax_vel_ml = fig3.add_subplot(221)
+        ax_vel_ap = fig3.add_subplot(223)
+        ax_acc_ml = fig3.add_subplot(222)
+        ax_acc_ap = fig3.add_subplot(224)
+        axes = [ax_vel_ml, ax_vel_ap, ax_acc_ml, ax_acc_ap]
+        # plot_com_versus_time(axes, max_diff_vel, max_diff_acc, 'o', 'orange',
+        #     'maximum change')
+        plot_com_versus_time(axes, peak_diff_vel, peak_diff_acc, 'o', 
+            self.colors[1:], 'change at peak torque')
+        fig3.tight_layout()
+        fig3.savefig(target[3], dpi=600)
+        plt.close()
+
+
+class TaskPlotPerturbFromBaselineResults(osp.StudyTask):
+    REGISTRY = []
+    def __init__(self, study, subjects, masses, time, torques, delay, 
+                 two_cycles=False):
+        super(TaskPlotPerturbFromBaselineResults, self).__init__(study)
+        self.two_cycles = two_cycles
+        self.suffix = '_two_cycles' if self.two_cycles else ''
+        self.name = f'plot_perturb_from_baseline_results{self.suffix}'
+        self.results_path = os.path.join(study.config['results_path'], 
+            'experiments')
+        self.analysis_path = os.path.join(study.config['analysis_path'],
+            f'perturb_from_baseline_results{self.suffix}')
+        if not os.path.exists(self.analysis_path): 
+            os.makedirs(self.analysis_path)
+        self.subjects = subjects
+        self.torques = torques
+        self.time = time
+
+        self.labels = list()
+        self.alphas = list()
+        self.colors = list()
+        self.linewidths = list()
+        self.masses = list()
+        cmap = plt.get_cmap('viridis')
+        cmap_indices = np.linspace(0, 1, len(self.torques))
+        deps = list()
+        for subject, mass in zip(subjects, masses):
+            # Perturbed solutions
+            for torque, cmap_idx in zip(self.torques, cmap_indices):
+                if torque == 50:
+                    deps.append(
+                        os.path.join(
+                            self.study.config['results_path'], 
+                            f'baseline_torque{self.suffix}', subject,
+                            (f'tracking_baseline_torque{self.suffix}'
+                             f'_center_of_mass.sto')))
+                    deps.append(
+                        os.path.join(
+                            self.study.config['results_path'], 
+                            f'baseline_torque{self.suffix}', subject,
+                            'ankle_perturbation_force_right.sto'))
+                else:
+                    label = (f'torque{torque}_time{self.time}'
+                             f'_delay{int(1000*delay)}')
+                    deps.append(
+                        os.path.join(
+                            self.study.config['results_path'], 
+                            f'perturb_from_baseline{self.suffix}_{label}', 
+                            subject, 
+                            (f'tracking_perturb_from_baseline{self.suffix}'
+                             f'_{label}_center_of_mass.sto')))
+                    deps.append(
+                        os.path.join(
+                            self.study.config['results_path'], 
+                            f'perturb_from_baseline{self.suffix}_{label}', 
+                            subject, 'ankle_perturbation_force_right.sto'))
+                self.labels.append(f'{torque}%')
+                self.alphas.append(1.0)
+                self.colors.append(cmap(cmap_idx))
+                self.linewidths.append(2)
+                self.masses.append(mass)
+
+        self.add_action(deps, 
+                        [os.path.join(self.analysis_path, 
+                            'com_versus_perturb_torque_position_zx.png'), 
+                         os.path.join(self.analysis_path, 
+                            'com_versus_perturb_torque_position_xy.png'),
+                         os.path.join(self.analysis_path, 
+                            'com_versus_perturb_torque_z_pos_vel_acc.png'), 
+                         os.path.join(self.analysis_path, 
+                            'com_and_torque_versus_time.png')], 
+                        self.plot_com_tracking_errors)
+
+    def plot_com_tracking_errors(self, file_dep, target):
+
+        # Add an element for the unperturbed trial so the arrays match length
+        numSubjects = len(self.subjects)
+        numLabels = len(self.labels)
+        fig0 = plt.figure(figsize=(4, 3*numSubjects))
+        fig1 = plt.figure(figsize=(4, 3*numSubjects))
+        fig2 = plt.figure(figsize=(5, 8))
+        fig3 = plt.figure(figsize=(8, 4))
+
+        def update_lims(pos, min_pos, max_pos):
+            if np.min(pos) < min_pos:
+                min_pos = math.floor(np.min(pos))
+            if np.max(pos) > max_pos:
+                max_pos = math.ceil(np.max(pos))
+
+            return min_pos, max_pos
+
+        min_pos_z = -2
+        max_pos_z = 2
+        ax_xz_pos = fig0.add_subplot(1, 1, 1)
+        ax_xy_pos = fig1.add_subplot(1, 1, 1)
+
+        ax_pos = fig2.add_subplot(3, 1, 1)
+        ax_vel = fig2.add_subplot(3, 1, 2)
+        ax_acc = fig2.add_subplot(3, 1, 3)
+
+        ax_ml_pos = fig3.add_subplot(2, 1, 1)
+        ax_torque = fig3.add_subplot(2, 1, 2)
+
+        zipped = zip(self.labels, self.colors, self.alphas, 
+                     self.linewidths, self.masses)
+        for i, (label, color, alpha, lw, mass) in enumerate(zipped):
+            
+            # Get current table and values
+            currTable = osim.TimeSeriesTable(file_dep[2*i])
+            curr_pos_x = currTable.getDependentColumn(
+                '/|com_position_x').to_numpy()
+            curr_pos_y = currTable.getDependentColumn(
+                '/|com_position_y').to_numpy()
+            curr_pos_z = currTable.getDependentColumn(
+                '/|com_position_z').to_numpy()
+            curr_vel_z = currTable.getDependentColumn(
+                '/|com_velocity_z').to_numpy()
+            curr_acc_z = currTable.getDependentColumn(
+                '/|com_acceleration_z').to_numpy()
+
+            time = currTable.getIndependentColumn()
+            initial_time = time[0]
+            final_time = time[-1]
+            duration = final_time - initial_time
+
+            # Start all positions at zero
+            plot_pos_x = curr_pos_x - curr_pos_x[0]
+            plot_pos_y = curr_pos_y - curr_pos_y[0]
+            plot_pos_z = curr_pos_z - curr_pos_z[0]
+
+            # Get ankle torques
+            currTorqueTable = osim.TimeSeriesTable(file_dep[2*i + 1])
+            torqueTime = currTorqueTable.getIndependentColumn()
+            rightAnkleTorque = currTorqueTable.getDependentColumn(
+                '/forceset/ankle_angle_r_perturbation').to_numpy()
+
+            # Position: anterior-posterior vs medio-lateral
+            s = 35
+            min_pos_z, max_pos_z = update_lims(
+                100*plot_pos_z, min_pos_z, max_pos_z)
+            ax_xz_pos.plot(100*plot_pos_z, plot_pos_x, color=color, 
+                linewidth=lw, zorder=0, solid_capstyle='round', 
+                clip_on=False, alpha=alpha)
+            ax_xz_pos.scatter(100*plot_pos_z[0], plot_pos_x[0], s=s, 
+                color=color, marker='o', clip_on=False, alpha=alpha)
+            ax_xz_pos.scatter(100*plot_pos_z[-1], plot_pos_x[-1], s=s, 
+                color=color, marker='X', clip_on=False, alpha=alpha)
+            ax_xz_pos.set_xlim(min_pos_z, max_pos_z)
+            xf = math.ceil(1.25 * duration)
+            ax_xz_pos.set_ylim(0, xf)
+            ax_xz_pos.set_xlabel('medio-lateral COM position (cm)')
+            ax_xz_pos.set_ylabel('anterior-posterior COM position (m)')
+            util.publication_spines(ax_xz_pos, True)
+            fig0.tight_layout()
+            fig0.savefig(target[0], dpi=600)
             plt.close()
 
-        plot_com_versus_torque(max_diff_vel, max_diff_acc, target[0])
-        plot_com_versus_torque(peak_diff_vel, peak_diff_acc, target[1])
+            # Position: superior-inferior vs anterior-posterior
+            ax_xy_pos.plot(plot_pos_x, 100*plot_pos_y, color=color, 
+                linewidth=lw, zorder=0, solid_capstyle='round', 
+                clip_on=False, alpha=alpha)
+            ax_xy_pos.scatter(plot_pos_x[0], 100*plot_pos_y[0], s=s, 
+                color=color, marker='o', clip_on=False, alpha=alpha)
+            ax_xy_pos.scatter(plot_pos_x[-1], 100*plot_pos_y[-1], s=s, 
+                color=color, marker='X', clip_on=False, alpha=alpha)                
+            ax_xy_pos.set_xlabel('anterior-posterior COM position (m)')
+            ax_xy_pos.set_xlim(0, xf)
+            ax_xy_pos.set_ylabel('superior-inferior COM position (cm)')
+            ax_xy_pos.set_ylim(-2, 6)
+            util.publication_spines(ax_xy_pos, True)
+            fig1.tight_layout()
+            fig1.savefig(target[1], dpi=600)
+            plt.close()
 
+            # Position, velocity, acceleration versus time
+            final_per = 200 if self.two_cycles else 100
+            pgc = np.linspace(0, final_per, len(time))
+            ax_pos.plot(pgc, 100*plot_pos_z, color=color, linewidth=lw, 
+                        solid_capstyle='round', clip_on=False, alpha=alpha)
+            ax_pos.set_ylim(min_pos_z, max_pos_z)
+            ax_pos.set_yticks(
+                np.linspace(min_pos_z, max_pos_z, 
+                            max_pos_z - min_pos_z + 1))
+            ax_pos.set_ylabel('position (cm)')
+            ax_pos.set_xlim(0, final_per)
+            ax_pos.axhline(y=0, color='gray', linestyle='--',
+                       linewidth=0.5, alpha=0.7, zorder=0)
+            util.publication_spines(ax_pos)
+            ax_pos.spines['bottom'].set_visible(False)
+            ax_pos.spines['left'].set_position(('outward', 10))
+            ax_pos.tick_params(axis='x', which='both', bottom=False, 
+                               top=False, labelbottom=False)  
 
-class TaskPlotCOMVersusAnklePerturbDelay(osp.StudyTask):
-    REGISTRY = []
-    def __init__(self, study, subjects, delays, torque, time):
-        super(TaskPlotCOMVersusAnklePerturbDelay, self).__init__(study)
-        self.name = f'plot_com_versus_ankle_perturb_delay_torque{torque}_time{time}'
-        self.results_path = os.path.join(study.config['results_path'], 
-            'experiments')
-        self.analysis_path = os.path.join(study.config['analysis_path'],
-            f'com_versus_ankle_perturb_delay_torque{torque}_time{time}', 
-            'ankle_perturb')
-        if not os.path.exists(self.analysis_path): os.makedirs(self.analysis_path)
-        self.subjects = subjects
-        self.torque = torque
-        self.time = time
-        self.delays = delays
+            ax_vel.plot(pgc, curr_vel_z, color=color, linewidth=lw,
+                        solid_capstyle='round', clip_on=False, alpha=alpha)
+            ax_vel.set_xticklabels([])
+            ax_vel.set_ylabel('velocity (m/s)')
+            ax_vel.set_xlim(0, final_per)
+            ax_vel.set_ylim(-0.3, 0.3)
+            ax_vel.set_yticks([-0.3, -0.2, -0.1, 0, 0.1, 0.2, 0.3])
+            ax_vel.axhline(y=0, color='gray', linestyle='--',
+                       linewidth=0.5, alpha=0.7, zorder=0)
+            util.publication_spines(ax_vel)
+            ax_vel.spines['bottom'].set_visible(False)
+            ax_vel.spines['left'].set_position(('outward', 10))
+            ax_vel.tick_params(axis='x', which='both', bottom=False, 
+                               top=False, labelbottom=False)
 
-        self.labels = list()
-        self.labels.append('unperturbed')
-        self.colors = list()
-        self.colors.append('black')
-        cmap = plt.get_cmap('viridis')
-        idxs = np.linspace(0, 1, len(self.delays))
-        perturb_fpaths = list()
-        for delay, idx in zip(self.delays, idxs):
+            ax_acc.plot(pgc, curr_acc_z, color=color, linewidth=lw,
+                        solid_capstyle='round', clip_on=False, alpha=alpha)
+            ax_acc.set_ylabel('acceleration (m/s^2)')
+            ax_acc.set_xlabel('time (% gait cycle)')
+            ax_acc.set_ylim(-2, 2)
+            ax_acc.axhline(y=0, color='gray', linestyle='--',
+                       linewidth=0.5, alpha=0.7, zorder=0)
+            ax_acc.set_xlim(0, final_per)
+            util.publication_spines(ax_acc)
+            ax_acc.spines['bottom'].set_position(('outward', 10))
+            ax_acc.spines['left'].set_position(('outward', 10))
 
-            label = f'torque{self.torque}_time{self.time}_delay{int(1000*delay)}'
-            perturb_fpaths.append(
-                os.path.join('ankle_perturb', label, 
-                    f'tracking_perturb_{label}_center_of_mass.sto')
-                )
-            self.labels.append(f'{delay}')
-            self.colors.append(cmap(idx))
+            fig2.tight_layout()
+            fig2.savefig(target[2], dpi=600)
+            plt.close()
 
-        deps = list()
-        for subject in subjects:
-            condition_path = os.path.join(self.results_path, subject, 
-                'unperturbed')
-            # Unperturbed solution
-            deps.append(os.path.join(condition_path, 'moco', 
-                'tracking_unperturbed_center_of_mass.sto'))
-            # Perturbed solutions
-            for perturb_fpath in perturb_fpaths:
-                deps.append(os.path.join(condition_path, perturb_fpath))
+            # import pdb
+            # pdb.set_trace()
 
-        self.add_action(deps, 
-                        [os.path.join(self.analysis_path, 
-                            'com_versus_perturb_time_position.png'), 
-                        ], 
-                        self.plot_com_tracking_errors)
+            # Recreate experiment plot
+            # ax_ml_pos.scatter(time, 100*plot_pos_z, color=color, s=1)
+            ax_ml_pos.plot(time, 100*plot_pos_z, color=color, 
+                linewidth=lw, solid_capstyle='round', clip_on=False, 
+                alpha=alpha)
+            ax_ml_pos.set_ylim(min_pos_z, max_pos_z)
+            ax_ml_pos.set_yticks(
+                np.linspace(min_pos_z, max_pos_z, 
+                            max_pos_z - min_pos_z + 1))
+            ax_ml_pos.set_ylabel('position (cm)')
+            # ax_ml_pos.set_xlim(0, final_per)
+            ax_ml_pos.axhline(y=0, color='gray', linestyle='--',
+                       linewidth=0.5, alpha=0.7, zorder=0)
+            util.publication_spines(ax_ml_pos)
+            ax_ml_pos.spines['bottom'].set_visible(False)
+            ax_ml_pos.spines['left'].set_position(('outward', 10))
+            ax_ml_pos.tick_params(axis='x', which='both', bottom=False, 
+                               top=False, labelbottom=False)  
 
-    def plot_com_tracking_errors(self, file_dep, target):
+            torque_pgc = np.linspace(0, final_per, len(torqueTime))
+            # ax_torque.scatter(torqueTime, 
+            #     rightAnkleTorque / mass, color=color)
+            ax_torque.plot(torqueTime, 
+                rightAnkleTorque / mass, color=color, 
+                linewidth=lw, solid_capstyle='round', clip_on=False, 
+                alpha=alpha)
+            # ax_torque.set_xlim(0, final_per)
+            ax_torque.set_xlabel('time (% gait cycle)')
+            util.publication_spines(ax_torque)
+            ax_torque.spines['bottom'].set_position(('outward', 10))
+            ax_torque.spines['left'].set_position(('outward', 10))
+            ax_torque.set_ylabel('torque (N-m/kg)')
 
-        numSubjects = len(self.subjects)
-        numLabels = len(self.labels)
-        fig = plt.figure(figsize=(6, 3*numSubjects))
+            fig3.tight_layout()
+            fig3.savefig(target[3], dpi=600)
+            plt.close()
 
-        for isubj, subject in enumerate(self.subjects):
-            refTable = osim.TimeSeriesTable(file_dep[isubj*numLabels])
-            ref_pos_x = refTable.getDependentColumn('/|com_position_x').to_numpy()
-            ref_pos_y = refTable.getDependentColumn('/|com_position_y').to_numpy()
-            ref_pos_z = refTable.getDependentColumn('/|com_position_z').to_numpy()
-            ref_vel_x = refTable.getDependentColumn('/|com_velocity_x').to_numpy()
-            ref_vel_y = refTable.getDependentColumn('/|com_velocity_y').to_numpy()
-            ref_vel_z = refTable.getDependentColumn('/|com_velocity_z').to_numpy()
-            ref_acc_x = refTable.getDependentColumn('/|com_acceleration_x').to_numpy()
-            ref_acc_y = refTable.getDependentColumn('/|com_acceleration_y').to_numpy()
-            ref_acc_z = refTable.getDependentColumn('/|com_acceleration_z').to_numpy()
-            ax_xz = fig.add_subplot(numSubjects, 2, isubj+1)
-            ax_xy = fig.add_subplot(numSubjects, 2, 2*(isubj+1))
+        # def plot_com_versus_time(axes, diff_vel, diff_acc, marker, 
+        #         colors, label):
+        #     ax_vel_ml = axes[0]
+        #     ax_vel_ap = axes[1]
+        #     ax_acc_ml = axes[2]
+        #     ax_acc_ap = axes[3]
 
+        #     # Remove elements with zero diffs
+        #     diff_vel = diff_vel[1:, :, :]
+        #     diff_acc = diff_acc[1:, :, :]
 
-            for i, (label, color) in enumerate(zip(self.labels, self.colors)):
-                currTable = osim.TimeSeriesTable(
-                    file_dep[isubj*numLabels + i])
-                curr_pos_x = currTable.getDependentColumn('/|com_position_x').to_numpy()
-                curr_pos_y = currTable.getDependentColumn('/|com_position_y').to_numpy()
-                curr_pos_z = currTable.getDependentColumn('/|com_position_z').to_numpy()
-                curr_vel_x = currTable.getDependentColumn('/|com_velocity_x').to_numpy()
-                curr_vel_y = currTable.getDependentColumn('/|com_velocity_y').to_numpy()
-                curr_vel_z = currTable.getDependentColumn('/|com_velocity_z').to_numpy()
-                curr_acc_x = currTable.getDependentColumn('/|com_acceleration_x').to_numpy()
-                curr_acc_y = currTable.getDependentColumn('/|com_acceleration_y').to_numpy()
-                curr_acc_z = currTable.getDependentColumn('/|com_acceleration_z').to_numpy()
-                
-                plot_pos_x = curr_pos_x - curr_pos_x[0]
-                plot_pos_y = curr_pos_y - curr_pos_y[0]
-                plot_pos_z = curr_pos_z - curr_pos_z[0]
+        #     diff_vel_mean = np.mean(diff_vel, axis=2)
+        #     diff_acc_mean = np.mean(diff_acc, axis=2)
 
-                ax_xz.plot(plot_pos_z, plot_pos_x, color=color, linewidth=2)
-                ax_xz.scatter(plot_pos_z[0], plot_pos_x[0], s=50, color=color, 
-                    marker='o')
-                ax_xz.scatter(plot_pos_z[-1], plot_pos_x[-1], s=50, color=color, 
-                    marker='X')
-                util.publication_spines(ax_xz)
-                ax_xz.set_xlim(-0.05, 0.05)
-                ax_xz.set_xticks([-0.05, -0.025, 0, 0.025, 0.05])
-                ax_xz.set_ylim(-0.05, 1.5)
-                ax_xz.set_yticks([0, 0.5, 1.0, 1.5])
-                ax_xz.set_xlabel('medio-lateral COM position (m)')
-                ax_xz.set_ylabel('anterior-posterior COM position (m)')
-                util.publication_spines(ax_xz)
+        #     ax_vel_ml.bar(self.torques,  diff_vel_mean[:, 2], color=colors,
+        #         width=7)
+        #     ax_vel_ml.set_ylabel('medio-lateral')
+        #     # ax_vel_ml.set_ylim(-0.2, 0.2)
+        #     ax_vel_ml.set_xticks(self.torques)
+        #     ax_vel_ml.set_xticklabels([])
+        #     ax_vel_ml.legend(fontsize=6, fancybox=False, frameon=False)
+        #     ax_vel_ml.set_title('center-of-mass\nvelocity (m/s)', fontsize=8)
 
-                ax_xy.plot(plot_pos_x, plot_pos_y, color=color, linewidth=2)
-                ax_xy.scatter(plot_pos_x[0], plot_pos_y[0], s=50, color=color, 
-                    marker='o')
-                ax_xy.scatter(plot_pos_x[-1], plot_pos_y[-1], s=50, color=color, 
-                    marker='X')
-                util.publication_spines(ax_xy)
-                
-                ax_xy.set_xlabel('anterior-posterior COM position (m)')
-                ax_xy.set_xlim(-0.05, 1.5)
-                ax_xy.set_xticks([0, 0.5, 1.0, 1.5])
-                ax_xy.set_ylabel('superior-inferior COM position (m)')
-                # ax.set_xlim(-0.05, 0.05)
-                # ax.set_xticks([-0.05, -0.025, 0, 0.025, 0.05])
-                util.publication_spines(ax_xy)
+        #     ax_vel_ap.bar(self.torques,  diff_vel_mean[:, 0], color=colors,
+        #         width=7)
+        #     ax_vel_ap.set_ylabel('anterior-posterior')
+        #     # ax_vel_ap.set_ylim(-0.2, 0.2)
+        #     ax_vel_ap.set_xticks(self.torques)
+        #     ax_vel_ap.set_xticklabels(self.labels[1:])
+        #     ax_vel_ap.set_xlabel('peak torque\n(% BW)')
 
-                fig.tight_layout()
-                fig.savefig(target[0], dpi=600)
-                plt.close()
+        #     ax_acc_ml.bar(self.torques,  diff_acc_mean[:, 2], color=colors,
+        #         width=7)
+        #     # ax_acc_ml.set_ylim(-2.0, 2.0)
+        #     ax_acc_ml.set_xticks(self.torques)
+        #     ax_acc_ml.set_xticklabels([])
+        #     ax_acc_ml.set_title('center-of-mass\nacceleration (m/s^2)', 
+        #         fontsize=8)
 
+        #     ax_acc_ap.bar(self.torques,  diff_acc_mean[:, 0], color=colors,
+        #         width=7)
+        #     # ax_acc_ap.set_ylim(-2.0, 2.0)
+        #     ax_acc_ap.set_xticks(self.torques)
+        #     ax_acc_ap.set_xticklabels(self.labels[1:])
+        #     ax_acc_ap.set_xlabel('peak torque\n(% BW)')
 
-class TaskPlotCOMTrackingErrorsAnklePerturbDelay(osp.StudyTask):
-    REGISTRY = []
-    def __init__(self, study, subjects, delays, torque, time):
-        super(TaskPlotCOMTrackingErrorsAnklePerturbDelay, self).__init__(study)
-        self.name = f'plot_com_tracking_errors_ankle_perturb_delay_torque{torque}_time{time}'
-        self.results_path = os.path.join(study.config['results_path'], 
-            'experiments')
-        self.analysis_path = os.path.join(study.config['analysis_path'],
-            f'com_tracking_errors_perturb_delay_torque{torque}_time{time}', 
-            'ankle_perturb')
-        if not os.path.exists(self.analysis_path): os.makedirs(self.analysis_path)
-        self.subjects = subjects
-        self.torque = torque
-        self.time = time
-        self.delays = delays
+        #     for ax in [ax_vel_ml, ax_vel_ap, ax_acc_ml, ax_acc_ap]:
+        #         util.publication_spines(ax)
+        #         ax.axhline(y=0, color='gray', linestyle='--',
+        #                    linewidth=0.5, alpha=0.7, zorder=0)
 
-        self.labels = list()
-        self.labels.append('unperturbed')
-        self.colors = list()
-        self.colors.append('black')
-        cmap = plt.get_cmap('viridis')
-        idxs = np.linspace(0, 1, len(self.delays))
-        perturb_fpaths = list()
-        for delay, idx in zip(self.delays, idxs):
-            label = f'torque{torque}_time{time}_delay{int(1000*delay)}'
-            perturb_fpaths.append(
-                os.path.join('ankle_perturb', label, 
-                    f'tracking_perturb_{label}_center_of_mass.sto')
-                )
-            self.labels.append(f'{int(1000*delay)}')
-            self.colors.append(cmap(idx))
-
-        deps = list()
-        for subject in subjects:
-            condition_path = os.path.join(self.results_path, subject, 
-                'unperturbed')
-            # Unperturbed solution
-            deps.append(os.path.join(condition_path, 'moco', 
-                'tracking_unperturbed_center_of_mass.sto'))
-            # Perturbed solutions
-            for perturb_fpath in perturb_fpaths:
-                deps.append(os.path.join(condition_path, perturb_fpath))
-
-        self.add_action(deps, 
-                        [os.path.join(self.analysis_path, 
-                            'absolute_errors.png')
-                        ], 
-                        self.plot_com_tracking_errors)
-
-    def plot_com_tracking_errors(self, file_dep, target):
-
-        def compute_com_rmse(currTable, refTable):
-            times = refTable.getIndependentColumn()
-            labels = refTable.getColumnLabels()
-            sumSquaredError = np.zeros_like(times)
-            for itime, time in enumerate(times):
-                for label in labels:
-                    if 'position' in label:
-                        currValue = currTable.getDependentColumn(label)[itime]
-                        refValue = refTable.getDependentColumn(label)[itime]
-                        error = currValue - refValue
-                        sumSquaredError[itime] += error * error
-
-            # Trapezoidal rule
-            interval = times[-1] - times[0]
-            isse = 0.5 * interval * (sumSquaredError.sum() + 
-                                     sumSquaredError[1:-1].sum())
-
-            rmse = np.sqrt(isse / interval / len(labels))  
-            return rmse
-
-        numSubjects = len(self.subjects)
-        numLabels = len(self.labels)
-        errors = np.zeros((numLabels, numSubjects))
-        for isubj, subject in enumerate(self.subjects):
-            refTable = osim.TimeSeriesTable(file_dep[isubj*numLabels])
-            for ilabel, label in enumerate(self.labels):
-                currTable = osim.TimeSeriesTable(
-                    file_dep[isubj*numLabels + ilabel])
-                errors[ilabel, isubj] = compute_com_rmse(currTable, refTable)
-
-        # Remove elements with zero error
-        errors = errors[1:, :]
-
-        errors_mean = np.mean(errors, axis=1)
-        errors_std = np.std(errors, axis=1)
-
-        fig = plt.figure(figsize=(5, 3))
-        ax = fig.add_subplot(111)
-        ax.bar(self.labels[1:], errors_mean, 0.75, 
-            yerr=errors_std, color=self.colors[1:])
-        ax.set_ylabel('center-of-mass tracking error (RMS)')
-        # plt.setp(ax.get_xticklabels(), rotation=30, ha='right', 
-        #     rotation_mode='anchor')
-        ax.set_xlabel('delay time (ms)')
-        util.publication_spines(ax)
-        fig.tight_layout()
-        fig.savefig(target[0], dpi=600)
-        plt.close()
+        # fig3 = plt.figure(figsize=(4.5, 4.5))
+        # ax_vel_ml = fig3.add_subplot(221)
+        # ax_vel_ap = fig3.add_subplot(223)
+        # ax_acc_ml = fig3.add_subplot(222)
+        # ax_acc_ap = fig3.add_subplot(224)
+        # axes = [ax_vel_ml, ax_vel_ap, ax_acc_ml, ax_acc_ap]
+        # plot_com_versus_time(axes, max_diff_vel, max_diff_acc, 'o', 'orange',
+        #     'maximum change')
+        # plot_com_versus_time(axes, peak_diff_vel, peak_diff_acc, 'o', 
+        #     self.colors[1:], 'change at peak torque')
+        # fig3.tight_layout()
+        # fig3.savefig(target[3], dpi=600)
+        # plt.close()
 
 
 class TaskPlotGroundReactionsAnklePerturb(osp.StudyTask):
     REGISTRY = []
-    def __init__(self, study, subject, times, colormap, cmap_indices, 
-            delay, torques=[100]):
+    def __init__(self, study, subject, time, torques, color, delay, 
+            two_cycles=False):
         super(TaskPlotGroundReactionsAnklePerturb, self).__init__(study)
-        self.name = f'plot_grfs_ankle_perturb'
+        self.two_cycles = two_cycles
+        self.suffix = '_two_cycles' if self.two_cycles else ''
+        self.name = f'plot_grfs_ankle_perturb_time{time}_{subject}{self.suffix}'
         self.results_path = os.path.join(study.config['results_path'], 
             'experiments')
         self.analysis_path = os.path.join(study.config['analysis_path'],
-            'ground_reactions', f'ankle_perturb_{subject}')
+            'ground_reactions', f'time{time}_{subject}{self.suffix}')
         if not os.path.exists(self.analysis_path): 
             os.makedirs(self.analysis_path)
 
         self.subject = subject
         self.torques = torques
-        self.times = times
-        self.cmap_indices = cmap_indices
+        self.time = time
+        self.color = color
 
         self.labels = list()
-        # self.labels.append('experiment')
+        self.labels.append('experiment')
         self.labels.append('unperturbed')
-
         self.colors = list()
-        # self.colors.append('gray')
+        self.colors.append('gray')
         self.colors.append('black')
-
         self.alphas = list()
-        # self.alphas.append(1.0)
+        self.alphas.append(1.0)
         self.alphas.append(1.0)
 
-        perturb_fpaths = list()
-        cmap = plt.get_cmap(colormap)
-        self.times_colors = list()
-        for i in np.arange(len(times)):
-            self.times_colors.append(cmap(self.cmap_indices[i])) 
+        deps = list()
+        # Experimental grfs
+        deps.append(os.path.join(self.study.config['results_path'], 
+            'experiments', subject, 'unperturbed', 'expdata', 
+            'ground_reaction.mot'))
+        # Unperturbed grfs
+        deps.append(os.path.join(self.study.config['results_path'], 
+            'unperturbed', subject, 'unperturbed_mesh20_grfs.sto'))
+
         for torque in self.torques:
             for time, cmap_idx in zip(self.times, self.cmap_indices):
                 label = f'torque{torque}_time{time}_delay{int(1000*delay)}'
-                perturb_fpaths.append(
+                deps.append(
                     os.path.join(self.study.config['results_path'], 
                         f'ankle_perturb_{label}', 
                         subject, f'perturb_{label}_grfs.sto'))
                 self.labels.append(label)
-                self.colors.append(cmap(cmap_idx))
+                self.colors.append(color)
                 self.alphas.append(torque / 100.0)
 
-        deps = list()
-      
         # Model 
         self.model = os.path.join(self.study.config['results_path'], 
             'unperturbed', subject, 'model_unperturbed_mesh20.osim')
-        # Experimental grfs
-        # deps.append(os.path.join(condition_path, 'expdata', 
-        #     'ground_reaction.mot'))
-        # Unperturbed grfs
-        deps.append(os.path.join(self.study.config['results_path'], 
-            'unperturbed', subject, 'unperturbed_mesh20_grfs.sto'))
-        # Perturbed grfs
-        for perturb_fpath in perturb_fpaths:
-            deps.append(perturb_fpath)
 
         self.add_action(deps, 
                         [os.path.join(self.analysis_path, 
@@ -3434,14 +3664,12 @@ class TaskPlotGroundReactionsAnklePerturb(osp.StudyTask):
                          os.path.join(self.analysis_path, 
                             'ground_reaction_SI_diffs_at_peak.png'),
                          os.path.join(self.analysis_path, 
-                            'ground_reaction_AP_diffs_at_peak.png')
-                        ], 
+                            'ground_reaction_AP_diffs_at_peak.png')], 
                         self.plot_com_tracking_errors)
 
     def plot_com_tracking_errors(self, file_dep, target):
 
         # Get time range
-        percents = [50] + self.times
         grf_temp = osim.TimeSeriesTable(file_dep[-1])
         time_temp = grf_temp.getIndependentColumn()
         initial_time = time_temp[0]
@@ -3465,8 +3693,8 @@ class TaskPlotGroundReactionsAnklePerturb(osp.StudyTask):
         rgrfy_ax = fig.add_subplot(3, 2, 4)
         rgrfz_ax = fig.add_subplot(3, 2, 6)
 
-        plot_zip = zip(self.labels, self.colors, self.alphas, percents)
-        for i, (label, color, alpha, percent) in enumerate(plot_zip):
+        plot_zip = zip(self.labels, self.colors, self.alphas)
+        for i, (label, color, alpha) in enumerate(plot_zip):
             ref_grfs = osim.TimeSeriesTable(file_dep[0])
             grfs = osim.TimeSeriesTable(file_dep[i])
             time = grfs.getIndependentColumn()
@@ -3492,7 +3720,7 @@ class TaskPlotGroundReactionsAnklePerturb(osp.StudyTask):
             diff_rgrfy = rgrfy - ref_rgrfy 
             diff_rgrfz = rgrfz - ref_rgrfz
 
-            percent_time = initial_time + duration * (percent / 100.0)
+            percent_time = initial_time + duration * (self.time / 100.0)
             index = ref_grfs.getNearestRowIndexForTime(percent_time)
             peak_diff_lgrf[i, 0] = diff_lgrfx[index]
             peak_diff_lgrf[i, 1] = diff_lgrfy[index]
@@ -3514,7 +3742,7 @@ class TaskPlotGroundReactionsAnklePerturb(osp.StudyTask):
 
             if 'experiment' in label:
                 lw = 4
-            elif 'unperturbed'in label:
+            elif 'unperturbed' in label:
                 lw = 3
             else:
                 lw = 2
@@ -3571,18 +3799,17 @@ class TaskPlotGroundReactionsAnklePerturb(osp.StudyTask):
         for ax in [lgrfx_ax, lgrfy_ax, lgrfz_ax,
                    rgrfx_ax, rgrfy_ax, rgrfz_ax]:
             util.publication_spines(ax)
-            for time, color in zip(self.times, self.times_colors):
-                time_index = grfs.getNearestRowIndexForTime(
-                    initial_time + duration * (time / 100.0))
-                ax.axvline(x=time_index, color=color, linestyle='--',
-                    linewidth=1, zorder=0)
+            time_index = grfs.getNearestRowIndexForTime(
+                initial_time + duration * (self.time / 100.0))
+            ax.axvline(x=time_index, color=self.color, linestyle='--',
+                linewidth=1, zorder=0)
 
         fig.tight_layout()
         fig.savefig(target[0], dpi=600)
         plt.close()
 
         fig2 = plt.figure(figsize=(3, 3))
-        ax = fig2.add_subplot(1,1,1)
+        ax = fig2.add_subplot(1, 1, 1)
 
         ax.bar(self.times,  peak_diff_lgrf[1:, 2], width=7.0,
             color=self.colors[1:])
@@ -3596,7 +3823,7 @@ class TaskPlotGroundReactionsAnklePerturb(osp.StudyTask):
         plt.close()
 
         fig3 = plt.figure(figsize=(3, 3))
-        ax = fig3.add_subplot(1,1,1)
+        ax = fig3.add_subplot(1, 1, 1)
 
         ax.bar(self.times,  peak_diff_lgrf[1:, 1], width=7.0,
             color=self.colors[1:])
@@ -3610,7 +3837,7 @@ class TaskPlotGroundReactionsAnklePerturb(osp.StudyTask):
         plt.close()
 
         fig4 = plt.figure(figsize=(3, 3))
-        ax = fig4.add_subplot(1,1,1)
+        ax = fig4.add_subplot(1, 1, 1)
 
         ax.bar(self.times,  peak_diff_lgrf[1:, 0], width=7.0,
             color=self.colors[1:])
