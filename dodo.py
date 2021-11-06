@@ -38,7 +38,7 @@ from tasks import *
 from helpers import *
 
 model_fname = ('Rajagopal2015_passiveCal_hipAbdMoved_noArms'
-               '_subtalar_36musc_optMaxIsoForces.osim')
+               '_36musc_optMaxIsoForces.osim')
 generic_model_fpath = os.path.join('model', model_fname)
 study = osp.Study('ankle_perturb_sim', generic_model_fpath=generic_model_fpath)
 
@@ -104,9 +104,9 @@ study.error_markers = error_markers
 
 scale = 0.01
 study.weights = {
-    'state_tracking_weight':  1e4 * scale,
-    'control_weight':         1e3 * scale,
-    'grf_tracking_weight':    1e-1 * scale,
+    'state_tracking_weight':  1e5 * scale,
+    'control_weight':         5e3 * scale,
+    'grf_tracking_weight':    5e1 * scale,
     'com_tracking_weight':    0 * scale,
     'base_of_support_weight': 0 * scale,
     'head_accel_weight':      0 * scale,
@@ -136,17 +136,46 @@ delay = 0.400
 colormap = 'nipy_spectral'
 cmap = plt.get_cmap(colormap)
 
-study.add_task(TaskPlotCOMTrackingErrorsAnklePerturb, subjects, times, 
-    colormap, cmap_indices, delay, torques=[100])
+# study.add_task(TaskPlotCOMTrackingErrorsAnklePerturb, subjects, times, 
+#     colormap, cmap_indices, delay, torques=[100])
 # study.add_task(TaskPlotNormalizedImpulseAnklePerturb, subjects, times, 
 #     colormap, cmap_indices, delay)
-study.add_task(TaskPlotGroundReactionsAnklePerturb, subjects[0], 50, 
-    [25, 50, 75, 100], cmap(0.5), delay, two_cycles)
+# study.add_task(TaskPlotGroundReactionsAnklePerturb, subjects[0], 50, 
+#     [25, 50, 75, 100], cmap(0.5), 400, two_cycles=True)
+# study.add_task(TaskPlotGroundReactionsAnklePerturb, subjects[0], 50, 
+#     [25, 50, 75, 100], cmap(0.5), 1000, two_cycles=False)
 
-study.add_task(TaskPlotCOMVersusAnklePerturbTime, subjects, 100, times, 
-    colormap, cmap_indices, delay, two_cycles=True)
-study.add_task(TaskPlotCOMVersusAnklePerturbTorque, subjects, 50, 
-    [25, 50, 75, 100], cmap(0.5), delay, two_cycles=True)
+# study.add_task(TaskPlotCOMVersusAnklePerturbTime, subjects, 100, times, 
+#     colormap, cmap_indices, delay, two_cycles=True)
+# study.add_task(TaskPlotCOMVersusAnklePerturbTorque, subjects, 50, 
+#     [25, 50, 75, 100], cmap(0.5), 400, two_cycles=True)
+
+study.add_task(TaskPlotCOMVersusAnklePerturbTorque, subjects[0], 40, 
+    [25, 50, 75, 100], cmap(0.3), 1500, two_cycles=False)
+study.add_task(TaskPlotGroundReactionsAnklePerturb, subjects[0], 40, 
+    [25, 50, 75, 100], cmap(0.3), 1500, two_cycles=False)
+
+study.add_task(TaskPlotCOMVersusAnklePerturbTorque, subjects[0], 45, 
+    [25, 50, 75, 100], cmap(0.4), 1500, two_cycles=False)
+study.add_task(TaskPlotGroundReactionsAnklePerturb, subjects[0], 45, 
+    [25, 50, 75, 100], cmap(0.4), 1500, two_cycles=False)
+
+study.add_task(TaskPlotCOMVersusAnklePerturbTorque, subjects[0], 50, 
+    [25, 50, 75, 100], cmap(0.5), 1500, two_cycles=False)
+study.add_task(TaskPlotGroundReactionsAnklePerturb, subjects[0], 50, 
+    [25, 50, 75, 100], cmap(0.5), 1500, two_cycles=False)
+
+study.add_task(TaskPlotCOMVersusAnklePerturbTorque, subjects[0], 55, 
+    [25, 50, 75, 100], cmap(0.8), 1500, two_cycles=False)
+study.add_task(TaskPlotGroundReactionsAnklePerturb, subjects[0], 55, 
+    [25, 50, 75, 100], cmap(0.8), 1500, two_cycles=False)
+
+study.add_task(TaskPlotCOMVersusAnklePerturbTorque, subjects[0], 60, 
+    [25, 50, 75, 100], cmap(0.9), 1500, two_cycles=False)
+study.add_task(TaskPlotGroundReactionsAnklePerturb, subjects[0], 60, 
+    [25, 50, 75, 100], cmap(0.9), 1500, two_cycles=False)
+study.add_task(TaskPlotAnklePerturbationTorques, subjects[0], 60, 
+    [25, 50, 75, 100], cmap(0.9), 1500, two_cycles=False)
 
 # study.add_task(TaskPlotPerturbFromBaselineResults, subjects, masses, 50, 
 #     [30, 40, 50, 60, 70], 0.500, two_cycles=True)

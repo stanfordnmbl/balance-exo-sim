@@ -210,13 +210,12 @@ def add_to_study(study):
     # ---------------------------------------------
     unperturbed = subject.add_condition('unperturbed')
     gait_events = dict()
-    gait_events['right_strikes'] = [0.67, 1.76, 2.86, 3.93, 5.02, 6.20, 7.20, 
-                                    8.30, 9.40]
-    gait_events['left_strikes'] = [1.23, 2.30, 3.40, 4.49, 5.58, 6.65, 7.76, 
-                                   8.86]
+    gait_events['right_strikes'] = [0.654, 1.745, 2.843, 3.920, 5.007, 6.107, 
+                                    7.185, 8.286, 9.387]
+    gait_events['left_strikes'] = [1.212, 2.283, 3.387, 4.475, 5.562, 6.632, 
+                                   7.746, 8.844]
     unperturbed_trial = unperturbed.add_trial(
-            1,
-            gait_events=gait_events,
+            1, gait_events=gait_events,
             omit_trial_dir=True)
 
     unperturbed_trial.add_task(
@@ -227,17 +226,17 @@ def add_to_study(study):
     ik_setup_task, id_setup_task = helpers.generate_main_tasks(
         unperturbed_trial)
 
-    initial_time = 3.93
-    final_time = 5.02
-    right_strikes = [3.93, 5.02]
-    left_strikes = [4.49]
+    initial_time = 3.920
+    final_time = 5.007
+    right_strikes = [3.920, 5.007]
+    left_strikes = [4.475]
     unperturbed_trial.add_task(
         tasks.TaskComputeJointAngleStandardDeviations, 
         ik_setup_task)
     unperturbed_trial.add_task(
         tasks.TaskTrimTrackingData, 
         ik_setup_task, id_setup_task, 
-        initial_time, 6.20)
+        3.8, 6.20)
     
     # initial guess creation for unperturbed tracking condition
     # ---------------------------------------------------------
@@ -300,136 +299,146 @@ def add_to_study(study):
         guess_fpath=unperturbed_guess_fpath,
         periodic=True)
 
-    unperturbed_fpath = os.path.join(
+    unperturbed_guess_fpath = os.path.join(
             study.config['results_path'], 'unperturbed', 
             subject.name, 'unperturbed_mesh20.sto')
-    for torque in [1.0]:
-        for time in [0.3, 0.4, 0.5, 0.6]:
+    delay = 1.500
+    for time in [0.2, 0.3, 0.4, 0.45, 0.5, 0.55, 0.6]:
+        for torque in [0.25, 0.50, 0.75, 1.0]:
+            if torque == 0.25:
+                guess_fpath = unperturbed_guess_fpath
+
             torque_parameters = [torque, time, 0.25, 0.1]
             unperturbed_trial.add_task(
                 tasks.TaskMocoAnkleTorquePerturbedWalking,
                 initial_time, final_time, right_strikes, left_strikes,
-                guess_fpath=unperturbed_fpath, 
+                guess_fpath=guess_fpath, 
                 mesh_interval=0.02, 
                 torque_parameters=torque_parameters,
                 walking_speed=study.walking_speed,
-                perturb_response_delay=0.400,
+                perturb_response_delay=delay,
                 side='right')
             unperturbed_trial.add_task(
                 tasks.TaskMocoAnkleTorquePerturbedWalkingPost,
                 unperturbed_trial.tasks[-1])
+
+            label = (f'perturb_torque{int(100*torque)}'
+                     f'_time{int(100*time)}_delay{int(1000*delay)}')
+            guess_fpath = os.path.join(
+                study.config['results_path'], label,
+                subject.name, f'{label}.sto')
     
-    unperturbed_fpath = os.path.join(
-            study.config['results_path'], 'unperturbed', 
-            subject.name, 'unperturbed_mesh20.sto')
-    unperturbed_trial.add_task(
-        tasks.TaskMocoAnkleTorqueBaselineWalking,
-        initial_time, final_time, right_strikes, left_strikes,
-        guess_fpath=unperturbed_fpath,
-        mesh_interval=0.02, 
-        walking_speed=study.walking_speed,
-        constrain_initial_state=True,
-        torque_parameters=[0.5, 0.5, 0.25, 0.1],
-        periodic=False)
+    # unperturbed_fpath = os.path.join(
+    #         study.config['results_path'], 'unperturbed', 
+    #         subject.name, 'unperturbed_mesh20.sto')
+    # unperturbed_trial.add_task(
+    #     tasks.TaskMocoAnkleTorqueBaselineWalking,
+    #     initial_time, final_time, right_strikes, left_strikes,
+    #     guess_fpath=unperturbed_fpath,
+    #     mesh_interval=0.02, 
+    #     walking_speed=study.walking_speed,
+    #     constrain_initial_state=True,
+    #     torque_parameters=[0.5, 0.5, 0.25, 0.1],
+    #     periodic=False)
 
-    baseline_torque_fpath = os.path.join(
-            study.config['results_path'], 'baseline_torque', 
-            subject.name, 'baseline_torque.sto')
-    for torque in [0.2, 0.3, 0.4, 0.6, 0.7, 0.8]:
-        ankle_torque_right_parameters = list()
-        ankle_torque_right_parameters.append([torque, 0.5, 0.25, 0.1])
-        ankle_torque_right_parameters.append([0.5, 0.5, 0.25, 0.1])
+    # baseline_torque_fpath = os.path.join(
+    #         study.config['results_path'], 'baseline_torque', 
+    #         subject.name, 'baseline_torque.sto')
+    # for torque in [0.2, 0.3, 0.4, 0.6, 0.7, 0.8]:
+    #     ankle_torque_right_parameters = list()
+    #     ankle_torque_right_parameters.append([torque, 0.5, 0.25, 0.1])
+    #     ankle_torque_right_parameters.append([0.5, 0.5, 0.25, 0.1])
 
-        ankle_torque_left_parameters = list()
-        ankle_torque_left_parameters.append([0.5, 0.5, 0.25, 0.1])
+    #     ankle_torque_left_parameters = list()
+    #     ankle_torque_left_parameters.append([0.5, 0.5, 0.25, 0.1])
 
-        unperturbed_trial.add_task(
-            tasks.TaskMocoAnkleTorquePerturbedFromBaselineWalking,
-            initial_time, final_time, right_strikes, left_strikes,
-            ankle_torque_left_parameters,
-            ankle_torque_right_parameters,
-            guess_fpath=baseline_torque_fpath,
-            mesh_interval=0.02, 
-            walking_speed=study.walking_speed,
-            perturb_response_delay=0.400)
+    #     unperturbed_trial.add_task(
+    #         tasks.TaskMocoAnkleTorquePerturbedFromBaselineWalking,
+    #         initial_time, final_time, right_strikes, left_strikes,
+    #         ankle_torque_left_parameters,
+    #         ankle_torque_right_parameters,
+    #         guess_fpath=baseline_torque_fpath,
+    #         mesh_interval=0.02, 
+    #         walking_speed=study.walking_speed,
+    #         perturb_response_delay=0.400)
 
     # Two gait cycle solutions
     # ------------------------
-    initial_time = 3.93
-    final_time = 6.20
-    right_strikes = [3.93, 5.02, 6.20]
-    left_strikes = [4.49, 5.58]
-    unperturbed_trial.add_task(
-        tasks.TaskMocoDoublePeriodicTrajectory,
-        unperturbed_guess_fpath)
+    # initial_time = 3.93
+    # final_time = 6.20
+    # right_strikes = [3.93, 5.02, 6.20]
+    # left_strikes = [4.49, 5.58]
+    # unperturbed_trial.add_task(
+    #     tasks.TaskMocoDoublePeriodicTrajectory,
+    #     unperturbed_guess_fpath)
 
-    unperturbed_guess_doubled_fpath = os.path.join(
-        study.config['results_path'],
-        'unperturbed_two_cycles', subject.name, 
-        'unperturbed_two_cycles_mesh20.sto')
-    unperturbed_trial.add_task(
-        tasks.TaskMocoUnperturbedWalking,
-        initial_time, final_time, 
-        mesh_interval=0.02, 
-        walking_speed=study.walking_speed,
-        guess_fpath=unperturbed_guess_doubled_fpath,
-        periodic=True, two_cycles=True)
+    # unperturbed_guess_doubled_fpath = os.path.join(
+    #     study.config['results_path'],
+    #     'unperturbed_two_cycles', subject.name, 
+    #     'unperturbed_two_cycles_mesh20.sto')
+    # unperturbed_trial.add_task(
+    #     tasks.TaskMocoUnperturbedWalking,
+    #     initial_time, final_time, 
+    #     mesh_interval=0.02, 
+    #     walking_speed=study.walking_speed,
+    #     guess_fpath=unperturbed_guess_doubled_fpath,
+    #     periodic=True, two_cycles=True)
 
-    unperturbed_guess_doubled_fpath = os.path.join(
-        study.config['results_path'],
-        'unperturbed_two_cycles', subject.name, 
-        'unperturbed_two_cycles_mesh20.sto')
-    for torque in [0.25, 0.50, 0.75, 1.0]:
-        for time in [0.3, 0.4, 0.5, 0.6]:
-            torque_parameters = [torque, time, 0.25, 0.1]
-            unperturbed_trial.add_task(
-                tasks.TaskMocoAnkleTorquePerturbedWalking,
-                initial_time, final_time, right_strikes, left_strikes,
-                guess_fpath=unperturbed_guess_doubled_fpath, 
-                mesh_interval=0.02, 
-                torque_parameters=torque_parameters,
-                walking_speed=study.walking_speed,
-                perturb_response_delay=0.400,
-                side='right', two_cycles=True,
-                periodic=False)
-            unperturbed_trial.add_task(
-                tasks.TaskMocoAnkleTorquePerturbedWalkingPost,
-                unperturbed_trial.tasks[-1])
+    # unperturbed_guess_doubled_fpath = os.path.join(
+    #     study.config['results_path'],
+    #     'unperturbed_two_cycles', subject.name, 
+    #     'unperturbed_two_cycles_mesh20.sto')
+    # for torque in [0.25, 0.50, 0.75, 1.0]:
+    #     for time in [0.3, 0.4, 0.5, 0.6]:
+    #         torque_parameters = [torque, time, 0.25, 0.1]
+    #         unperturbed_trial.add_task(
+    #             tasks.TaskMocoAnkleTorquePerturbedWalking,
+    #             initial_time, final_time, right_strikes, left_strikes,
+    #             guess_fpath=unperturbed_guess_doubled_fpath, 
+    #             mesh_interval=0.02, 
+    #             torque_parameters=torque_parameters,
+    #             walking_speed=study.walking_speed,
+    #             perturb_response_delay=0.400,
+    #             side='right', two_cycles=True,
+    #             periodic=False)
+    #         unperturbed_trial.add_task(
+    #             tasks.TaskMocoAnkleTorquePerturbedWalkingPost,
+    #             unperturbed_trial.tasks[-1])
 
-    unperturbed_trial.add_task(
-        tasks.TaskMocoAnkleTorqueBaselineWalking,
-        initial_time, final_time, right_strikes, left_strikes,
-        guess_fpath=unperturbed_guess_doubled_fpath,
-        mesh_interval=0.02, 
-        walking_speed=study.walking_speed,
-        constrain_initial_state=True,
-        torque_parameters=[0.5, 0.5, 0.25, 0.1],
-        periodic=False, two_cycles=True)
+    # unperturbed_trial.add_task(
+    #     tasks.TaskMocoAnkleTorqueBaselineWalking,
+    #     initial_time, final_time, right_strikes, left_strikes,
+    #     guess_fpath=unperturbed_guess_doubled_fpath,
+    #     mesh_interval=0.02, 
+    #     walking_speed=study.walking_speed,
+    #     constrain_initial_state=True,
+    #     torque_parameters=[0.5, 0.5, 0.25, 0.1],
+    #     periodic=False, two_cycles=True)
 
-    baseline_torque_fpath = os.path.join(
-            study.config['results_path'], 'baseline_torque_two_cycles', 
-            subject.name, 'baseline_torque_two_cycles.sto')
-    for torque in [0.2, 0.3, 0.4, 0.6, 0.7, 0.8]:
-        ankle_torque_right_parameters = list()
-        ankle_torque_right_parameters.append([torque, 0.5, 0.25, 0.1])
-        ankle_torque_right_parameters.append([0.5, 0.5, 0.25, 0.1])
-        ankle_torque_right_parameters.append([0.5, 0.5, 0.25, 0.1])
+    # baseline_torque_fpath = os.path.join(
+    #         study.config['results_path'], 'baseline_torque_two_cycles', 
+    #         subject.name, 'baseline_torque_two_cycles.sto')
+    # for torque in [0.2, 0.3, 0.4, 0.6, 0.7, 0.8]:
+    #     ankle_torque_right_parameters = list()
+    #     ankle_torque_right_parameters.append([torque, 0.5, 0.25, 0.1])
+    #     ankle_torque_right_parameters.append([0.5, 0.5, 0.25, 0.1])
+    #     ankle_torque_right_parameters.append([0.5, 0.5, 0.25, 0.1])
 
-        ankle_torque_left_parameters = list()
-        ankle_torque_left_parameters.append([0.5, 0.5, 0.25, 0.1])
-        ankle_torque_left_parameters.append([0.5, 0.5, 0.25, 0.1])
+    #     ankle_torque_left_parameters = list()
+    #     ankle_torque_left_parameters.append([0.5, 0.5, 0.25, 0.1])
+    #     ankle_torque_left_parameters.append([0.5, 0.5, 0.25, 0.1])
 
-        unperturbed_trial.add_task(
-            tasks.TaskMocoAnkleTorquePerturbedFromBaselineWalking,
-            initial_time, final_time, right_strikes, left_strikes,
-            ankle_torque_left_parameters,
-            ankle_torque_right_parameters,
-            guess_fpath=baseline_torque_fpath,
-            mesh_interval=0.02, 
-            walking_speed=study.walking_speed,
-            perturb_response_delay=0.500,
-            two_cycles=True,
-            periodic=False)
-        unperturbed_trial.add_task(
-            tasks.TaskMocoAnkleTorquePerturbedFromBaselineWalkingPost,
-            unperturbed_trial.tasks[-1])
+    #     unperturbed_trial.add_task(
+    #         tasks.TaskMocoAnkleTorquePerturbedFromBaselineWalking,
+    #         initial_time, final_time, right_strikes, left_strikes,
+    #         ankle_torque_left_parameters,
+    #         ankle_torque_right_parameters,
+    #         guess_fpath=baseline_torque_fpath,
+    #         mesh_interval=0.02, 
+    #         walking_speed=study.walking_speed,
+    #         perturb_response_delay=0.500,
+    #         two_cycles=True,
+    #         periodic=False)
+    #     unperturbed_trial.add_task(
+    #         tasks.TaskMocoAnkleTorquePerturbedFromBaselineWalkingPost,
+    #         unperturbed_trial.tasks[-1])
