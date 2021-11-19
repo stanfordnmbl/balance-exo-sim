@@ -16,7 +16,7 @@ from osimpipeline import utilities as util
 from osimpipeline import postprocessing as pp
 from matplotlib import colors as mcolors
 from matplotlib.ticker import FormatStrFormatter
-from scipy.interpolate import pchip_interpolate
+import matplotlib.patches as patches
 
 from tracking_walking import MotionTrackingWalking, MocoTrackConfig
 
@@ -869,15 +869,16 @@ class TaskAdjustScaledModel(osp.SubjectTask):
         #         coord.set_locked(False)
         #         coord.set_clamped(False)
 
-        print('Changing foot-ground contact disspation...')
-        forceSet = model.updForceSet()
-        for iforce in np.arange(forceSet.getSize()):
-            force = forceSet.get(int(iforce))
-            if 'contact' in force.getName():
-                SSHSF = osim.SmoothSphereHalfSpaceForce.safeDownCast(force)
-                SSHSF.set_dissipation(20.0)
+        # print('Changing foot-ground contact disspation...')
+        # forceSet = model.updForceSet()
+        # for iforce in np.arange(forceSet.getSize()):
+        #     force = forceSet.get(int(iforce))
+        #     if 'contact' in force.getName():
+        #         SSHSF = osim.SmoothSphereHalfSpaceForce.safeDownCast(force)
+        #         SSHSF.set_dissipation(2.0)
+        #         SSHSF.set_stiffness(3e6)
 
-        # model.finalizeConnections()
+        model.finalizeConnections()
         model.printToXML(target[0])
 
 
@@ -1285,9 +1286,6 @@ class TaskMocoAnkleTorquePerturbedWalking(osp.TrialTask):
         weights['grf_tracking_weight'] = 0
         weights['state_tracking_weight'] = 0
         weights['upright_torso_weight'] = 0
-        weights['control_weight'] = 0
-        weights['aux_deriv_weight'] = 1e3
-        weights['accel_weight'] = 1e5
 
         config = MocoTrackConfig(
             self.config_name, self.config_name, 'black', weights,
@@ -1372,11 +1370,11 @@ class TaskMocoAnkleTorquePerturbedWalkingPost(osp.TrialTask):
             trial.subject.name)
         shutil.copyfile(
             os.path.join(self.unperturbed_result_fpath, 
-                         f'unperturbed{self.suffix}_mesh20.sto'),
+                         f'unperturbed{self.suffix}_mesh10.sto'),
             os.path.join(self.result_fpath, f'unperturbed{self.suffix}.sto'))
         shutil.copyfile(
             os.path.join(self.unperturbed_result_fpath, 
-                         f'unperturbed{self.suffix}_mesh20_grfs.sto'),
+                         f'unperturbed{self.suffix}_mesh10_grfs.sto'),
             os.path.join(self.result_fpath, 
                          f'unperturbed{self.suffix}_grfs.sto'))
         
@@ -2918,7 +2916,16 @@ class TaskPlotCOMVersusAnklePerturbTime(osp.StudyTask):
 class TaskPlotCOMVersusAnklePerturbTorque(osp.StudyTask):
     REGISTRY = []
     def __init__(self, study, subject, time, torques, color,
-                 delay, two_cycles=False):
+                 delay, two_cycles=False,
+                 posAPbox=[0, 0, 0, 0],
+                 velAPbox=[0, 0, 0, 0],
+                 accAPbox=[0, 0, 0, 0],
+                 posSIbox=[0, 0, 0, 0],
+                 velSIbox=[0, 0, 0, 0],
+                 accSIbox=[0, 0, 0, 0],
+                 posMLbox=[0, 0, 0, 0],
+                 velMLbox=[0, 0, 0, 0],
+                 accMLbox=[0, 0, 0, 0]):
         super(TaskPlotCOMVersusAnklePerturbTorque, self).__init__(study)
         self.two_cycles = two_cycles
         self.suffix = '_two_cycles' if self.two_cycles else ''
@@ -2935,6 +2942,9 @@ class TaskPlotCOMVersusAnklePerturbTorque(osp.StudyTask):
         self.torques = torques
         self.time = time
         self.color = color
+        self.APbox = [posAPbox, velAPbox, accAPbox]
+        self.SIbox = [posSIbox, velSIbox, accSIbox]
+        self.MLbox = [posMLbox, velMLbox, accMLbox]
 
         self.labels = list()
         self.labels.append('unperturbed')
@@ -2951,7 +2961,7 @@ class TaskPlotCOMVersusAnklePerturbTorque(osp.StudyTask):
                 self.study.config['results_path'], 
                 f'unperturbed{self.suffix}', self.subject,
                 (f'tracking_unperturbed{self.suffix}'
-                 f'_mesh20_center_of_mass.sto')))
+                 f'_mesh10_center_of_mass.sto')))
         # Perturbed solutions
         for torque in self.torques:
             label = (f'torque{torque}_time{self.time}'
@@ -3041,7 +3051,7 @@ class TaskPlotCOMVersusAnklePerturbTorque(osp.StudyTask):
         vlim_ML = [0.0, 0.0]
         alim_ML = [0.0, 0.0]
         plim_AP = [0.0, 0.0]
-        vlim_AP = [1.2, 1.23]
+        vlim_AP = [1.2, 1.3]
         alim_AP = [0.0, 0.0]
         plim_SI = [0.0, 0.0]
         vlim_SI = [0.0, 0.0]
@@ -3070,12 +3080,19 @@ class TaskPlotCOMVersusAnklePerturbTorque(osp.StudyTask):
             ytext = width * (shift + 1.0) + lims[0]
             return ytext
 
+        def get_ticks_from_lims(lims, interval):
+            N = int(np.around((lims[1] - lims[0]) / interval, decimals=3)) + 1
+            ticks = np.linspace(lims[0], lims[1], N)
+            return ticks
+
         def plot_com_kinematics(pgc, color, lw, axp, axv, axa, 
                                 pos, vel, acc, pos_int, vel_int, acc_int,
-                                plim, vlim, alim, all_bottoms=False):
+                                plim, vlim, alim, all_bottoms=False,
+                                pos_box=None, vel_box=None, acc_box=None,
+                                draw_box=False):
 
             axp.plot(pgc, pos, color=color, linewidth=lw, 
-                     solid_capstyle='round', clip_on=False, 
+                     solid_capstyle='round', clip_on=True, 
                      alpha=alpha)
             axp.set_xlim(0, final_per)
             axp.set_ylabel(r'position ($m$)')
@@ -3093,8 +3110,23 @@ class TaskPlotCOMVersusAnklePerturbTorque(osp.StudyTask):
                 axp.tick_params(axis='x', which='both', bottom=False, 
                                 top=False, labelbottom=False)
 
+            if pos_box:
+                if draw_box:
+                    width = pos_box[1] - pos_box[0]
+                    height = pos_box[3] - pos_box[2]
+                    rect = patches.Rectangle((pos_box[0], pos_box[2]), 
+                        width, height, 
+                        linewidth=0.4, edgecolor='k', facecolor='none',
+                        zorder=99, alpha=0.5)
+                    axp.add_patch(rect)
+                else:
+                    axp.set_xlim(pos_box[0:2])
+                    axp.set_ylim(pos_box[2:4])
+                    axp.set_yticks(get_ticks_from_lims(pos_box[2:4], pos_int))
+                    axp.set_xlabel('time (% gait cycle)')
+
             axv.plot(pgc, vel, color=color, linewidth=lw,
-                     solid_capstyle='round', clip_on=False, alpha=alpha)
+                     solid_capstyle='round', clip_on=True, alpha=alpha)
             axv.set_xlim(0, final_per)
             axv.set_ylabel(r'velocity ($m/s$)')
             vlim, vticks = get_lims_ticks(vel, vel_int, lims=vlim)
@@ -3111,8 +3143,23 @@ class TaskPlotCOMVersusAnklePerturbTorque(osp.StudyTask):
                 axv.tick_params(axis='x', which='both', bottom=False, 
                                 top=False, labelbottom=False) 
 
+            if vel_box:
+                if draw_box:
+                    width = vel_box[1] - vel_box[0]
+                    height = vel_box[3] - vel_box[2]
+                    rect = patches.Rectangle((vel_box[0], vel_box[2]), 
+                        width, height, 
+                        linewidth=0.4, edgecolor='k', facecolor='none',
+                        zorder=99, alpha=0.5)
+                    axv.add_patch(rect)
+                else:
+                    axv.set_xlim(vel_box[0:2])
+                    axv.set_ylim(vel_box[2:4])
+                    axv.set_yticks(get_ticks_from_lims(vel_box[2:4], vel_int))
+                    axv.set_xlabel('time (% gait cycle)')
+
             axa.plot(pgc, acc, color=color, linewidth=lw,
-                     solid_capstyle='round', clip_on=False, 
+                     solid_capstyle='round', clip_on=True, 
                      alpha=alpha)
             axa.set_ylabel(r'acceleration ($m/s^2$)')
             axa.set_xlabel('time (% gait cycle)')
@@ -3123,6 +3170,21 @@ class TaskPlotCOMVersusAnklePerturbTorque(osp.StudyTask):
             util.publication_spines(axa)
             axa.spines['bottom'].set_position(('outward', 10))
             axa.spines['left'].set_position(('outward', 10))
+
+            if acc_box:
+                if draw_box:
+                    width = acc_box[1] - acc_box[0]
+                    height = acc_box[3] - acc_box[2]
+                    rect = patches.Rectangle((acc_box[0], acc_box[2]), 
+                        width, height, 
+                        linewidth=0.4, edgecolor='k', facecolor='none',
+                        zorder=99, alpha=0.5)
+                    axa.add_patch(rect)
+                else:
+                    axa.set_xlim(acc_box[0:2])
+                    axa.set_ylim(acc_box[2:4])
+                    axa.set_yticks(get_ticks_from_lims(acc_box[2:4], acc_int))
+                    axa.set_xlabel('time (% gait cycle)')
 
             return plim, vlim, alim, pticks, vticks, aticks
 
@@ -3313,6 +3375,16 @@ class TaskPlotCOMVersusAnklePerturbTorque(osp.StudyTask):
 
             # Position: anterior-posterior vs medio-lateral
             s = 35
+            if not i:
+                ax_xz_pos.plot(curr_pos_z_shift[onset_index:offset_index], 
+                    curr_pos_x_shift[onset_index:offset_index], 
+                    color='gray', linewidth=10, zorder=0, clip_on=False, 
+                    alpha=0.6)
+                ax_xy_pos.plot(curr_pos_x_shift[onset_index:offset_index], 
+                    curr_pos_y_shift[onset_index:offset_index], 
+                    color='gray', linewidth=10, zorder=0, clip_on=False, 
+                    alpha=0.6)
+
             ax_xz_pos.plot(curr_pos_z_shift, curr_pos_x_shift, color=color, 
                 linewidth=lw, zorder=0, solid_capstyle='round', 
                 clip_on=False, alpha=alpha)
@@ -3328,7 +3400,7 @@ class TaskPlotCOMVersusAnklePerturbTorque(osp.StudyTask):
             ax_xy_pos.scatter(curr_pos_x_shift[0], curr_pos_y_shift[0], 
                 s=s, color=color, marker='o', clip_on=False, alpha=alpha)
             ax_xy_pos.scatter(curr_pos_x_shift[-1], curr_pos_y_shift[-1], 
-                s=s, color=color, marker='X', clip_on=False, alpha=alpha)                
+                s=s, color=color, marker='X', clip_on=False, alpha=alpha)
 
             # Medio-lateral COM kinematics
             plim_ML, vlim_ML, alim_ML, \
@@ -3344,7 +3416,17 @@ class TaskPlotCOMVersusAnklePerturbTorque(osp.StudyTask):
                     axes_l[0], axes_l[1], axes_l[2], 
                     curr_pos_z_shift, curr_vel_z, curr_acc_z, 
                     0.01, 0.1, 0.5,
-                    plim_ML, vlim_ML, alim_ML, all_bottoms=True)
+                    plim_ML, vlim_ML, alim_ML, all_bottoms=True,
+                    pos_box=self.MLbox[0], vel_box=self.MLbox[1],
+                    acc_box=self.MLbox[2], draw_box=True)
+            plot_com_kinematics(
+                    pgc, color, lw,
+                    axes_r[0], axes_r[1], axes_r[2], 
+                    curr_pos_z_shift, curr_vel_z, curr_acc_z, 
+                    0.01, 0.02, 0.1,
+                    plim_ML, vlim_ML, alim_ML, all_bottoms=True,
+                    pos_box=self.MLbox[0], vel_box=self.MLbox[1],
+                    acc_box=self.MLbox[2])
 
             # Anterior-posterior COM kinematics
             plim_AP, vlim_AP, alim_AP, \
@@ -3360,7 +3442,17 @@ class TaskPlotCOMVersusAnklePerturbTorque(osp.StudyTask):
                     axes_l[3], axes_l[4], axes_l[5], 
                     curr_pos_x_shift, curr_vel_x, curr_acc_x, 
                     0.25, 0.05, 0.5,
-                    plim_AP, vlim_AP, alim_AP, all_bottoms=True)
+                    plim_AP, vlim_AP, alim_AP, all_bottoms=True,
+                    pos_box=self.APbox[0], vel_box=self.APbox[1],
+                    acc_box=self.APbox[2], draw_box=True)
+            plot_com_kinematics(
+                    pgc, color, lw,
+                    axes_r[3], axes_r[4], axes_r[5], 
+                    curr_pos_x_shift, curr_vel_x, curr_acc_x, 
+                    0.01, 0.05, 0.25,
+                    plim_AP, vlim_AP, alim_AP, all_bottoms=True,
+                    pos_box=self.APbox[0], vel_box=self.APbox[1],
+                    acc_box=self.APbox[2])
 
             # Superior-inferior COM kinematics
             plim_SI, vlim_SI, alim_SI, \
@@ -3376,35 +3468,45 @@ class TaskPlotCOMVersusAnklePerturbTorque(osp.StudyTask):
                     axes_l[6], axes_l[7], axes_l[8], 
                     curr_pos_y_shift, curr_vel_y, curr_acc_y, 
                     0.01, 0.1, 1.0,
-                    plim_SI, vlim_SI, alim_SI, all_bottoms=True)
+                    plim_SI, vlim_SI, alim_SI, all_bottoms=True,
+                    pos_box=self.SIbox[0], vel_box=self.SIbox[1],
+                    acc_box=self.SIbox[2], draw_box=True)
+            plot_com_kinematics(
+                    pgc, color, lw,
+                    axes_r[6], axes_r[7], axes_r[8], 
+                    curr_pos_y_shift, curr_vel_y, curr_acc_y, 
+                    0.01, 0.1, 1.0,
+                    plim_SI, vlim_SI, alim_SI, all_bottoms=True,
+                    pos_box=self.SIbox[0], vel_box=self.SIbox[1],
+                    acc_box=self.SIbox[2])
 
-        plot_diffs(axes_r[0], avg_diff_pos[1:, 2], peak_diff_pos[1:, 2], 
-            max_diff_pos[1:, 2], 0.005, self.colors[1:],
-            r'$\Delta$ medio-lateral position ($m$)')
-        plot_diffs(axes_r[1], avg_diff_vel[1:, 2], peak_diff_vel[1:, 2], 
-            max_diff_vel[1:, 2], 0.01, self.colors[1:],
-            r'$\Delta$ medio-lateral velocity ($m/s$)')
-        plot_diffs(axes_r[2], avg_diff_acc[1:, 2], peak_diff_acc[1:, 2], 
-            max_diff_acc[1:, 2], 0.05, self.colors[1:],
-            r'$\Delta$ medio-lateral acceleration ($m/s^2$)')
-        plot_diffs(axes_r[3], avg_diff_pos[1:, 0], peak_diff_pos[1:, 0], 
-            max_diff_pos[1:, 0], 0.01, self.colors[1:],
-            r'$\Delta$ anterior-posterior position ($m$)')
-        plot_diffs(axes_r[4], avg_diff_vel[1:, 0], peak_diff_vel[1:, 0], 
-            max_diff_vel[1:, 0], 0.05, self.colors[1:],
-            r'$\Delta$ anterior-posterior velocity ($m/s$)')
-        plot_diffs(axes_r[5], avg_diff_acc[1:, 0], peak_diff_acc[1:, 0], 
-            max_diff_acc[1:, 0], 0.5, self.colors[1:],
-            r'$\Delta$ anterior-posterior acceleration ($m/s^2$)')
-        plot_diffs(axes_r[6], avg_diff_pos[1:, 1], peak_diff_pos[1:, 1], 
-            max_diff_pos[1:, 1], 0.005, self.colors[1:],
-            r'$\Delta$ superior-inferior position ($m$)')
-        plot_diffs(axes_r[7], avg_diff_vel[1:, 1], peak_diff_vel[1:, 1], 
-            max_diff_vel[1:, 1], 0.05, self.colors[1:],
-            r'$\Delta$ superior-inferior velocity ($m/s$)')
-        plot_diffs(axes_r[8], avg_diff_acc[1:, 1], peak_diff_acc[1:, 1], 
-            max_diff_acc[1:, 1], 0.5, self.colors[1:],
-            r'$\Delta$ superior-inferior acceleration ($m/s^2$)')
+        # plot_diffs(axes_r[0], avg_diff_pos[1:, 2], peak_diff_pos[1:, 2], 
+        #     max_diff_pos[1:, 2], 0.005, self.colors[1:],
+        #     r'$\Delta$ medio-lateral position ($m$)')
+        # plot_diffs(axes_r[1], avg_diff_vel[1:, 2], peak_diff_vel[1:, 2], 
+        #     max_diff_vel[1:, 2], 0.01, self.colors[1:],
+        #     r'$\Delta$ medio-lateral velocity ($m/s$)')
+        # plot_diffs(axes_r[2], avg_diff_acc[1:, 2], peak_diff_acc[1:, 2], 
+        #     max_diff_acc[1:, 2], 0.05, self.colors[1:],
+        #     r'$\Delta$ medio-lateral acceleration ($m/s^2$)')
+        # plot_diffs(axes_r[3], avg_diff_pos[1:, 0], peak_diff_pos[1:, 0], 
+        #     max_diff_pos[1:, 0], 0.01, self.colors[1:],
+        #     r'$\Delta$ anterior-posterior position ($m$)')
+        # plot_diffs(axes_r[4], avg_diff_vel[1:, 0], peak_diff_vel[1:, 0], 
+        #     max_diff_vel[1:, 0], 0.05, self.colors[1:],
+        #     r'$\Delta$ anterior-posterior velocity ($m/s$)')
+        # plot_diffs(axes_r[5], avg_diff_acc[1:, 0], peak_diff_acc[1:, 0], 
+        #     max_diff_acc[1:, 0], 0.5, self.colors[1:],
+        #     r'$\Delta$ anterior-posterior acceleration ($m/s^2$)')
+        # plot_diffs(axes_r[6], avg_diff_pos[1:, 1], peak_diff_pos[1:, 1], 
+        #     max_diff_pos[1:, 1], 0.005, self.colors[1:],
+        #     r'$\Delta$ superior-inferior position ($m$)')
+        # plot_diffs(axes_r[7], avg_diff_vel[1:, 1], peak_diff_vel[1:, 1], 
+        #     max_diff_vel[1:, 1], 0.05, self.colors[1:],
+        #     r'$\Delta$ superior-inferior velocity ($m/s$)')
+        # plot_diffs(axes_r[8], avg_diff_acc[1:, 1], peak_diff_acc[1:, 1], 
+        #     max_diff_acc[1:, 1], 0.5, self.colors[1:],
+        #     r'$\Delta$ superior-inferior acceleration ($m/s^2$)')
 
         # Position: anterior-posterior vs medio-lateral
         ax_xz_pos.set_xlim(plim_ML)
@@ -3807,7 +3909,8 @@ class TaskPlotPerturbFromBaselineResults(osp.StudyTask):
 class TaskPlotGroundReactionsAnklePerturb(osp.StudyTask):
     REGISTRY = []
     def __init__(self, study, subject, time, torques, color, delay, 
-            two_cycles=False):
+            two_cycles=False, APbox=[0.0, 0.0, 0.0, 0.0],
+            MLbox=[0.0, 0.0, 0.0, 0.0], SIbox=[0.0, 0.0, 0.0, 0.0]):
         super(TaskPlotGroundReactionsAnklePerturb, self).__init__(study)
         self.two_cycles = two_cycles
         self.suffix = '_two_cycles' if self.two_cycles else ''
@@ -3825,27 +3928,30 @@ class TaskPlotGroundReactionsAnklePerturb(osp.StudyTask):
         self.torques = torques
         self.time = time
         self.color = color
+        self.APbox = APbox
+        self.MLbox = MLbox
+        self.SIbox = SIbox
 
-        self.ref_index = 1
+        self.ref_index = 0
         self.labels = list()
-        self.labels.append('experiment')
+        # self.labels.append('experiment')
         self.labels.append('unperturbed')
         self.colors = list()
-        self.colors.append('gray')
+        # self.colors.append('gray')
         self.colors.append('black')
         self.alphas = list()
-        self.alphas.append(1.0)
+        # self.alphas.append(1.0)
         self.alphas.append(1.0)
 
         deps = list()
         # Experimental grfs
-        deps.append(os.path.join(self.study.config['results_path'], 
-            'experiments', subject, 'unperturbed', 'expdata', 
-            'ground_reaction.mot'))
+        # deps.append(os.path.join(self.study.config['results_path'], 
+        #     'experiments', subject, 'unperturbed', 'expdata', 
+        #     'ground_reaction.mot'))
         # Unperturbed grfs
         deps.append(os.path.join(self.study.config['results_path'], 
             f'unperturbed{self.suffix}', subject, 
-            f'unperturbed{self.suffix}_mesh20_grfs.sto'))
+            f'unperturbed{self.suffix}_mesh10_grfs.sto'))
 
         for torque in self.torques:
             label = f'torque{torque}_time{self.time}_delay{delay}'
@@ -3859,7 +3965,7 @@ class TaskPlotGroundReactionsAnklePerturb(osp.StudyTask):
 
         # Model 
         self.model = os.path.join(self.study.config['results_path'], 
-            'unperturbed', subject, 'model_unperturbed_mesh20.osim')
+            'unperturbed', subject, 'model_unperturbed_mesh10.osim')
 
         self.add_action(deps, 
                         [os.path.join(self.analysis_path, 
@@ -3999,7 +4105,7 @@ class TaskPlotGroundReactionsAnklePerturb(osp.StudyTask):
             rgrfz_lim = [-0.15, 0.1]
             rgrfz_ticks = get_ticks_from_lims(rgrfz_lim, 0.05)
             ytext_rgrfz = get_ytext_from_lims(rgrfz_lim, text_shift)
-            for iax, ax in enumerate([ax_f21, rgrfx_ax]): 
+            for iax, ax in enumerate([ax_f21, ax_f22, rgrfx_ax]): 
                 ax.plot(pgc_grfs, rgrfx / BW, label=label, color=color, 
                     alpha=alpha, linewidth=lw)
                 ax.set_ylabel('anterior-posterior force (BW)')
@@ -4008,22 +4114,34 @@ class TaskPlotGroundReactionsAnklePerturb(osp.StudyTask):
                 ax.set_xlim(0, final_per)
                 util.publication_spines(ax)
                 ax.spines['left'].set_position(('outward', 10))
-                if iax: 
-                    ax.set_xticklabels([])
-                    ax.spines['bottom'].set_visible(False)
-                    ax.tick_params(axis='x', which='both', bottom=False, 
-                                   top=False, labelbottom=False)
-                    ax.text(self.time - 20, ytext_rgrfx, text, 
-                        fontstyle='italic', color='gray', alpha=0.8,
-                        fontsize=6, fontfamily='serif')
-                else:
+                if iax == 0:
                     ax.spines['bottom'].set_position(('outward', 10))
                     ax.set_xlabel('time (% gait cycle)')
                     ax.text(self.time - 15, ytext_rgrfx, text, 
                         fontstyle='italic', color='gray', alpha=0.8,
                         fontsize=6, fontfamily='serif')
+                    width = self.APbox[1] - self.APbox[0]
+                    height = self.APbox[3] - self.APbox[2]
+                    rect = patches.Rectangle((self.APbox[0], self.APbox[2]), 
+                        width, height, 
+                        linewidth=0.4, edgecolor='k', facecolor='none',
+                        zorder=99, alpha=0.5)
+                    ax.add_patch(rect)
+                elif iax == 1:
+                    ax.set_xlim(self.APbox[0:2])
+                    ax.set_ylim(self.APbox[2:4])
+                    ax.set_yticks(get_ticks_from_lims(self.APbox[2:4], 0.02))
+                    ax.set_xlabel('time (% gait cycle)')
+                elif iax == 2: 
+                    ax.set_xticklabels([])
+                    ax.spines['bottom'].set_visible(False)
+                    ax.tick_params(axis='x', which='both', bottom=False, 
+                                   top=False, labelbottom=False)
+                    ax.text(self.time - 15, ytext_rgrfx, text, 
+                        fontstyle='italic', color='gray', alpha=0.8,
+                        fontsize=6, fontfamily='serif')
                       
-            for iax, ax in enumerate([ax_f31, rgrfy_ax]):
+            for iax, ax in enumerate([ax_f31, ax_f32, rgrfy_ax]):
                 ax.plot(pgc_grfs, rgrfy / BW, label=label, color=color, 
                     alpha=alpha, linewidth=lw)
                 ax.set_ylabel('vertical force (BW)')
@@ -4032,19 +4150,31 @@ class TaskPlotGroundReactionsAnklePerturb(osp.StudyTask):
                 ax.set_xlim(0, final_per)
                 util.publication_spines(ax)
                 ax.spines['left'].set_position(('outward', 10))
-                if iax: 
-                    ax.set_xticklabels([])
-                    ax.spines['bottom'].set_visible(False)
-                    ax.tick_params(axis='x', which='both', bottom=False, 
-                                   top=False, labelbottom=False)
-                else:
+                if iax == 0:
                     ax.spines['bottom'].set_position(('outward', 10))
                     ax.set_xlabel('time (% gait cycle)')
                     ax.text(self.time - 15, ytext_rgrfy, text, 
                         fontstyle='italic', color='gray', alpha=0.8,
                         fontsize=6, fontfamily='serif') 
+                    width = self.SIbox[1] - self.SIbox[0]
+                    height = self.SIbox[3] - self.SIbox[2]
+                    rect = patches.Rectangle((self.SIbox[0], self.SIbox[2]), 
+                        width, height, 
+                        linewidth=0.4, edgecolor='k', facecolor='none',
+                        zorder=99, alpha=0.5)
+                    ax.add_patch(rect)
+                elif iax == 1:
+                    ax.set_xlim(self.SIbox[0:2])
+                    ax.set_ylim(self.SIbox[2:4])
+                    ax.set_yticks(get_ticks_from_lims(self.SIbox[2:4], 0.05))
+                    ax.set_xlabel('time (% gait cycle)')
+                elif iax == 2: 
+                    ax.set_xticklabels([])
+                    ax.spines['bottom'].set_visible(False)
+                    ax.tick_params(axis='x', which='both', bottom=False, 
+                                   top=False, labelbottom=False)
 
-            for iax, ax in enumerate([ax_f41, rgrfz_ax]):
+            for iax, ax in enumerate([ax_f41, ax_f42, rgrfz_ax]):
                 ax.plot(pgc_grfs, rgrfz / BW, label=label, color=color, 
                     alpha=alpha, linewidth=lw)
                 ax.set_xlabel('time (% gait cycle)')
@@ -4055,13 +4185,24 @@ class TaskPlotGroundReactionsAnklePerturb(osp.StudyTask):
                 util.publication_spines(ax)
                 ax.spines['left'].set_position(('outward', 10))
                 ax.spines['bottom'].set_position(('outward', 10))
-                if iax:
+                if iax == 0:
+                    width = self.MLbox[1] - self.MLbox[0]
+                    height = self.MLbox[3] - self.MLbox[2]
+                    rect = patches.Rectangle((self.MLbox[0], self.MLbox[2]), 
+                        width, height, 
+                        linewidth=0.4, edgecolor='k', facecolor='none',
+                        zorder=99, alpha=0.5)
+                    ax.add_patch(rect)
                     ax.text(self.time - 15, ytext_rgrfz, text, 
                         fontstyle='italic', color='gray', alpha=0.8,
                         fontsize=6, fontfamily='serif')
+                elif iax == 1:
+                    ax.set_xlim(self.MLbox[0:2])
+                    ax.set_ylim(self.MLbox[2:4])
+                    ax.set_yticks(get_ticks_from_lims(self.MLbox[2:4], 0.02))
 
-
-        for ax in [rgrfx_ax, rgrfy_ax, rgrfz_ax, ax_f21, ax_f31, ax_f41]:
+        for ax in [rgrfx_ax, rgrfy_ax, rgrfz_ax, ax_f21, ax_f31, ax_f41,
+                   ax_f22, ax_f32, ax_f42]:
             onset_time = self.time - 25
             peak_time = self.time
             offset_time = self.time + 10
@@ -4119,67 +4260,66 @@ class TaskPlotGroundReactionsAnklePerturb(osp.StudyTask):
                 fancybox=False, fontsize=4, frameon=True, framealpha=1.0,
                 markerscale=0.8, loc=0)
 
-        i = self.ref_index + 1        
-        fontsize = 5
-
-        plot_diffs(ax_f22, avg_diff_rgrf[i:, 0], peak_diff_rgrf[i:, 0], 
-                   max_diff_rgrf[i:, 0])
-        ax_f22.set_ylabel(r'$\Delta$ anterior-posteior GRF (BW)')
-        ylim, yticks = update_ylims([0.0, 0.0], 0.05,
-            avg_diff_rgrf[i:, 0], 
-            peak_diff_rgrf[i:, 0], 
-            max_diff_rgrf[i:, 0])
-        ax_f22.set_ylim(ylim)
-        ax_f22.set_yticks(yticks)
-        ax_f22.set_yticklabels(yticks, fontsize=fontsize)
-        ax_f22.yaxis.set_major_formatter(FormatStrFormatter('%.2f'))
-        ax_f22.set_xticks(self.torques)
-        ax_f22.set_xticklabels([f'{t}%' for t in self.torques],
-            fontsize=fontsize)
-        ax_f22.set_xlim(25, 100)
-        ax_f22.set_xlabel('peak torque (% N-m/kg)')
+        # i = self.ref_index + 1        
+        # fontsize = 5
+        # plot_diffs(ax_f22, avg_diff_rgrf[i:, 0], peak_diff_rgrf[i:, 0], 
+        #            max_diff_rgrf[i:, 0])
+        # ax_f22.set_ylabel(r'$\Delta$ anterior-posteior GRF (BW)')
+        # ylim, yticks = update_ylims([0.0, 0.0], 0.05,
+        #     avg_diff_rgrf[i:, 0], 
+        #     peak_diff_rgrf[i:, 0], 
+        #     max_diff_rgrf[i:, 0])
+        # ax_f22.set_ylim(ylim)
+        # ax_f22.set_yticks(yticks)
+        # ax_f22.set_yticklabels(yticks, fontsize=fontsize)
+        # ax_f22.yaxis.set_major_formatter(FormatStrFormatter('%.2f'))
+        # ax_f22.set_xticks(self.torques)
+        # ax_f22.set_xticklabels([f'{t}%' for t in self.torques],
+        #     fontsize=fontsize)
+        # ax_f22.set_xlim(25, 100)
+        # ax_f22.set_xlabel('peak torque (% N-m/kg)')
         util.publication_spines(ax_f22, True)
         fig2.tight_layout()
         fig2.savefig(target[1], dpi=600)
         plt.close()
 
-        plot_diffs(ax_f32, avg_diff_rgrf[i:, 1], peak_diff_rgrf[i:, 1], 
-                   max_diff_rgrf[i:, 1])
-        ax_f32.set_ylabel(r'$\Delta$ vertical GRF (BW)')
-        ylim, yticks = update_ylims([0.0, 0.0], 0.05,  
-            avg_diff_rgrf[i:, 1], 
-            peak_diff_rgrf[i:, 1], 
-            max_diff_rgrf[i:, 1])
-        ax_f32.set_ylim(ylim)
-        ax_f32.set_yticks(yticks)
-        ax_f32.set_yticklabels(yticks, fontsize=fontsize)
-        ax_f32.yaxis.set_major_formatter(FormatStrFormatter('%.2f'))
-        ax_f32.set_xticks(self.torques)
-        ax_f32.set_xticklabels([f'{t}%' for t in self.torques],
-            fontsize=fontsize)
-        ax_f32.set_xlim(25, 100)
-        ax_f32.set_xlabel('peak torque (% N-m/kg)')
+        # plot_diffs(ax_f32, avg_diff_rgrf[i:, 1], peak_diff_rgrf[i:, 1], 
+        #            max_diff_rgrf[i:, 1])
+        # ax_f32.set_ylabel(r'$\Delta$ vertical GRF (BW)')
+        # ylim, yticks = update_ylims([0.0, 0.0], 0.05,  
+        #     avg_diff_rgrf[i:, 1], 
+        #     peak_diff_rgrf[i:, 1], 
+        #     max_diff_rgrf[i:, 1])
+        # ax_f32.set_ylim(ylim)
+        # ax_f32.set_yticks(yticks)
+        # ax_f32.set_yticklabels(yticks, fontsize=fontsize)
+        # ax_f32.yaxis.set_major_formatter(FormatStrFormatter('%.2f'))
+        # ax_f32.set_xticks(self.torques)
+        # ax_f32.set_xticklabels([f'{t}%' for t in self.torques],
+        #     fontsize=fontsize)
+        # ax_f32.set_xlim(25, 100)
+        # ax_f32.set_xlabel('peak torque (% N-m/kg)')
         util.publication_spines(ax_f32, True)
         fig3.tight_layout()
         fig3.savefig(target[2], dpi=600)
         plt.close()
 
-        plot_diffs(ax_f42, avg_diff_rgrf[i:, 2], peak_diff_rgrf[i:, 2], 
-                   max_diff_rgrf[i:, 2])
-        ax_f42.set_ylabel(r'$\Delta$ medio-lateral GRF (BW)')
-        ylim, yticks = update_ylims([0.0, 0.0], 0.01,
-            avg_diff_rgrf[i:, 2], 
-            peak_diff_rgrf[i:, 2], 
-            max_diff_rgrf[i:, 2])
-        ax_f42.set_ylim(ylim)
-        ax_f42.set_yticks(yticks)
-        ax_f42.set_yticklabels(yticks, fontsize=fontsize)
-        ax_f42.yaxis.set_major_formatter(FormatStrFormatter('%.2f'))
-        ax_f42.set_xticks(self.torques)
-        ax_f42.set_xticklabels([f'{t}%' for t in self.torques],
-            fontsize=fontsize)
-        ax_f42.set_xlim(25, 100)
-        ax_f42.set_xlabel('peak torque (% gait cycle)')
+        # plot_diffs(ax_f42, avg_diff_rgrf[i:, 2], peak_diff_rgrf[i:, 2], 
+        #            max_diff_rgrf[i:, 2])
+        # ax_f42.set_ylabel(r'$\Delta$ medio-lateral GRF (BW)')
+        # ylim, yticks = update_ylims([0.0, 0.0], 0.01,
+        #     avg_diff_rgrf[i:, 2], 
+        #     peak_diff_rgrf[i:, 2], 
+        #     max_diff_rgrf[i:, 2])
+        # ax_f42.set_ylim(ylim)
+        # ax_f42.set_yticks(yticks)
+        # ax_f42.set_yticklabels(yticks, fontsize=fontsize)
+        # ax_f42.yaxis.set_major_formatter(FormatStrFormatter('%.2f'))
+        # ax_f42.set_xticks(self.torques)
+        # ax_f42.set_xticklabels([f'{t}%' for t in self.torques],
+        #     fontsize=fontsize)
+        # ax_f42.set_xlim(25, 100)
+        # ax_f42.set_xlabel('peak torque (% gait cycle)')
         util.publication_spines(ax_f42, True)
         fig4.tight_layout()
         fig4.savefig(target[3], dpi=600)

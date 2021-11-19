@@ -161,19 +161,47 @@ study.add_task(TaskPlotGroundReactionsAnklePerturb, subjects[0], 45,
     [25, 50, 75, 100], cmap(0.4), 1500, two_cycles=False)
 
 study.add_task(TaskPlotCOMVersusAnklePerturbTorque, subjects[0], 50, 
-    [25, 50, 75, 100], cmap(0.5), 1500, two_cycles=False)
+    [25, 50, 75, 100], cmap(0.5), 1500, two_cycles=False,
+    posAPbox=[60, 70, 0.8, 0.9],
+    velAPbox=[40, 60, 1.05, 1.30],
+    accAPbox=[30, 50, -0.75, 0.75],
+    posSIbox=[50, 65, 0.0, 0.04],
+    velSIbox=[40, 60, -0.2, 0.2],
+    accSIbox=[40, 55, -1.0, 5.0],
+    posMLbox=[90, 100, -0.03, 0.0],
+    velMLbox=[60, 65, -0.22, -0.14],
+    accMLbox=[40, 60, -1.0, -0.5])
 study.add_task(TaskPlotGroundReactionsAnklePerturb, subjects[0], 50, 
+    [25, 50, 75, 100], cmap(0.5), 1500, two_cycles=False,
+    APbox=[30, 55, -0.04, 0.1],
+    SIbox=[40, 60, 1.0, 1.5],
+    MLbox=[40, 60, -0.10, -0.04])
+study.add_task(TaskPlotAnklePerturbationTorques, subjects[0], 50, 
     [25, 50, 75, 100], cmap(0.5), 1500, two_cycles=False)
 
 study.add_task(TaskPlotCOMVersusAnklePerturbTorque, subjects[0], 55, 
     [25, 50, 75, 100], cmap(0.8), 1500, two_cycles=False)
 study.add_task(TaskPlotGroundReactionsAnklePerturb, subjects[0], 55, 
     [25, 50, 75, 100], cmap(0.8), 1500, two_cycles=False)
+study.add_task(TaskPlotAnklePerturbationTorques, subjects[0], 55, 
+    [25, 50, 75, 100], cmap(0.8), 1500, two_cycles=False)
 
 study.add_task(TaskPlotCOMVersusAnklePerturbTorque, subjects[0], 60, 
-    [25, 50, 75, 100], cmap(0.9), 1500, two_cycles=False)
+    [25, 50, 75, 100], cmap(0.9), 1500, two_cycles=False,
+    posAPbox=[70, 80, 0.95, 1.05],
+    velAPbox=[60, 70, 1.3, 1.5],
+    accAPbox=[40, 65, 0.25, 2.25],
+    posSIbox=[60, 70, -0.01, 0.05],
+    velSIbox=[55, 70, 0.0, 0.4],
+    accSIbox=[45, 65, 0.0, 5.0],
+    posMLbox=[80, 100, -0.04, 0.0],
+    velMLbox=[60, 70, -0.24, -0.1],
+    accMLbox=[40, 65, -1.20, -0.4])
 study.add_task(TaskPlotGroundReactionsAnklePerturb, subjects[0], 60, 
-    [25, 50, 75, 100], cmap(0.9), 1500, two_cycles=False)
+    [25, 50, 75, 100], cmap(0.9), 1500, two_cycles=False,
+    APbox=[55, 65, 0.1, 0.28],
+    SIbox=[45, 60, 1.0, 1.40],
+    MLbox=[40, 65, -0.10, -0.04])
 study.add_task(TaskPlotAnklePerturbationTorques, subjects[0], 60, 
     [25, 50, 75, 100], cmap(0.9), 1500, two_cycles=False)
 

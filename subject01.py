@@ -298,12 +298,23 @@ def add_to_study(study):
         walking_speed=study.walking_speed,
         guess_fpath=unperturbed_guess_fpath,
         periodic=True)
+    unperturbed_guess_fpath = os.path.join(
+        study.config['results_path'],
+        'unperturbed', subject.name, 
+        'unperturbed_mesh10.sto')
+    unperturbed_trial.add_task(
+        tasks.TaskMocoUnperturbedWalking,
+        initial_time, final_time, 
+        mesh_interval=0.01, 
+        walking_speed=study.walking_speed,
+        guess_fpath=unperturbed_guess_fpath,
+        periodic=True)
 
     unperturbed_guess_fpath = os.path.join(
             study.config['results_path'], 'unperturbed', 
-            subject.name, 'unperturbed_mesh20.sto')
+            subject.name, 'unperturbed_mesh10.sto')
     delay = 1.500
-    for time in [0.2, 0.3, 0.4, 0.45, 0.5, 0.55, 0.6]:
+    for time in [0.5, 0.55, 0.6]:
         for torque in [0.25, 0.50, 0.75, 1.0]:
             if torque == 0.25:
                 guess_fpath = unperturbed_guess_fpath
@@ -313,7 +324,7 @@ def add_to_study(study):
                 tasks.TaskMocoAnkleTorquePerturbedWalking,
                 initial_time, final_time, right_strikes, left_strikes,
                 guess_fpath=guess_fpath, 
-                mesh_interval=0.02, 
+                mesh_interval=0.01, 
                 torque_parameters=torque_parameters,
                 walking_speed=study.walking_speed,
                 perturb_response_delay=delay,
