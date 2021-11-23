@@ -1,455 +1,183 @@
 import os
 
-from osimpipeline import utilities as util
 import osimpipeline as osp
 import tasks
 import helpers
-import numpy as np
 
 def scale_setup_fcn(util, mset, sset, ikts):
-    m = util.Measurement('r_footX', mset)
-    m.add_markerpair('RTOE_proj', 'R_AJC_proj')
-    m.add_bodyscale('talus_r', 'X')
-    m.add_bodyscale('calcn_r', 'X')
-    m.add_bodyscale('toes_r', 'X')
+    m = util.Measurement('torso', mset)
+    m.add_markerpair('RASI', 'CLAV')
+    m.add_markerpair('LASI', 'CLAV')
+    m.add_markerpair('LPSI', 'C7')
+    m.add_markerpair('RPSI', 'C7')
+    m.add_markerpair('RASI',' RACR')
+    m.add_markerpair('LASI', 'LACR')
+    m.add_bodyscale('torso')
 
-    m = util.Measurement('l_footX', mset)
-    m.add_markerpair('LTOE_proj', 'L_AJC_proj')
-    m.add_bodyscale('talus_l', 'X')
-    m.add_bodyscale('calcn_l', 'X')
-    m.add_bodyscale('toes_l', 'X')
-
-    m = util.Measurement('r_footZ', mset)
-    m.add_markerpair('RLAK', 'RMAK')
-    m.add_bodyscale('talus_r', 'Z')
-    m.add_bodyscale('calcn_r', 'Z')
-    m.add_bodyscale('toes_r', 'Z')
-
-    m = util.Measurement('l_footZ', mset)
-    m.add_markerpair('LLAK', 'LMAK')
-    m.add_bodyscale('talus_l', 'Z')
-    m.add_bodyscale('calcn_l', 'Z')
-    m.add_bodyscale('toes_l', 'Z')
-
-    m = util.Measurement('r_tibiaY', mset)
-    m.add_markerpair('R_AJC', 'R_KJC')
-    m.add_bodyscale('tibia_r', 'Y')
-
-    m = util.Measurement('l_tibiaY', mset)
-    m.add_markerpair('L_AJC', 'L_KJC')
-    m.add_bodyscale('tibia_l', 'Y')
-
-    m = util.Measurement('r_tibiaXZ', mset)
-    m.add_markerpair('RLAK', 'RMAK')
-    m.add_bodyscale('tibia_r', 'XZ')
-
-    m = util.Measurement('l_tibiaXZ', mset)
-    m.add_markerpair('LLAK', 'LMAK')
-    m.add_bodyscale('tibia_l', 'XZ')
-
-    m = util.Measurement('r_femurY', mset)
-    m.add_markerpair('R_HJC', 'R_KJC')
-    m.add_bodyscale('femur_r', 'Y')
-
-    m = util.Measurement('l_femurY', mset)
-    m.add_markerpair('L_HJC', 'L_KJC')
-    m.add_bodyscale('femur_l', 'Y')
-
-    m = util.Measurement('r_femurXZ', mset)
-    m.add_markerpair('RLKN', 'RMKN')
-    m.add_bodyscale('femur_r', 'XZ')
-    m.add_bodyscale('patella_r', 'XYZ')
-
-    m = util.Measurement('l_femurXZ', mset)
-    m.add_markerpair('LLKN', 'LMKN')
-    m.add_bodyscale('femur_l', 'XZ')
-    m.add_bodyscale('patella_l', 'XYZ')
-
-    m = util.Measurement('pelvisX', mset)
-    m.add_markerpair('midASIS', 'midPSIS')
-    m.add_bodyscale('pelvis', 'X')
-
-    m = util.Measurement('pelvisY', mset)
-    m.add_markerpair('midHJC', 'midPelvis')
-    m.add_bodyscale('pelvis', 'Y')
-
-    m = util.Measurement('pelvisZ', mset)
-    m.add_markerpair('R_HJC', 'L_HJC')
+    m = util.Measurement('pelvis_z', mset)
+    m.add_markerpair('RPSI', 'LPSI')
+    m.add_markerpair('RASI', 'LASI')
     m.add_bodyscale('pelvis', 'Z')
 
-    m = util.Measurement('torsoX', mset)
-    m.add_markerpair('C7', 'CLAV')
-    m.add_bodyscale('torso', 'X')
+    m = util.Measurement('thigh', mset)
+    m.add_markerpair('LHJC', 'LLFC')
+    m.add_markerpair('LHJC', 'LMFC')
+    m.add_markerpair('RHJC', 'RMFC')
+    m.add_markerpair('RHJC', 'RLFC')
+    m.add_bodyscale_bilateral('femur')
 
-    m = util.Measurement('torsoY', mset)
-    m.add_markerpair('C7', 'midPSIS')
-    m.add_bodyscale('torso', 'Y')
+    m = util.Measurement('shank', mset)
+    m.add_markerpair('LLFC', 'LLMAL')
+    m.add_markerpair('LMFC', 'LMMAL')
+    m.add_markerpair('RLFC', 'RLMAL')
+    m.add_markerpair('RMFC', 'RMMAL')
+    m.add_bodyscale_bilateral('tibia')
 
-    m = util.Measurement('torsoZ', mset)
-    m.add_markerpair('RSHL', 'LSHL')
-    m.add_bodyscale('torso', 'Z')
+    m = util.Measurement('foot', mset)
+    m.add_markerpair('LCAL', 'LMT5')
+    m.add_markerpair('LCAL', 'LTOE')
+    m.add_markerpair('RCAL', 'RTOE')
+    m.add_markerpair('RCAL',' RMT5')
+    m.add_bodyscale_bilateral('talus')
+    m.add_bodyscale_bilateral('calcn')
+    m.add_bodyscale_bilateral('toes')
 
-    # m = util.Measurement('r_humerusXZ', mset)
-    # m.add_markerpair('RASH', 'RPSH')
-    # m.add_bodyscale('humerus_r', 'XZ')
+    m = util.Measurement('humerus', mset)
+    m.add_markerpair('LSJC', 'LMEL')
+    m.add_markerpair('LSJC', 'LLEL')
+    m.add_markerpair('RSJC', 'RLEL')
+    m.add_markerpair('RSJC', 'RMEL')
+    m.add_bodyscale_bilateral('humerus')
 
-    # m = util.Measurement('l_humerusXZ', mset)
-    # m.add_markerpair('LASH', 'LPSH')
-    # m.add_bodyscale('humerus_l', 'XZ')
+    m = util.Measurement('radius_ulna', mset)
+    m.add_markerpair('LLEL', 'LFAradius')
+    m.add_markerpair('LMEL', 'LFAulna')
+    m.add_markerpair('RMEL', 'RFAulna')
+    m.add_markerpair('RLEL', 'RFAradius')
+    m.add_bodyscale_bilateral('ulna')
+    m.add_bodyscale_bilateral('radius')
+    m.add_bodyscale_bilateral('hand')
 
-    # m = util.Measurement('r_humerusY', mset)
-    # m.add_markerpair('RSHL', 'RLEL')
-    # m.add_bodyscale('humerus_r', 'Y')
+    m = util.Measurement('pelvis_Y', mset)
+    m.add_markerpair('LPSI', 'LHJC')
+    m.add_markerpair('RPSI', 'RHJC')
+    m.add_markerpair('RASI', 'RHJC')
+    m.add_markerpair('LASI', 'LHJC')
+    m.add_bodyscale('pelvis', 'Y')
 
-    # m = util.Measurement('l_humerusY', mset)
-    # m.add_markerpair('LSHL', 'LLEL')
-    # m.add_bodyscale('humerus_l', 'Y')
+    m = util.Measurement('pelvis_X', mset)
+    m.add_markerpair('RASI', 'RPSI')
+    m.add_markerpair('LASI', 'LPSI')
+    m.add_bodyscale('pelvis', 'X')
 
-    # m = util.Measurement('r_FAXZ', mset)
-    # m.add_markerpair('RRAD', 'RULN')
-    # m.add_bodyscale('radius_r', 'XZ')
-    # m.add_bodyscale('ulna_r', 'XZ')
-
-    # m = util.Measurement('l_FAXZ', mset)
-    # m.add_markerpair('LRAD', 'LULN')
-    # m.add_bodyscale('radius_l', 'XZ')
-    # m.add_bodyscale('ulna_l', 'XZ')
-
-    # m = util.Measurement('r_FAY', mset)
-    # m.add_markerpair('RLEL', 'RULN')
-    # m.add_bodyscale('radius_r', 'Y')
-    # m.add_bodyscale('ulna_r', 'Y')
-
-    # m = util.Measurement('l_FAY', mset)
-    # m.add_markerpair('LLEL', 'LULN')
-    # m.add_bodyscale('radius_l', 'Y')
-    # m.add_bodyscale('ulna_l', 'Y')
-
-    ikts.add_ikmarkertask('C7', True, 10.0)
-    ikts.add_ikmarkertask('CLAV', True, 5.0)
-    ikts.add_ikmarkertask_bilateral('SHL', True, 5.0)
-    ikts.add_ikmarkertask_bilateral('ASI', True, 10.0)
-    ikts.add_ikmarkertask_bilateral('PSI', True, 10.0)
-    ikts.add_ikmarkertask_bilateral('_HJC', True, 20.0)
-    ikts.add_ikmarkertask_bilateral('_KJC', True, 20.0)
-    ikts.add_ikmarkertask_bilateral('_AJC', True, 10.0)
-    ikts.add_ikmarkertask_bilateral('LKN', True, 10.0)
-    ikts.add_ikmarkertask_bilateral('MKN', True, 10.0)
-    ikts.add_ikmarkertask_bilateral('LAK', True, 10.0)
-    ikts.add_ikmarkertask_bilateral('MAK', True, 10.0)
-    ikts.add_ikmarkertask_bilateral('MT5', True, 10.0)
-    ikts.add_ikmarkertask_bilateral('CAL', True, 10.0)
-    ikts.add_ikmarkertask_bilateral('TOE', True, 10.0)
-    ikts.add_ikmarkertask_bilateral('LEL', False, 10.0)
-    ikts.add_ikmarkertask_bilateral('ULN', False, 10.0)
-    ikts.add_ikmarkertask_bilateral('RAD', False, 10.0)
-
-    ikts.add_ikcoordinatetask_bilateral('knee_angle', True, 0.0, 30.0)
-
-    ikts.add_ikmarkertask_bilateral('PSH', False, 0.0)
-    ikts.add_ikmarkertask_bilateral('ASH', False, 0.0)
+    ikts.add_ikmarkertask_bilateral('ASI', True, 15.0)
+    ikts.add_ikmarkertask_bilateral('PSI', True, 15.0)
+    ikts.add_ikmarkertask_bilateral('LFC', True, 10.0)
+    ikts.add_ikmarkertask_bilateral('MFC', True, 10.0)
+    ikts.add_ikmarkertask_bilateral('LMAL', True, 5.0)
+    ikts.add_ikmarkertask_bilateral('MMAL', True, 5.0)
+    ikts.add_ikmarkertask_bilateral('CAL', True, 5.0)
+    ikts.add_ikmarkertask_bilateral('TOE', True, 5.0)
+    ikts.add_ikmarkertask_bilateral('MT5', True, 5.0)
+    ikts.add_ikmarkertask_bilateral('ACR', True, 2.0)
+    ikts.add_ikmarkertask_bilateral('ASH', True, 2.0)
+    ikts.add_ikmarkertask_bilateral('PSH', True, 2.0)
+    ikts.add_ikmarkertask_bilateral('LEL', True, 1.0)
+    ikts.add_ikmarkertask_bilateral('MEL', True, 1.0)
+    ikts.add_ikmarkertask_bilateral('HJC', True, 20.0)
+    ikts.add_ikmarkertask_bilateral('KJC', True, 10.0)
+    ikts.add_ikmarkertask_bilateral('AJC', True, 10.0)
+    ikts.add_ikmarkertask_bilateral('SJC', True, 1.0)
+    ikts.add_ikmarkertask_bilateral('EJC', True, 1.0)
+    ikts.add_ikmarkertask_bilateral('FAsuperior', False, 0.0)
+    ikts.add_ikmarkertask_bilateral('FAradius', False, 0.0)
+    ikts.add_ikmarkertask_bilateral('FAulna', False, 0.0)
+    ikts.add_ikmarkertask('CLAV', True, 2.0)
+    ikts.add_ikmarkertask('C7', True, 2.0)
     ikts.add_ikmarkertask_bilateral('TH1', False, 0.0)
     ikts.add_ikmarkertask_bilateral('TH2', False, 0.0)
     ikts.add_ikmarkertask_bilateral('TH3', False, 0.0)
-    ikts.add_ikmarkertask_bilateral('SH1', False, 0.0)
-    ikts.add_ikmarkertask_bilateral('SH2', False, 0.0)
-    ikts.add_ikmarkertask_bilateral('SH3', False, 0.0)
+    ikts.add_ikmarkertask_bilateral('TB1', False, 0.0)
+    ikts.add_ikmarkertask_bilateral('TB2', False, 0.0)
+    ikts.add_ikmarkertask_bilateral('TB3', False, 0.0)
     ikts.add_ikmarkertask_bilateral('UA1', False, 0.0)
     ikts.add_ikmarkertask_bilateral('UA2', False, 0.0)
     ikts.add_ikmarkertask_bilateral('UA3', False, 0.0)
-    ikts.add_ikmarkertask_bilateral('FA', False, 0.0)
-    ikts.add_ikmarkertask_bilateral('FA', False, 0.0)
-    ikts.add_ikmarkertask_bilateral('MT5_proj', False, 0.0)
-    ikts.add_ikmarkertask_bilateral('TOE_proj', False, 0.0)
-    ikts.add_ikmarkertask_bilateral('_AJC_proj', False, 0.0)
-    ikts.add_ikmarkertask_bilateral('_KJC_proj', False, 0.0)
-    ikts.add_ikmarkertask('midASIS', False, 0.0)
-    ikts.add_ikmarkertask('midPSIS', False, 0.0)
-    ikts.add_ikmarkertask('midHJC', False, 0.0)
-    ikts.add_ikmarkertask('midPelvis', False, 0.0)
-
 
 def add_to_study(study):
     
     # Add subject to study
     # --------------------
-    subject = study.add_subject(1, 70.3, 1.7297)
+    subject = study.add_subject(1, 72.85, 1.0)
+
+    cond_args = dict()
+    subject.cond_args = cond_args
 
     static = subject.add_condition('static')
     static_trial = static.add_trial(1, omit_trial_dir=True)
 
     # `os.path.basename(__file__)` should be `subject01.py`.
-    scale_setup_task = subject.add_task(
-            osp.TaskScaleSetup,
+    scale_setup_task = subject.add_task(osp.TaskScaleSetup,
             init_time=0,
-            final_time=0.1, 
+            final_time=0.5, 
             mocap_trial=static_trial,
             edit_setup_function=scale_setup_fcn,
             addtl_file_dep=['dodo.py', os.path.basename(__file__)])
 
-    subject.add_task(
-        osp.TaskScale, 
-        scale_setup_task=scale_setup_task,
-        ignore_unused_markers=True)
+    subject.add_task(osp.TaskScale,
+            scale_setup_task=scale_setup_task,
+            #scale_max_isometric_force=True,
+            )
 
     # Scale max isometric forces based on mass and height
     # ---------------------------------------------------
     subject.add_task(tasks.TaskScaleMuscleMaxIsometricForce)
-    
+
     # Adjust marker locations before inverse kinematics
     # --------------------------------------------------
     marker_adjustments = dict()
-    marker_adjustments['RASI'] = (1, 0.03)
-    marker_adjustments['LASI'] = (1, 0.03)
+    marker_adjustments['RTOE'] = (1, 0.0170717)
+    marker_adjustments['RMT5'] = (1, 0.011679)
+    marker_adjustments['LTOE'] = (1, 0.0170708)
+    marker_adjustments['LMT5'] = (1, 0.0116779)
     subject.add_task(tasks.TaskAdjustScaledModel, marker_adjustments)
-    subject.scaled_model_fpath = os.path.join(
-        subject.results_exp_path,
+    subject.scaled_model_fpath = os.path.join(subject.results_exp_path,
         '%s_final.osim' % subject.name)
 
-    # unperturbed condition (left foot gait cycle)
-    # ---------------------------------------------
-    unperturbed = subject.add_condition('unperturbed')
+    # walk2 condition
+    # ---------------
+    walk2 = subject.add_condition('walk2', metadata={'walking_speed': 1.25})
+    
+    # Trial to use
     gait_events = dict()
-    gait_events['right_strikes'] = [0.654, 1.745, 2.843, 3.920, 5.007, 6.107, 
-                                    7.185, 8.286, 9.387]
-    gait_events['left_strikes'] = [1.212, 2.283, 3.387, 4.475, 5.562, 6.632, 
-                                   7.746, 8.844]
-    unperturbed_trial = unperturbed.add_trial(
-            1, gait_events=gait_events,
-            omit_trial_dir=True)
+    gait_events['right_strikes'] = [1.179, 2.282, 3.361, 4.488] #, 5.572]
+    gait_events['left_toeooffs'] = [1.368, 2.471, 3.578] #, 4.680]
+    gait_events['left_strikes'] = [1.728, 2.836, 3.943] #, 5.051]
+    gait_events['right_toeoffs'] = [1.934, 3.033, 4.137] #, 5.252]
 
-    unperturbed_trial.add_task(
+    walk2_trial = walk2.add_trial(1,
+            gait_events=gait_events,
+            omit_trial_dir=True,
+            )
+    walk2_trial.add_task(tasks.TaskUpdateGroundReactionColumnLabels)
+
+    # GRF gait landmarks
+    walk2_trial.add_task(
         osp.TaskGRFGaitLandmarks,
-        min_time=0.0, 
-        max_time=10.0)
+        min_time=0.5,
+        max_time=5.0)
 
-    ik_setup_task, id_setup_task = helpers.generate_main_tasks(
-        unperturbed_trial)
+    # walk2: main study tasks
+    ik_setup_task, id_setup_task = helpers.generate_main_tasks(walk2_trial)
 
-    initial_time = 3.920
-    final_time = 5.007
-    right_strikes = [3.920, 5.007]
-    left_strikes = [4.475]
-    unperturbed_trial.add_task(
+    initial_time = 3.361
+    final_time = 4.488
+    right_strikes = [3.361, 4.488]
+    left_strikes = [3.9435]
+    walk2_trial.add_task(
         tasks.TaskComputeJointAngleStandardDeviations, 
         ik_setup_task)
-    unperturbed_trial.add_task(
+    walk2_trial.add_task(
         tasks.TaskTrimTrackingData, 
         ik_setup_task, id_setup_task, 
-        3.8, 6.20)
-    
-    # initial guess creation for unperturbed tracking condition
-    # ---------------------------------------------------------
-    unperturbed_guess_fpath = None
-    unperturbed_trial.add_task(
-        tasks.TaskMocoUnperturbedWalkingGuess,
-        initial_time, final_time, mesh_interval=0.05, 
-        walking_speed=study.walking_speed,
-        guess_fpath=unperturbed_guess_fpath,
-        pelvis_boundary_conditions=False,
-        costs_enabled=False,
-        periodic=False)
-
-    unperturbed_guess_fpath = os.path.join(
-        study.config['results_path'], 'guess', subject.name, 
-        'unperturbed_guess_mesh50_costsDisabled.sto')
-    unperturbed_trial.add_task(
-        tasks.TaskMocoUnperturbedWalkingGuess,
-        initial_time, final_time, mesh_interval=0.05, 
-        walking_speed=study.walking_speed,
-        guess_fpath=unperturbed_guess_fpath,
-        pelvis_boundary_conditions=False,
-        costs_enabled=False,
-        periodic=True)
-
-    unperturbed_guess_fpath = os.path.join(
-        study.config['results_path'], 'guess', subject.name, 
-        'unperturbed_guess_mesh50_costsDisabled_periodic.sto')
-    unperturbed_trial.add_task(
-        tasks.TaskMocoUnperturbedWalkingGuess,
-        initial_time, final_time, mesh_interval=0.05, 
-        walking_speed=study.walking_speed,
-        guess_fpath=unperturbed_guess_fpath,
-        pelvis_boundary_conditions=False,
-        costs_enabled=True,
-        periodic=True)
-
-    # unperturbed_guess_fpath = os.path.join(study.config['results_path'],
-    #     'guess', subject.name, f'unperturbed_mesh50.sto')
-    # mesh_intervals = [0.050, 0.035, 0.020, 0.010]
-    # for mesh_interval in mesh_intervals:    
-    #     unperturbed_trial.add_task(tasks.TaskMocoUnperturbedWalking,
-    #         initial_time, final_time, mesh_interval=mesh_interval, 
-    #         walking_speed=study.walking_speed,
-    #         guess_fpath=unperturbed_guess_fpath,
-    #         periodic=True)
-    #     unperturbed_guess_fpath = os.path.join(study.config['results_path'],
-    #             'unperturbed', subject.name, 
-    #             f'unperturbed_mesh{int(1000*mesh_interval)}.sto')
-
-    unperturbed_guess_fpath = os.path.join(
-        study.config['results_path'],
-        'unperturbed', subject.name, 
-        'unperturbed_mesh20.sto')
-    unperturbed_trial.add_task(
-        tasks.TaskMocoUnperturbedWalking,
-        initial_time, final_time, 
-        mesh_interval=0.02, 
-        walking_speed=study.walking_speed,
-        guess_fpath=unperturbed_guess_fpath,
-        periodic=True)
-    unperturbed_guess_fpath = os.path.join(
-        study.config['results_path'],
-        'unperturbed', subject.name, 
-        'unperturbed_mesh10.sto')
-    unperturbed_trial.add_task(
-        tasks.TaskMocoUnperturbedWalking,
-        initial_time, final_time, 
-        mesh_interval=0.01, 
-        walking_speed=study.walking_speed,
-        guess_fpath=unperturbed_guess_fpath,
-        periodic=True)
-
-    unperturbed_guess_fpath = os.path.join(
-            study.config['results_path'], 'unperturbed', 
-            subject.name, 'unperturbed_mesh10.sto')
-    delay = 1.500
-    for time in [0.5, 0.55, 0.6]:
-        for torque in [0.25, 0.50, 0.75, 1.0]:
-            if torque == 0.25:
-                guess_fpath = unperturbed_guess_fpath
-
-            torque_parameters = [torque, time, 0.25, 0.1]
-            unperturbed_trial.add_task(
-                tasks.TaskMocoAnkleTorquePerturbedWalking,
-                initial_time, final_time, right_strikes, left_strikes,
-                guess_fpath=guess_fpath, 
-                mesh_interval=0.01, 
-                torque_parameters=torque_parameters,
-                walking_speed=study.walking_speed,
-                perturb_response_delay=delay,
-                side='right')
-            unperturbed_trial.add_task(
-                tasks.TaskMocoAnkleTorquePerturbedWalkingPost,
-                unperturbed_trial.tasks[-1])
-
-            label = (f'perturb_torque{int(100*torque)}'
-                     f'_time{int(100*time)}_delay{int(1000*delay)}')
-            guess_fpath = os.path.join(
-                study.config['results_path'], label,
-                subject.name, f'{label}.sto')
-    
-    # unperturbed_fpath = os.path.join(
-    #         study.config['results_path'], 'unperturbed', 
-    #         subject.name, 'unperturbed_mesh20.sto')
-    # unperturbed_trial.add_task(
-    #     tasks.TaskMocoAnkleTorqueBaselineWalking,
-    #     initial_time, final_time, right_strikes, left_strikes,
-    #     guess_fpath=unperturbed_fpath,
-    #     mesh_interval=0.02, 
-    #     walking_speed=study.walking_speed,
-    #     constrain_initial_state=True,
-    #     torque_parameters=[0.5, 0.5, 0.25, 0.1],
-    #     periodic=False)
-
-    # baseline_torque_fpath = os.path.join(
-    #         study.config['results_path'], 'baseline_torque', 
-    #         subject.name, 'baseline_torque.sto')
-    # for torque in [0.2, 0.3, 0.4, 0.6, 0.7, 0.8]:
-    #     ankle_torque_right_parameters = list()
-    #     ankle_torque_right_parameters.append([torque, 0.5, 0.25, 0.1])
-    #     ankle_torque_right_parameters.append([0.5, 0.5, 0.25, 0.1])
-
-    #     ankle_torque_left_parameters = list()
-    #     ankle_torque_left_parameters.append([0.5, 0.5, 0.25, 0.1])
-
-    #     unperturbed_trial.add_task(
-    #         tasks.TaskMocoAnkleTorquePerturbedFromBaselineWalking,
-    #         initial_time, final_time, right_strikes, left_strikes,
-    #         ankle_torque_left_parameters,
-    #         ankle_torque_right_parameters,
-    #         guess_fpath=baseline_torque_fpath,
-    #         mesh_interval=0.02, 
-    #         walking_speed=study.walking_speed,
-    #         perturb_response_delay=0.400)
-
-    # Two gait cycle solutions
-    # ------------------------
-    # initial_time = 3.93
-    # final_time = 6.20
-    # right_strikes = [3.93, 5.02, 6.20]
-    # left_strikes = [4.49, 5.58]
-    # unperturbed_trial.add_task(
-    #     tasks.TaskMocoDoublePeriodicTrajectory,
-    #     unperturbed_guess_fpath)
-
-    # unperturbed_guess_doubled_fpath = os.path.join(
-    #     study.config['results_path'],
-    #     'unperturbed_two_cycles', subject.name, 
-    #     'unperturbed_two_cycles_mesh20.sto')
-    # unperturbed_trial.add_task(
-    #     tasks.TaskMocoUnperturbedWalking,
-    #     initial_time, final_time, 
-    #     mesh_interval=0.02, 
-    #     walking_speed=study.walking_speed,
-    #     guess_fpath=unperturbed_guess_doubled_fpath,
-    #     periodic=True, two_cycles=True)
-
-    # unperturbed_guess_doubled_fpath = os.path.join(
-    #     study.config['results_path'],
-    #     'unperturbed_two_cycles', subject.name, 
-    #     'unperturbed_two_cycles_mesh20.sto')
-    # for torque in [0.25, 0.50, 0.75, 1.0]:
-    #     for time in [0.3, 0.4, 0.5, 0.6]:
-    #         torque_parameters = [torque, time, 0.25, 0.1]
-    #         unperturbed_trial.add_task(
-    #             tasks.TaskMocoAnkleTorquePerturbedWalking,
-    #             initial_time, final_time, right_strikes, left_strikes,
-    #             guess_fpath=unperturbed_guess_doubled_fpath, 
-    #             mesh_interval=0.02, 
-    #             torque_parameters=torque_parameters,
-    #             walking_speed=study.walking_speed,
-    #             perturb_response_delay=0.400,
-    #             side='right', two_cycles=True,
-    #             periodic=False)
-    #         unperturbed_trial.add_task(
-    #             tasks.TaskMocoAnkleTorquePerturbedWalkingPost,
-    #             unperturbed_trial.tasks[-1])
-
-    # unperturbed_trial.add_task(
-    #     tasks.TaskMocoAnkleTorqueBaselineWalking,
-    #     initial_time, final_time, right_strikes, left_strikes,
-    #     guess_fpath=unperturbed_guess_doubled_fpath,
-    #     mesh_interval=0.02, 
-    #     walking_speed=study.walking_speed,
-    #     constrain_initial_state=True,
-    #     torque_parameters=[0.5, 0.5, 0.25, 0.1],
-    #     periodic=False, two_cycles=True)
-
-    # baseline_torque_fpath = os.path.join(
-    #         study.config['results_path'], 'baseline_torque_two_cycles', 
-    #         subject.name, 'baseline_torque_two_cycles.sto')
-    # for torque in [0.2, 0.3, 0.4, 0.6, 0.7, 0.8]:
-    #     ankle_torque_right_parameters = list()
-    #     ankle_torque_right_parameters.append([torque, 0.5, 0.25, 0.1])
-    #     ankle_torque_right_parameters.append([0.5, 0.5, 0.25, 0.1])
-    #     ankle_torque_right_parameters.append([0.5, 0.5, 0.25, 0.1])
-
-    #     ankle_torque_left_parameters = list()
-    #     ankle_torque_left_parameters.append([0.5, 0.5, 0.25, 0.1])
-    #     ankle_torque_left_parameters.append([0.5, 0.5, 0.25, 0.1])
-
-    #     unperturbed_trial.add_task(
-    #         tasks.TaskMocoAnkleTorquePerturbedFromBaselineWalking,
-    #         initial_time, final_time, right_strikes, left_strikes,
-    #         ankle_torque_left_parameters,
-    #         ankle_torque_right_parameters,
-    #         guess_fpath=baseline_torque_fpath,
-    #         mesh_interval=0.02, 
-    #         walking_speed=study.walking_speed,
-    #         perturb_response_delay=0.500,
-    #         two_cycles=True,
-    #         periodic=False)
-    #     unperturbed_trial.add_task(
-    #         tasks.TaskMocoAnkleTorquePerturbedFromBaselineWalkingPost,
-    #         unperturbed_trial.tasks[-1])
+        initial_time, final_time)

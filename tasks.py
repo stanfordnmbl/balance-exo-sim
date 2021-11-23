@@ -43,697 +43,126 @@ class working_directory():
 
 class TaskCopyMotionCaptureData(osp.TaskCopyMotionCaptureData):
     REGISTRY = []
-    def __init__(self, study, subjects, unperturbed_trial, prefix='S01DN6'):
+    def __init__(self, study, walk125=None):
         regex_replacements = list()
 
-        subjects = ['subject%02i' % subj for subj in subjects]
-        for subject in subjects:
-            # Scale static trial
-            regex_replacements.append(
-                (
-                    os.path.join('OpenSim', subject, 'markers',
-                        '%sstanding.trc' % prefix).replace('\\', '\\\\'),
-                    os.path.join('experiments',
-                        subject, 'static', 'expdata', 
-                        'marker_trajectories.trc').replace('\\','\\\\')
-                    ))
-            # for side in ['_left', '_right']:
-            # Vicon
-            regex_replacements.append(
-                (
-                    os.path.join('Vicon', subject,
-                        '%s%02i.c3d' % (prefix, unperturbed_trial)).replace('\\', '\\\\'),
-                    os.path.join('experiments',
-                        subject, f'unperturbed', 'expdata', 
-                        'vicon.c3d').replace('\\','\\\\')
-                    ))
-            # EMG
-            regex_replacements.append(
-                (
-                    os.path.join('Vicon', subject,
-                        '%s%02i.mat' % (prefix, unperturbed_trial)).replace('\\', '\\\\'),
-                    os.path.join('experiments',
-                        subject, f'unperturbed', 'expdata', 
-                        'emg.mat').replace('\\','\\\\')
-                    ))
-            # Speedgoat
-            regex_replacements.append(
-                (
-                    os.path.join('Speedgoat', subject,
-                        '%s%02i.mat' % (prefix, unperturbed_trial)).replace('\\', '\\\\'),
-                    os.path.join('experiments',
-                        subject, f'unperturbed', 'expdata', 
-                        'speedgoat.mat').replace('\\','\\\\')
-                    ))
+        default_args = dict()
+        default_args['walk125'] = walk125
+
+        for subject in study.subjects:
+            cond_args = subject.cond_args            
+            if 'walk125' in cond_args: walk125 = cond_args['walk125']
+            else: walk125 = default_args['walk125']
+
+            for datastr, condname, arg in [('Walk_125', 'walk2', walk125)]:
+                # Marker trajectories.
+                regex_replacements.append(
+                    (
+                        os.path.join(subject.name, 'Data',
+                            '%s %02i.trc' % (datastr, arg[0])).replace('\\',
+                            '\\\\'),
+                        os.path.join('experiments',
+                            subject.name, condname, 'expdata', 
+                            'marker_trajectories.trc').replace('\\','\\\\')
+                        ))
+                # Ground reaction.
+                regex_replacements.append(
+                    (
+                        os.path.join(subject.name, 'Data',
+                            '%s %02i%s.mot' % (datastr, arg[0],arg[1])).replace(
+                                '\\','\\\\'),
+                        os.path.join('experiments', subject.name, condname,
+                            'expdata','ground_reaction_orig.mot').replace(
+                                '\\','\\\\') 
+                        )) 
+                # EMG
+                regex_replacements.append(
+                    (
+                        os.path.join(subject.name, 'Results', datastr,
+                            '%s%02i_gait_controls.sto' % (datastr, arg[0])
+                            ).replace('\\','\\\\'),
+                        os.path.join('experiments', subject.name,
+                            condname, 'expdata', 'emg_with_headers.sto'
+                            ).replace('\\','\\\\')
+                        ))
+            regex_replacements.append((
+                        os.path.join(subject.name, 'Data',
+                            'Static_FJC.trc').replace('\\','\\\\'),
+                        os.path.join('experiments', subject.name, 'static',
+                            'expdata',
+                            'marker_trajectories.trc').replace('\\','\\\\') 
+                        ))
 
         super(TaskCopyMotionCaptureData, self).__init__(study,
                 regex_replacements)
 
 
-class TaskTransformExperimentalData(osp.StudyTask):
+class TaskRemoveEMGFileHeaders(osp.StudyTask):
     REGISTRY = []
-    def __init__(self, study, subjects):
-        super(TaskTransformExperimentalData, self).__init__(study)
-        self.name = study.name + '_transform_experimental_data'
+    def __init__(self, study):
+        super(TaskRemoveEMGFileHeaders, self).__init__(study)
+        self.name = '%s_remove_emg_file_headers' % study.name
+        self.doc = 'Remove headers from EMG data files.'
 
-        subjects = ['subject%02i' % subj for subj in subjects]
-        for subject in subjects:
-            # for side in ['_left', '_right']:
-            expdata_path = os.path.join(study.config['results_path'], 
-                    'experiments', subject, f'unperturbed', 
-                    'expdata')
-            self.add_action(
-                [os.path.join(expdata_path, 
-                    'vicon.c3d').replace('\\','\\\\')],
-                [os.path.join(expdata_path, 
-                    'marker_trajectories.trc').replace('\\','\\\\'),
-                 os.path.join(expdata_path, 
-                    'ground_reaction_unfiltered.mot').replace('\\','\\\\')],
-                self.transform_experimental_data)
+        file_dep = list()
+        target = list()
+        for subject in study.subjects:
+            for cond in subject.conditions:
+                if cond.name == 'static': continue
+                file_dep += [os.path.join(subject.results_exp_path,
+                    cond.name, 'expdata', 'emg_with_headers.sto')]
+                target += [os.path.join(subject.results_exp_path,
+                    cond.name, 'expdata', 'emg.sto')]
 
-    def transform_experimental_data(self, file_dep, target):
+        self.add_action(file_dep, target, self.remove_file_headers)
 
-        c3d = osim.C3DFileAdapter()
-        c3d.setLocationForForceExpression(0)
-        tables = c3d.read(file_dep[0])
+    def remove_file_headers(self, file_dep, target):
+        
+        for i, fpath in enumerate(file_dep):
+            infile = open(fpath, 'r').readlines()
+            if os.path.isfile(target[i]):
+                print(f'File {target[i]} already exists. Deleting...')
+                os.remove(target[i])
+            print('Writing to {target[i]}')
+            with open(target[i], 'w') as outfile:
+                prev_line = ''
+                writing = False
+                for index, line in enumerate(infile):
+                    if 'endheader' in prev_line:
+                        writing = True
 
-        # Set the marker and force data into OpenSim tables
-        markers = c3d.getMarkersTable(tables)
-        forces = c3d.getForcesTable(tables)
+                    if writing:
+                        outfile.write(line)
 
-        def rotateTable(table, axis, value):
-            R = osim.Rotation(np.deg2rad(value), osim.CoordinateAxis(axis))
-            for irow in np.arange(table.getNumRows()):
-                rowVec = table.getRowAtIndex(int(irow))
-                rowVec_rotated = R.multiply(rowVec)
-                table.setRowAtIndex(int(irow), rowVec_rotated)
-            return table
-
-        markers = rotateTable(markers, 0, -90)
-        markers = rotateTable(markers, 1, -90)
-        forces = rotateTable(forces, 0, -90)
-        forces = rotateTable(forces, 1, -90)
-
-        # Convert forces to meters
-        nrows  = forces.getNumRows()
-        ncols  = forces.getNumColumns()
-        labels = forces.getColumnLabels()
-        for i in np.arange(ncols):
-            # All force columns will have the 'f' prefix while point
-            # and moment columns will have 'p' and 'm' prefixes,
-            # respectively.
-            if not labels[i].startswith('f'):
-                col = forces.updDependentColumnAtIndex(int(i))
-                newCol = osim.VectorVec3(col.size(), osim.Vec3(0))
-                for j in np.arange(nrows):
-                    # Divide by 1000
-                    newCol.set(int(j), col[int(j)].scalarDivideEq(1000))
-
-                forces.setDependentColumnAtIndex(int(i), newCol)
-
-        # Write markers to TRC file
-        # -------------------------
-        trc = osim.TRCFileAdapter()
-        trc.write(markers, target[0])
-
-        # Write GRFs to MOT file
-        # ----------------------
-        # Get the column labels
-        labels = forces.getColumnLabels()
-        # Make a copy
-        updlabels = list(copy.deepcopy(labels))
-
-        # Labels from C3DFileAdapter are f1, p1, m1, f2,...
-        # We edit them to be consistent with requirements of viewing
-        # forces in the GUI (ground_force_vx, ground_force_px,...)
-        for i in np.arange(len(labels)):
-
-            # Get the label as a string
-            label = labels[i]
-
-            # Transform the label depending on force, point, or moment
-            if label.startswith('f'):
-                label = label.replace('f', 'ground_force_')
-                label = label + '_v'
-
-            elif label.startswith('p'):
-                label = label.replace('p', 'ground_force_')
-                label = label + '_p'
-
-            elif label.startswith('m'):
-                label = label.replace('m', 'ground_moment_')
-                label = label + '_m'
-
-            # update the label name
-            updlabels[i] = label
-
-        # set the column labels
-        forces.setColumnLabels(updlabels)
-
-        # Flatten the Vec3 force table
-        postfix = osim.StdVectorString()
-        postfix.append('x')
-        postfix.append('y')
-        postfix.append('z')
-        forces_flat = forces.flatten(postfix)
-
-        # Change the header in the file to meet Storage conditions
-        if len(forces_flat.getTableMetaDataKeys()) > 0:
-            for i in np.arange(len(forces_flat.getTableMetaDataKeys())):
-                # Get the metakey string at index zero. Since the array gets 
-                # smaller on each loop, we just need to keep taking the first 
-                # one in the array.
-                metakey = forces_flat.getTableMetaDataKeys()[0]
-                # Remove the key from the meta data
-                forces_flat.removeTableMetaDataKey(metakey)
-
-        # Add the column and row data to the meta key
-        forces_flat.addTableMetaDataString('nColumns',
-                str(forces_flat.getNumColumns()+1))
-        forces_flat.addTableMetaDataString('nRows', 
-                str(forces_flat.getNumRows()))
-
-        # Write to file
-        sto = osim.STOFileAdapter()
-        sto.write(forces_flat, target[1])
+                    prev_line = line
 
 
-class TaskFilterAndShiftGroundReactions(osp.StudyTask):
+class TaskUpdateGroundReactionColumnLabels(osp.TrialTask):
     REGISTRY = []
-    def __init__(self, study, subjects, threshold=20, sample_rate=2000,
-                 critically_damped_order=4, 
-                 critically_damped_cutoff_frequency=20,
-                 gaussian_smoothing_sigma=2, grf_xpos_offset=-1.75, 
-                 grf_zpos_offset=0.55):
-        super(TaskFilterAndShiftGroundReactions, self).__init__(study)
-        self.name = study.name + '_filter_and_shift_grfs'
-        
-        # Vertical contact force detection threshold (Newtons)
-        self.threshold = threshold 
-
-        # Recorded force sample rate (Hz)
-        self.sample_rate = sample_rate
-
-        # Critically damped filter order and cutoff frequency
-        self.critically_damped_order = critically_damped_order
-        self.critically_damped_cutoff_frequency = \
-            critically_damped_cutoff_frequency
-
-        # Smoothing factor for Gaussian smoothing process
-        self.gaussian_smoothing_sigma = gaussian_smoothing_sigma
-
-        # Manual adjustments for COP locations
-        # TODO: ideally these aren't necessary
-        self.grf_xpos_offset = grf_xpos_offset
-        self.grf_zpos_offset = grf_zpos_offset
-
-        subjects = ['subject%02i' % subj for subj in subjects]
-        for subject in subjects:
-            # for side in ['_left', '_right']:
-            expdata_path = os.path.join(study.config['results_path'], 
-                    'experiments', subject, 'unperturbed', 
-                    'expdata')
-            self.add_action(
-                [os.path.join(expdata_path, 
-                    'ground_reaction_unfiltered.mot').replace('\\', '\\\\')],
-                [os.path.join(expdata_path, 
-                    'ground_reaction.mot').replace('\\', '\\\\'),
-                 os.path.join(expdata_path, 
-                    'ground_reactions_filtered.png').replace('\\', '\\\\')],
-                self.filter_and_shift_grfs)
-
-    def filter_and_shift_grfs(self, file_dep, target):
-
-        n_force_plates = 2
-        sides = ['l', 'r']
-
-        # Orientation of force plate frames in the motion capture frame 
-        # (x forward, y left, z up).
-        force_plate_rotation = [
-                np.matrix([[1.0, 0.0, 0.0],
-                           [0.0, 1.0, 0.0],
-                           [0.0, 0.0, 1.0]]),
-                np.matrix([[1.0, 0.0, 0.0],
-                           [0.0, 1.0, 0.0],
-                           [0.0, 0.0, 1.0]]),
-                ]
-
-        # Orientation of OpenSim ground frame (x forward, y up, z right) in 
-        # motion capture frame.
-        opensim_rotation = np.matrix([[1.0, 0.0, 0.0],
-                                      [0.0, 1.0, 0.0],
-                                      [0.0, 0.0, 1.0]])
-
-        grfs = osim.TimeSeriesTable(file_dep[0])
-        nrow = grfs.getNumRows()
-        f1 = np.empty((nrow, 3))
-        p1 = np.empty((nrow, 3))
-        m1 = np.empty((nrow, 3))
-        f2 = np.empty((nrow, 3))
-        p2 = np.empty((nrow, 3))
-        m2 = np.empty((nrow, 3))
-
-        f1[:, 0] = util.toarray(grfs.getDependentColumn('ground_force_1_vx'))
-        f1[:, 1] = util.toarray(grfs.getDependentColumn('ground_force_1_vy'))
-        f1[:, 2] = util.toarray(grfs.getDependentColumn('ground_force_1_vz'))
-        p1[:, 0] = util.toarray(grfs.getDependentColumn('ground_force_1_px'))
-        p1[:, 1] = util.toarray(grfs.getDependentColumn('ground_force_1_py'))
-        p1[:, 2] = util.toarray(grfs.getDependentColumn('ground_force_1_pz'))
-        m1[:, 0] = util.toarray(grfs.getDependentColumn('ground_moment_1_mx'))
-        m1[:, 1] = util.toarray(grfs.getDependentColumn('ground_moment_1_my'))
-        m1[:, 2] = util.toarray(grfs.getDependentColumn('ground_moment_1_mz'))
-        f2[:, 0] = util.toarray(grfs.getDependentColumn('ground_force_2_vx'))
-        f2[:, 1] = util.toarray(grfs.getDependentColumn('ground_force_2_vy'))
-        f2[:, 2] = util.toarray(grfs.getDependentColumn('ground_force_2_vz'))
-        p2[:, 0] = util.toarray(grfs.getDependentColumn('ground_force_2_px'))
-        p2[:, 1] = util.toarray(grfs.getDependentColumn('ground_force_2_py'))
-        p2[:, 2] = util.toarray(grfs.getDependentColumn('ground_force_2_pz'))
-        m2[:, 0] = util.toarray(grfs.getDependentColumn('ground_moment_2_mx'))
-        m2[:, 1] = util.toarray(grfs.getDependentColumn('ground_moment_2_my'))
-        m2[:, 2] = util.toarray(grfs.getDependentColumn('ground_moment_2_mz'))
-
-        # Positions of force plate frame origins (center) from lab origin 
-        # (meters).
-        force_plate_location = [p1[0], p2[0]]
-
-        grfData = np.concatenate((f1, m1, f2, m2), axis=1)
-
-        # x right, y backward, z up
-        grfLabels = ['F1X', 'F1Y', 'F1Z', 'M1X', 'M1Y', 'M1Z',
-                     'F2X', 'F2Y', 'F2Z', 'M2X', 'M2Y', 'M2Z']
-        time = np.linspace(0, 20.999, num=grfData.shape[0])
-
-        data = pd.DataFrame(data=grfData, columns=grfLabels, dtype=float)
-        n_times = data.shape[0]
-
-        def repack_data(data, vecs, colnames):
-            for icol, colname in enumerate(colnames):
-                data[colname] = vecs[icol]
-
-        # Coordinate transformation.
-        # --------------------------
-        for fp in range(n_force_plates):
-            force_names = ['F%s%s' % (fp + 1, s) for s in ['X', 'Y', 'Z']]
-            moment_names = ['M%s%s' % (fp + 1, s) for s in ['X', 'Y', 'Z']]
-
-            # Unpack 3 columns as rows of vectors.
-            force_vecs = data[force_names]
-            moment_vecs = data[moment_names]
-
-            # Rotate.
-            force_vecs = force_vecs.dot(force_plate_rotation[fp])
-            moment_vecs = moment_vecs.dot(force_plate_rotation[fp])
-
-            # Compute moments.
-            # M_new = r x F + M_orig.
-            r = np.tile(force_plate_location[fp], [n_times, 1])
-            moment_vecs = np.cross(r, force_vecs) + moment_vecs
-
-            # Pack back into the data.
-            repack_data(data, force_vecs, force_names)
-            repack_data(data, moment_vecs, moment_names)
-
-        # Combine force plates to generate left foot, right foot data.
-        # ------------------------------------------------------------
-        forces = {side: np.zeros((n_times, 3)) for side in sides}
-        moments = {side: np.zeros((n_times, 3)) for side in sides}
-
-        for iside, side in enumerate(sides):
-            force_names = ['F%s%s' % (iside + 1, s) for s in ['X', 'Y', 'Z']]
-            moment_names = ['M%s%s' % (iside + 1, s) for s in ['X', 'Y', 'Z']]
-
-            forces[side] += data[force_names].values
-            moments[side] += data[moment_names].values
-
-        # Plot raw GRF (before cutting off or filtering)
-        fig = pl.figure(figsize=(12, 10))
-        ax_FX = fig.add_subplot(6, 1, 1)
-        ax_FY = fig.add_subplot(6, 1, 2)
-        ax_FZ = fig.add_subplot(6, 1, 3)
-        ax_MX = fig.add_subplot(6, 1, 4)
-        ax_MY = fig.add_subplot(6, 1, 5)
-        ax_MZ = fig.add_subplot(6, 1, 6)
-        for iside, side in enumerate(sides):
-            ax_FX.plot(time, forces[side][:, 0], lw=2, color='black')
-            ax_FY.plot(time, forces[side][:, 1], lw=2, color='black')
-            ax_FZ.plot(time, forces[side][:, 2], lw=2, color='black')
-            # ax_MX.plot(time, moments[side][:, 0], lw=2, color='black')
-            # ax_MY.plot(time, moments[side][:, 2], lw=2, color='black')
-            # ax_MZ.plot(time, moments[side][:, 1], lw=2, color='black')
-
-        # Cut-off and smooth with Gaussian filter
-        # ---------------------------------------
-        # Before filtering, cutoff the GRF using the first coarser cutoff.
-        # Use Gaussian filter after cutoff to smooth force transitions at ground
-        # contact and liftoff.
-        for side in sides:
-            # Vertical force is in the y-direction.
-            filt = (forces[side][:, 1] < self.threshold)
-            for item in [forces, moments]:
-                item[side][filt, :] = 0
-                for i in np.arange(item[side].shape[1]):
-                    item[side][:, i] = gaussian_filter1d(item[side][:, i], 
-                        self.gaussian_smoothing_sigma)
-
-        # Critically damped filter (prevents overshoot).
-        # TODO may change array size.
-        for item in [forces, moments]:
-            for side in sides:
-                for direc in range(3):
-                    item[side][:, direc] = util.filter_critically_damped(
-                            item[side][:, direc], self.sample_rate,
-                            self.critically_damped_cutoff_frequency,
-                            order=self.critically_damped_order)
-
-        # Compute centers of pressure.
-        # ---------------------------
-        centers_of_pressure = {side: np.zeros((n_times, 3)) for side in sides}
-        for side in sides:
-            # Only compute when foot is on ground.
-            # Time indices corresponding to foot on ground.
-            filt = forces[side][:, 1] != 0
-            Mx = moments[side][filt, 0]
-            My = moments[side][filt, 1]
-            Mz = moments[side][filt, 2]
-            Fx = forces[side][filt, 0]
-            Fy = forces[side][filt, 1]
-            Fz = forces[side][filt, 2]
-            COPz = -Mx / Fy
-            COPx = Mz / Fy
-            centers_of_pressure[side][filt, 0] = COPx
-            centers_of_pressure[side][filt, 2] = COPz
-
-            # Must have zero when foot is not on ground.
-            My_new = np.zeros(n_times)
-            My_new[filt] = My - COPz * Fx + COPx * Fz
-            moments[side][:, 1] = My_new
-            moments[side][:, 0] = 0
-            moments[side][:, 2] = 0
-
-        # Apply Gaussian smoothing after computing centers of pressure
-        # ------------------------------------------------------------
-        for side in sides:
-            for item in [forces, moments, centers_of_pressure]:
-                for i in np.arange(item[side].shape[1]):
-                    item[side][:,i] = gaussian_filter1d(item[side][:,i], 
-                        self.gaussian_smoothing_sigma)      
-
-        # Transform from motion capture frame to OpenSim ground frame.
-        # ------------------------------------------------------------
-        for side in sides:
-            for item in [forces, moments]:
-                item[side] = item[side] * opensim_rotation
-            centers_of_pressure[side] = \
-                    centers_of_pressure[side] * opensim_rotation
-
-        # Manual COP adjustments
-        # ----------------------
-        # TODO: avoid these
-        # Shift COP to model feet
-        centers_of_pressure['l'][:,0] += self.grf_xpos_offset
-        centers_of_pressure['l'][:,2] += -self.grf_zpos_offset
-        centers_of_pressure['r'][:,0] += self.grf_xpos_offset
-        centers_of_pressure['r'][:,2] += self.grf_zpos_offset
-
-        # Create structured array for MOT file.
-        # -------------------------------------
-        dtype_names = ['time']
-        data_dict = dict()
-        for side in sides:
-            # Force.
-            for idirec, direc in enumerate(['x', 'y', 'z']):
-                colname = 'ground_force_%s_v%s' % (side, direc)
-                dtype_names.append(colname)
-                data_dict[colname] = forces[side][:, idirec].reshape(-1)
-
-            # Center of pressure.
-            for idirec, direc in enumerate(['x', 'y', 'z']):
-                colname = 'ground_force_%s_p%s' % (side, direc)
-                dtype_names.append(colname)
-                data_dict[colname] = \
-                        centers_of_pressure[side][:, idirec].reshape(-1)
-
-            # Moment.
-            for idirec, direc in enumerate(['x', 'y', 'z']):
-                colname = 'ground_torque_%s_%s' % (side, direc)
-                dtype_names.append(colname)
-                data_dict[colname] = \
-                        moments[side][:, idirec].reshape(-1)
-
-        mot_data = np.empty(nrow, dtype={'names': dtype_names,
-            'formats': len(dtype_names) * ['f8']})
-        # TODO discrepancy with Amy.
-        mot_data['time'] = time #[[0] + range(nrow-1)]
-        for k, v in data_dict.items():
-            mot_data[k] = v
-
-        util.ndarray2storage(mot_data, target[0], name='ground reactions')
-
-        # Plot filtered GRFs
-        # ------------------
-        for side in sides:
-            ax_FX.plot(time, forces[side][:, 0], lw=1.5, color='red')
-            ax_FY.plot(time, forces[side][:, 1], lw=1.5, color='red')
-            ax_FZ.plot(time, forces[side][:, 2], lw=1.5, color='red')
-            ax_MX.plot(time, moments[side][:, 0], lw=1.5, color='red')
-            ax_MY.plot(time, moments[side][:, 1], lw=1.5, color='red')
-            ax_MZ.plot(time, moments[side][:, 2], lw=1.5, color='red')
-        ax_FX.set_ylabel('FX')
-        ax_FY.set_ylabel('FY')
-        ax_FZ.set_ylabel('FZ')
-        ax_MX.set_ylabel('MX')
-        ax_MY.set_ylabel('MY')
-        ax_MZ.set_ylabel('MZ')
-        fig.savefig(target[1])
-        pl.close()
-
-
-class TaskExtractAndFilterEMG(osp.StudyTask):
-    REGISTRY = []
-    def __init__(self, study, subjects, frequency_band=[10.0, 400.0],
-            filter_order=4.0, lowpass_freq=6.0):
-        super(TaskExtractAndFilterEMG, self).__init__(study)
-        self.name = study.name + '_extract_and_filter_emg'
-        self.labels = ['tibant_l', 'soleus_l', 'gasmed_l', 'semitend_l', 
-                       'vaslat_l', 'recfem_l','glmax_l','glmed_l', 'tibant_r', 
-                       'soleus_r', 'gasmed_r', 'semitend_r', 'vaslat_r', 
-                       'recfem_r','glmax_r','glmed_r']
-        self.sample_rate = 1000 # Hz
-        self.frequency_band = frequency_band
-        self.filter_order = filter_order
-        self.lowpass_freq = lowpass_freq
-
-        subjects = ['subject%02i' % subj for subj in subjects]
-        for subject in subjects:
-            # for side in ['_left', '_right']:
-            expdata_path = os.path.join(study.config['results_path'], 
-                    'experiments', subject, f'unperturbed', 
-                    'expdata')
-            self.add_action(
-                [os.path.join(expdata_path, 
-                    'emg.mat').replace('\\','\\\\')],
-                [os.path.join(expdata_path, 
-                    'emg.sto').replace('\\','\\\\'),
-                 os.path.join(expdata_path, 
-                    'emg_filtered.png').replace('\\','\\\\')],
-                self.extract_and_filter_emg)
-
-    def extract_and_filter_emg(self, file_dep, target):
-
-        from scipy.signal import butter
-        from scipy.signal import filtfilt
-
-        mat = loadmat(file_dep[0])
-        
-        emg = mat['data']['Analog'][0][0][0][0][-1][:,24:40]
-        emgFiltered = np.zeros_like(emg)
-        emgUnfiltered = np.zeros_like(emg)
-        nrows = emg.shape[0]
-        ncols = emg.shape[1]
-
-        Wn = [wn / (0.5 * self.sample_rate) for wn in self.frequency_band]
-        b_bp, a_bp = butter(self.filter_order, Wn, 'bandpass')
-        Wn_low = self.lowpass_freq / (0.5 * self.sample_rate)
-        b_low, a_low = butter(self.filter_order, Wn_low, 'low')
-        for i in np.arange(ncols):
-            
-            # bandpass filter
-            emgFiltered[:, i] = filtfilt(b_bp, a_bp, emg[:, i])
-            emgUnfiltered[:, i] = filtfilt(b_bp, a_bp, emg[:, i])
-            
-            # demean
-            emgFiltered[:, i] = emgFiltered[:, i] - np.mean(emgFiltered[:, i])
-            emgUnfiltered[:, i] = emgUnfiltered[:, i] - np.mean(emgUnfiltered[:, i])
-            
-            # rectify
-            emgFiltered[:, i] = np.abs(emgFiltered[:, i])
-            emgUnfiltered[:, i] = np.abs(emgUnfiltered[:, i])
-                
-            # lowpass filter
-            emgFiltered[:, i] = filtfilt(b_low, a_low, emgFiltered[:, i])
-            
-            # normalize
-            emgFiltered[:, i] = emgFiltered[:, i] / np.max(emgFiltered[:, i])
-            emgUnfiltered[:, i] = emgUnfiltered[:, i] / np.max(emgUnfiltered[:, i])
-
-        # write to file
-        time = np.linspace(0, (nrows-1)/1000, num=nrows)
-        timeVec = osim.StdVectorDouble()
-        for i in np.arange(nrows):
-           timeVec.append(time[i])
-        
-        emgTable = osim.TimeSeriesTable(timeVec)
-
-        for j in np.arange(ncols):
-           col = osim.Vector(nrows, 0.0)
-           label = self.labels[j]
-           for i in np.arange(nrows):
-               col.set(int(i), float(emgFiltered[i, j]))
-           
-           emgTable.appendColumn(label, col)
-        
-        sto = osim.STOFileAdapter()
-        sto.write(emgTable, target[0])
-
-        # plot
-        fig = pl.figure(figsize=(12, 12))
-        side = np.round(np.sqrt(ncols))
-
-        istart = 8000
-        iend = 12000
-        for j in np.arange(ncols):
-            ax = fig.add_subplot(int(side), int(side), int(j+1))
-            ax.plot(time[istart:iend], emgUnfiltered[istart:iend, j], 
-                lw=2, color='black')
-            ax.plot(time[istart:iend], emgFiltered[istart:iend, j], 
-                lw=2, color='red')
-            ax.set_title(self.labels[j])
-
-        fig.tight_layout()
-        fig.savefig(target[1])
-        pl.close()
-
-
-class TaskExtractAndFilterPerturbationForces(osp.StudyTask):
-    REGISTRY = []
-    def __init__(self, study, subjects, lowpass_freq=10.0, 
-            filter_order=4.0, threshold=25, gaussian_smoothing_sigma=15):
-        super(TaskExtractAndFilterPerturbationForces, self).__init__(study)
-        self.name = study.name + '_extract_and_filter_perturbation_forces'
-        self.sample_rate = 1000 # Hz
-        self.lowpass_freq = lowpass_freq
-        self.filter_order = filter_order
-        self.threshold = threshold
-        self.gaussian_smoothing_sigma = gaussian_smoothing_sigma
-
-        subjects = ['subject%02i' % subj for subj in subjects]
-        for subject in subjects:
-            # for side in ['_left', '_right']:
-            expdata_path = os.path.join(study.config['results_path'], 
-                    'experiments', subject, f'unperturbed', 
-                    'expdata')
-            self.add_action(
-                [os.path.join(expdata_path, 
-                    'speedgoat.mat').replace('\\','\\\\')],
-                [os.path.join(expdata_path, 
-                    'perturbation_force.sto').replace('\\','\\\\'),
-                 os.path.join(expdata_path, 
-                    'perturbation_force_filtered.png').replace('\\','\\\\')],
-                self.extract_and_filter_perturbation_force)
-
-    def extract_and_filter_perturbation_force(self, file_dep, target):
-
-        from scipy.signal import butter
-        from scipy.signal import filtfilt
-
-        mat = loadmat(file_dep[0])
-        perturbForces = mat['speedgoatDataTrimmed'][0][0]['data'][:, 4:8]
-
-        nrows = perturbForces.shape[0]
-        ncols = perturbForces.shape[1]
-
-        Wn = self.lowpass_freq / (0.5 * self.sample_rate)
-        b, a = butter(self.filter_order, Wn, 'low')
-        
-        perturbForcesFiltered = np.zeros_like(perturbForces)
-        for icol in np.arange(ncols):
-            if np.max(perturbForces[:, icol]) < 100: continue
-            for irow in np.arange(nrows):
-                if perturbForces[irow, icol] > self.threshold:
-                    perturbForcesFiltered[irow, icol] = \
-                        perturbForces[irow, icol]
-
-            perturbForcesFiltered[:, icol] = gaussian_filter1d(
-                perturbForcesFiltered[:, icol], self.gaussian_smoothing_sigma)   
- 
-        # write to file
-        time = np.linspace(0, (nrows-1)/1000, num=nrows)
-        timeVec = osim.StdVectorDouble()
-        for i in np.arange(nrows):
-           timeVec.append(time[i])
-
-        perturbTable = osim.TimeSeriesTable(timeVec)
-        for icol in np.arange(ncols):
-            perturbForceVec = osim.Vector(nrows, 0.0)
-            for irow in np.arange(nrows):
-               perturbForceVec.set(int(irow), perturbForcesFiltered[irow, icol])
-
-            perturbTable.appendColumn(f'perturbation_force_{icol}', 
-                perturbForceVec)
-
-        sto = osim.STOFileAdapter()
-        sto.write(perturbTable, target[0]) 
-
-        # Detect onset of perturbation
-        # ----------------------------
-        istart = 9000
-        iend = 11000
-
-        index_range = range(istart, iend)
-
-        threshold = 40 # Newtons
-        def zero(number):
-            return abs(number) < threshold
-
-        def onset_times(ordinate):
-            onsets = list()
-            for i in index_range:
-                # 'Skip' first value because we're going to peak back at previous
-                # index.
-                if zero(ordinate[i - 1]) and (not zero(ordinate[i])):
-                    onsets.append(time[i])
-            return np.array(onsets)
-
-        onsets = list()
-        onsets.append(onset_times(perturbForcesFiltered[:,0]))
-        onsets.append(onset_times(perturbForcesFiltered[:,1]))
-        onsets.append(onset_times(perturbForcesFiltered[:,2]))
-        onsets.append(onset_times(perturbForcesFiltered[:,3]))
-
-        # plot
-        fig = pl.figure(figsize=(8, 8))
-
-        istart = 9000
-        iend = 11000
-        for icol in np.arange(ncols):
-            ax = fig.add_subplot(2, 2, icol+1)
-            ax.plot(time[istart:iend], perturbForces[istart:iend, icol], 
-                lw=2, color='black')
-            ax.plot(time[istart:iend], perturbForcesFiltered[istart:iend, icol], 
-                lw=2, color='red')
-            ax.set_title(f'perturbation_force_{icol}')
-
-            theseOnsets = onsets[icol]
-            ones = np.array([1, 1])
-            for i, onset in enumerate(theseOnsets):
-                if i == 0: kwargs = {'label': 'onsets'}
-                else: kwargs = dict()
-                pl.plot(onset * ones, ax.get_ylim(), 'b', **kwargs)
-                pl.text(onset, .03 * ax.get_ylim()[1], ' %.3f' % round(onset, 3))
-
-        fig.tight_layout()
-        fig.savefig(target[1])
-        pl.close()
+    def __init__(self, trial):
+        super(TaskUpdateGroundReactionColumnLabels, self).__init__(trial)
+        self.name = trial.id + '_update_grf_column_labels'
+        self.add_action(
+                [os.path.join(trial.expdata_path, 'ground_reaction_orig.mot')],
+                [trial.ground_reaction_fpath],
+                self.dispatch)
+    def dispatch(self, file_dep, target):
+        from perimysium.dataman import storage2numpy, ndarray2storage
+        import re
+        data = storage2numpy(file_dep[0])
+        new_names = list()
+        for name in data.dtype.names:
+            if name == 'time':
+                new_name = name
+            elif name.endswith('_1'):
+                new_name = re.sub('ground_(.*)_(.*)_1', 'ground_\\1_l_\\2',
+                        name)
+            else:
+                new_name = re.sub('ground_(.*)_(.*)', 'ground_\\1_r_\\2',
+                        name)
+            new_names.append(new_name)
+        data.dtype.names = new_names
+        ndarray2storage(data, target[0])
 
 
 class TaskScaleMuscleMaxIsometricForce(osp.SubjectTask):

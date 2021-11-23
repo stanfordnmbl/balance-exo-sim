@@ -1,16 +1,12 @@
 # Data processing
 # ---------------
 # doit ankle_perturb_sim_copy_data                                
-# doit ankle_perturb_sim_transform_experimental_data                 
-# doit ankle_perturb_sim_extract_and_filter_emg
-# doit ankle_perturb_sim_extract_and_filter_perturbation_forces
-# doit ankle_perturb_sim_filter_and_shift_grfs
 
 # Model scaling and adjustments
 # -----------------------------
 # doit ankle_perturb_sim_copy_generic_model_files
-# doit subject01_scale_setup
-# doit subject01_scale
+doit subject01_scale_setup
+doit subject01_scale
 # doit subject01_scale_max_force
 # doit subject01_adjust_scaled_model
 
@@ -38,17 +34,17 @@
 # Perturbed walking
 # -------------------
 # 50% peak time
-doit subject01_moco_perturb_torque25_time50_delay1500
-doit subject01_moco_perturb_torque25_time50_delay1500_post
-doit subject01_moco_perturb_torque50_time50_delay1500
-doit subject01_moco_perturb_torque50_time50_delay1500_post
-doit subject01_moco_perturb_torque75_time50_delay1500
-doit subject01_moco_perturb_torque75_time50_delay1500_post
-doit subject01_moco_perturb_torque100_time50_delay1500
-doit subject01_moco_perturb_torque100_time50_delay1500_post
-doit plot_grfs_ankle_perturb_time50_delay1500_subject01
-doit plot_com_versus_ankle_perturb_torque_time50_delay1500
-doit plot_ankle_perturb_torques_time50_subject01
+# doit subject01_moco_perturb_torque25_time50_delay1500
+# doit subject01_moco_perturb_torque25_time50_delay1500_post
+# doit subject01_moco_perturb_torque50_time50_delay1500
+# doit subject01_moco_perturb_torque50_time50_delay1500_post
+# doit subject01_moco_perturb_torque75_time50_delay1500
+# doit subject01_moco_perturb_torque75_time50_delay1500_post
+# doit subject01_moco_perturb_torque100_time50_delay1500
+# doit subject01_moco_perturb_torque100_time50_delay1500_post
+# doit plot_grfs_ankle_perturb_time50_delay1500_subject01
+# doit plot_com_versus_ankle_perturb_torque_time50_delay1500
+# doit plot_ankle_perturb_torques_time50_subject01
 
 # 55% peak time
 # doit subject01_moco_perturb_torque25_time55_delay1500
@@ -64,15 +60,15 @@ doit plot_ankle_perturb_torques_time50_subject01
 # doit plot_ankle_perturb_torques_time55_subject01
 
 # 60% peak time
-doit subject01_moco_perturb_torque25_time60_delay1500
-doit subject01_moco_perturb_torque25_time60_delay1500_post
-doit subject01_moco_perturb_torque50_time60_delay1500
-doit subject01_moco_perturb_torque50_time60_delay1500_post
-doit subject01_moco_perturb_torque75_time60_delay1500
-doit subject01_moco_perturb_torque75_time60_delay1500_post
-doit subject01_moco_perturb_torque100_time60_delay1500
-doit subject01_moco_perturb_torque100_time60_delay1500_post
-doit plot_grfs_ankle_perturb_time60_delay1500_subject01
-doit plot_com_versus_ankle_perturb_torque_time60_delay1500
-doit plot_ankle_perturb_torques_time60_subject01
+# doit subject01_moco_perturb_torque25_time60_delay1500
+# doit subject01_moco_perturb_torque25_time60_delay1500_post
+# doit subject01_moco_perturb_torque50_time60_delay1500
+# doit subject01_moco_perturb_torque50_time60_delay1500_post
+# doit subject01_moco_perturb_torque75_time60_delay1500
+# doit subject01_moco_perturb_torque75_time60_delay1500_post
+# doit subject01_moco_perturb_torque100_time60_delay1500
+# doit subject01_moco_perturb_torque100_time60_delay1500_post
+# doit plot_grfs_ankle_perturb_time60_delay1500_subject01
+# doit plot_com_versus_ankle_perturb_torque_time60_delay1500
+# doit plot_ankle_perturb_torques_time60_subject01
 

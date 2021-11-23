@@ -10,7 +10,7 @@
 		<!--Time range over which the inverse dynamics problem is solved.-->
 		<time_range> @INIT_TIME@ @FINAL_TIME@</time_range>
 		<!--List of forces by individual or grouping name (e.g. All, actuators, muscles, ...) to be excluded when computing model dynamics.-->
-        <forces_to_exclude> All</forces_to_exclude>
+        <forces_to_exclude> Muscles</forces_to_exclude>
 		<!--XML file (.xml) containing the external loads applied to the model as a set of ExternalForce(s).-->
         <external_loads_file> external_loads.xml</external_loads_file>
 		<!--The name of the file containing coordinate data. Can be a motion (.mot) or a states (.sto) file.-->
