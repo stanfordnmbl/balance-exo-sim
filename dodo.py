@@ -42,27 +42,6 @@ model_fname = ('Rajagopal2015_passiveCal_hipAbdMoved_noArms'
 generic_model_fpath = os.path.join('model', model_fname)
 study = osp.Study('ankle_perturb_sim', generic_model_fpath=generic_model_fpath)
 
-# Bump'em module locations
-# ------------------------
-import opensim as osim
-study.module0 = osim.Vec3(2.0870, 0.9810, -0.9907)
-study.module1 = osim.Vec3(0.5568, 0.9748, -2.6964)
-study.module2 = osim.Vec3(-0.8451, 1.0016, -0.9612)
-study.module3 = osim.Vec3(0.6447, 0.9897, 0.4308)
-
-# Rotate the module location to match the data transformation
-# performed by TaskTransformExperimentalData below.
-import numpy as np
-def rotateVec(vec):
-    R = osim.Rotation(np.deg2rad(-90), osim.CoordinateAxis(1))
-    vec_rotated = R.multiply(vec)
-    return vec_rotated
-
-study.module0 = rotateVec(study.module0)
-study.module1 = rotateVec(study.module1)
-study.module2 = rotateVec(study.module2)
-study.module3 = rotateVec(study.module3)
-
 # Set the treadmill walking speed for the study
 study.walking_speed = 1.25
 
@@ -71,28 +50,27 @@ study.walking_speed = 1.25
 study.add_task(TaskCopyGenericModelFilesToResults)
 
 # Model markers to compute errors for
-marker_suffix = ['ASI', 'PSI', 'TH1', 'TH2', 'TH3', 'CAL', 'TOE', 
-                 'MT5', 'LKN', 'SH1', 'SH2', 'SH3', 'LAK']
+marker_suffix = ['ASI', 'PSI', 'TH1', 'TH2', 'TH3', 'CAL', 'TOE', 'MT5']
 error_markers = ['*' + marker for marker in marker_suffix] 
 error_markers.append('CLAV')
 error_markers.append('C7')
 study.error_markers = error_markers
 
-scale = 0.01
+scale = 1.0
 study.weights = {
-    'state_tracking_weight':  1e5 * scale,
-    'control_weight':         5e3 * scale,
-    'grf_tracking_weight':    5e1 * scale,
+    'state_tracking_weight':  1e3 * scale,
+    'control_weight':         1e1 * scale,
+    'grf_tracking_weight':    1e0 * scale,
     'com_tracking_weight':    0 * scale,
     'base_of_support_weight': 0 * scale,
     'head_accel_weight':      0 * scale,
-    'upright_torso_weight':   1e3 * scale,
+    'upright_torso_weight':   1e0 * scale,
     'torso_tracking_weight':  0 * scale,
     'foot_tracking_weight':   0 * scale,
     'pelvis_tracking_weight': 0 * scale, 
-    'aux_deriv_weight':       1e3 * scale,
+    'aux_deriv_weight':       1e2 * scale,
     'metabolics_weight':      0 * scale,
-    'accel_weight':           1e5 * scale,
+    'accel_weight':           1e4 * scale,
     'regularization_weight':  0 * scale,
     }
 
@@ -100,6 +78,18 @@ study.weights = {
 # -----------------
 import subject01
 subject01.add_to_study(study)
+
+import subject02
+subject02.add_to_study(study)
+
+import subject04
+subject04.add_to_study(study)
+
+import subject18
+subject18.add_to_study(study)
+
+import subject19
+subject19.add_to_study(study)
 
 # Copy mocap data
 # ---------------

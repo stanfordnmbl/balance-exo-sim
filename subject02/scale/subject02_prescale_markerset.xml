@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8" ?>
 <OpenSimDocument Version="30000">
-    <MarkerSet name="@STUDYNAME@_@SUBJECTNAME@_prescale">
+    <MarkerSet name="ankle_perturb_sim_subject02_prescale">
         <objects>
 			<Marker name="RACR">
 				<!--Body segment in the model on which the marker resides.-->

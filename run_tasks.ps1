@@ -1,35 +1,81 @@
-# Data processing
+# Data pre-processing
 # ---------------
-# doit ankle_perturb_sim_copy_data                                
+# doit ankle_perturb_sim_copy_data
+# doit ankle_perturb_sim_copy_generic_model_files                              
 
 # Model scaling and adjustments
 # -----------------------------
-# doit ankle_perturb_sim_copy_generic_model_files
-doit subject01_scale_setup
-doit subject01_scale
-# doit subject01_scale_max_force
-# doit subject01_adjust_scaled_model
+# doit subject*_scale_setup
+# doit subject*_scale
+# doit subject*_scale_max_force
+# doit subject*_adjust_scaled_model
 
 # Inverse kinematics and inverse dynamics
-# ---------------------------------------       
-# doit subject01_unperturbed_gait_landmarks            
-# doit subject01_unperturbed_ik                                  
-# doit subject01_unperturbed_ik_post 
-# doit subject01_unperturbed_ik_setup
-# doit subject01_unperturbed_id                                 
-# doit subject01_unperturbed_id_setup   
-# doit subject01_unperturbed_joint_angle_standard_deviations
-# doit subject01_unperturbed_trim_tracking_data
+# --------------------------------------- 
+# doit subject04_walk2_update_ground_reaction_labels
+# doit subject04_walk2_filter_ground_reactions      
+# doit subject04_walk2_gait_landmarks 
+# doit subject04_walk2_ik_setup           
+# doit subject04_walk2_ik                                  
+# doit subject04_walk2_ik_post
+# doit subject04_walk2_id_setup    
+# doit subject04_walk2_id                                 
+# doit subject04_walk2_joint_angle_standard_deviations
+# doit subject04_walk2_trim_tracking_data
 
 # Unperturbed walking
 # -------------------
-# doit subject01_moco_unperturbed_guess_mesh50_costsDisabled
-# doit subject01_moco_unperturbed_guess_mesh50_costsDisabled_periodic
-# doit subject01_moco_unperturbed_guess_mesh50_periodic
-# doit subject01_moco_unperturbed_mesh50
-# doit subject01_moco_unperturbed_mesh35
-# doit subject01_moco_unperturbed_mesh20
-# doit subject01_moco_unperturbed_mesh10
+# doit subject01_moco_unperturbed_guess_mesh35_scale1000000000
+# doit subject01_moco_unperturbed_guess_mesh35_scale10000000
+# doit subject01_moco_unperturbed_guess_mesh35_scale100000
+# doit subject01_moco_unperturbed_guess_mesh35_scale1000
+# doit subject01_moco_unperturbed_guess_mesh35_scale1
+# doit subject01_moco_unperturbed_guess_mesh35_scale1_periodic
+# doit subject01_moco_unperturbed_guess_mesh20_scale1_periodic
+# doit subject01_moco_unperturbed
+
+# doit subject02_moco_unperturbed_guess_mesh35_scale1000000000
+# doit subject02_moco_unperturbed_guess_mesh35_scale10000000
+# doit subject02_moco_unperturbed_guess_mesh35_scale100000
+# doit subject02_moco_unperturbed_guess_mesh35_scale1000
+# doit subject02_moco_unperturbed_guess_mesh35_scale1
+# doit subject02_moco_unperturbed_guess_mesh35_scale1_periodic
+# doit subject02_moco_unperturbed_guess_mesh20_scale1_periodic
+# doit subject02_moco_unperturbed
+
+# doit subject04_moco_unperturbed_guess_mesh35_scale100000_reserve1000
+# doit subject04_moco_unperturbed_guess_mesh35_scale1000_reserve1000
+# doit subject04_moco_unperturbed_guess_mesh35_scale100_reserve100
+# doit subject04_moco_unperturbed_guess_mesh35_scale1_reserve100
+# doit subject04_moco_unperturbed_guess_mesh35_scale1_reserve10
+# doit subject04_moco_unperturbed_guess_mesh35_scale1
+# doit subject04_moco_unperturbed_guess_mesh35_scale1_periodic
+# doit subject04_moco_unperturbed_guess_mesh20_scale1_periodic
+# doit subject04_moco_unperturbed
+
+# doit subject18_moco_unperturbed_guess_mesh35_scale1000000000
+# doit subject18_moco_unperturbed_guess_mesh35_scale10000000
+# doit subject18_moco_unperturbed_guess_mesh35_scale100000
+# doit subject18_moco_unperturbed_guess_mesh35_scale1000
+# doit subject18_moco_unperturbed_guess_mesh35_scale1
+# doit subject18_moco_unperturbed_guess_mesh35_scale1_periodic
+# doit subject18_moco_unperturbed_guess_mesh20_scale1_periodic
+# doit subject18_moco_unperturbed
+
+# doit subject19_moco_unperturbed_guess_mesh35_scale1000000000
+# doit subject19_moco_unperturbed_guess_mesh35_scale10000000
+# doit subject19_moco_unperturbed_guess_mesh35_scale100000
+# doit subject19_moco_unperturbed_guess_mesh35_scale1000
+# doit subject19_moco_unperturbed_guess_mesh35_scale1
+# doit subject19_moco_unperturbed_guess_mesh35_scale1_periodic
+# doit subject19_moco_unperturbed_guess_mesh20_scale1_periodic
+# doit subject19_moco_unperturbed
+
+doit subject01_moco_unperturbed
+doit subject02_moco_unperturbed
+doit subject04_moco_unperturbed
+doit subject18_moco_unperturbed
+doit subject19_moco_unperturbed
 
 # Perturbed walking
 # -------------------

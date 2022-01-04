@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8" ?>
 <OpenSimDocument Version="30000">
-	<ExternalLoads name="@STUDYNAME@_@NAME@_id_ground_reaction">
+	<ExternalLoads name="ankle_perturb_sim_subject18_walk2_id_ground_reaction">
 		<objects>
 			<ExternalForce name="Right_GRF">
 				<!--Name of the body the force is applied to.-->

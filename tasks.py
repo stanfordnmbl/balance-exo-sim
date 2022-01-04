@@ -82,7 +82,7 @@ class TaskCopyMotionCaptureData(osp.TaskCopyMotionCaptureData):
                             '%s%02i_gait_controls.sto' % (datastr, arg[0])
                             ).replace('\\','\\\\'),
                         os.path.join('experiments', subject.name,
-                            condname, 'expdata', 'emg_with_headers.sto'
+                            condname, 'expdata', 'emg.sto'
                             ).replace('\\','\\\\')
                         ))
             regex_replacements.append((
@@ -95,6 +95,103 @@ class TaskCopyMotionCaptureData(osp.TaskCopyMotionCaptureData):
 
         super(TaskCopyMotionCaptureData, self).__init__(study,
                 regex_replacements)
+
+
+class TaskCopyMotionCaptureData(osp.TaskCopyMotionCaptureData):
+    REGISTRY = []
+    def __init__(self, study, walk125=None):
+        regex_replacements = list()
+
+        default_args = dict()
+        default_args['walk125'] = walk125
+
+        for subject in study.subjects:
+            cond_args = subject.cond_args            
+            if 'walk125' in cond_args: walk125 = cond_args['walk125']
+            else: walk125 = default_args['walk125']
+
+            for datastr, condname, arg in [('Walk_125', 'walk2', walk125)]:
+                # Marker trajectories.
+                regex_replacements.append(
+                    (
+                        os.path.join(subject.name, 'Data',
+                            '%s %02i.trc' % (datastr, arg[0])).replace('\\',
+                            '\\\\'),
+                        os.path.join('experiments',
+                            subject.name, condname, 'expdata', 
+                            'marker_trajectories.trc').replace('\\','\\\\')
+                        ))
+                # Ground reaction.
+                regex_replacements.append(
+                    (
+                        os.path.join(subject.name, 'Data',
+                            '%s %02i%s.mot' % (datastr, arg[0],arg[1])).replace(
+                                '\\','\\\\'),
+                        os.path.join('experiments', subject.name, condname,
+                            'expdata','ground_reaction_orig.mot').replace(
+                                '\\','\\\\') 
+                        )) 
+                # EMG
+                regex_replacements.append(
+                    (
+                        os.path.join(subject.name, 'Results', datastr,
+                            '%s%02i_gait_controls.sto' % (datastr, arg[0])
+                            ).replace('\\','\\\\'),
+                        os.path.join('experiments', subject.name,
+                            condname, 'expdata', 'emg.sto'
+                            ).replace('\\','\\\\')
+                        ))
+            regex_replacements.append((
+                        os.path.join(subject.name, 'Data',
+                            'Static_FJC.trc').replace('\\','\\\\'),
+                        os.path.join('experiments', subject.name, 'static',
+                            'expdata',
+                            'marker_trajectories.trc').replace('\\','\\\\') 
+                        ))
+
+        super(TaskCopyMotionCaptureData, self).__init__(study,
+                regex_replacements)
+
+
+class TaskAddStaticTrialProjectedMarkers(osp.StudyTask):
+    REGISTRY = []
+    def __init__(self, study):
+        super(TaskAddStaticTrialProjectedMarkers, self).__init__(study)
+        self.name = '%s_add_static_trial_projected_markers' % study.name
+        self.doc = 'Add projected foot markers for static trial.'
+        self.projected_markers = ['MT5', 'TOE', 'CAL', 'LMAL', 'MMAL']
+
+        file_dep = list()
+        target = list()
+        for subject in study.subjects:
+            file_dep += [os.path.join(subject.results_exp_path,
+                'static', 'expdata', 'marker_trajectories_orig.trc')]
+            target += [os.path.join(subject.results_exp_path,
+                'static', 'expdata', 'marker_trajectories.trc')]
+
+        self.add_action(file_dep, target, self.remove_file_headers)
+
+    def remove_file_headers(self, file_dep, target):
+        
+        for ifile, fpath in enumerate(file_dep):
+            markers = osim.TimeSeriesTableVec3(fpath)
+            nrow = markers.getNumRows()
+            for side in ['L', 'R']:
+                for marker in self.projected_markers:
+                    marker_name = f'{side}{marker}'
+                    proj_name = f'{side}{marker}_proj'
+
+                    col = markers.getDependentColumn(marker_name)
+
+                    col_proj = osim.VectorVec3(nrow, osim.Vec3(0))
+                    for i in np.arange(nrow):
+                        vec3 = col[int(i)]
+                        vec3_proj = osim.Vec3(vec3[0], 0.0, vec3[2])
+                        col_proj.set(int(i), vec3_proj)
+
+                    markers.appendColumn(proj_name, col_proj)
+
+            osim.TRCFileAdapter().write(markers, target[ifile])
 
 
 class TaskRemoveEMGFileHeaders(osp.StudyTask):
@@ -123,7 +220,7 @@ class TaskRemoveEMGFileHeaders(osp.StudyTask):
             if os.path.isfile(target[i]):
                 print(f'File {target[i]} already exists. Deleting...')
                 os.remove(target[i])
-            print('Writing to {target[i]}')
+            print(f'Writing to {target[i]}')
             with open(target[i], 'w') as outfile:
                 prev_line = ''
                 writing = False
@@ -137,19 +234,19 @@ class TaskRemoveEMGFileHeaders(osp.StudyTask):
                     prev_line = line
 
 
-class TaskUpdateGroundReactionColumnLabels(osp.TrialTask):
+class TaskUpdateGroundReactionLabels(osp.TrialTask):
     REGISTRY = []
     def __init__(self, trial):
-        super(TaskUpdateGroundReactionColumnLabels, self).__init__(trial)
-        self.name = trial.id + '_update_grf_column_labels'
+        super(TaskUpdateGroundReactionLabels, self).__init__(trial)
+        self.name = trial.id + '_update_ground_reaction_labels'
         self.add_action(
                 [os.path.join(trial.expdata_path, 'ground_reaction_orig.mot')],
-                [trial.ground_reaction_fpath],
+                [os.path.join(trial.expdata_path, 'ground_reaction_unfiltered.mot')],
                 self.dispatch)
+
     def dispatch(self, file_dep, target):
-        from perimysium.dataman import storage2numpy, ndarray2storage
         import re
-        data = storage2numpy(file_dep[0])
+        data = util.storage2numpy(file_dep[0])
         new_names = list()
         for name in data.dtype.names:
             if name == 'time':
@@ -162,7 +259,142 @@ class TaskUpdateGroundReactionColumnLabels(osp.TrialTask):
                         name)
             new_names.append(new_name)
         data.dtype.names = new_names
-        ndarray2storage(data, target[0])
+        util.ndarray2storage(data, target[0])
+
+
+class TaskFilterGroundReactions(osp.TrialTask):
+    REGISTRY = []
+    def __init__(self, trial, sample_rate=2000,
+                 critically_damped_order=4, 
+                 critically_damped_cutoff_frequency=20,
+                 gaussian_smoothing_sigma=5):
+        super(TaskFilterGroundReactions, self).__init__(trial)
+        self.name = trial.id + '_filter_ground_reactions'
+
+        # Recorded force sample rate (Hz)
+        self.sample_rate = sample_rate
+
+        # Critically damped filter order and cutoff frequency
+        self.critically_damped_order = critically_damped_order
+        self.critically_damped_cutoff_frequency = \
+            critically_damped_cutoff_frequency
+
+        # Smoothing factor for Gaussian smoothing process
+        # trial.ground_reaction_fpath
+        self.gaussian_smoothing_sigma = gaussian_smoothing_sigma
+
+        self.add_action(
+            [os.path.join(trial.expdata_path, 
+                'ground_reaction_unfiltered.mot').replace('\\', '\\\\')],
+            [os.path.join(trial.expdata_path, 
+                'ground_reaction.mot').replace('\\', '\\\\'),
+             os.path.join(trial.expdata_path, 
+                'ground_reactions_filtered.png').replace('\\', '\\\\')],
+            self.filter_ground_reactions)
+
+    def filter_ground_reactions(self, file_dep, target):
+
+        grfs = osim.TimeSeriesTable(file_dep[0])
+        nrow = grfs.getNumRows()
+        time = grfs.getIndependentColumn()
+        sides = ['l', 'r']
+
+        forces = {side: np.zeros((nrow, 3)) for side in sides}
+        moments = {side: np.zeros((nrow, 3)) for side in sides}
+        cops = {side: np.zeros((nrow, 3)) for side in sides}
+
+        for side in sides:
+            forces[side][:, 0] = util.toarray(grfs.getDependentColumn(f'ground_force_{side}_vx'))
+            forces[side][:, 1] = util.toarray(grfs.getDependentColumn(f'ground_force_{side}_vy'))
+            forces[side][:, 2] = util.toarray(grfs.getDependentColumn(f'ground_force_{side}_vz'))
+            moments[side][:, 0] = util.toarray(grfs.getDependentColumn(f'ground_torque_{side}_x'))
+            moments[side][:, 1] = util.toarray(grfs.getDependentColumn(f'ground_torque_{side}_y'))
+            moments[side][:, 2] = util.toarray(grfs.getDependentColumn(f'ground_torque_{side}_z'))
+            cops[side][:, 0] = util.toarray(grfs.getDependentColumn(f'ground_force_{side}_px'))
+            cops[side][:, 1] = util.toarray(grfs.getDependentColumn(f'ground_force_{side}_py'))
+            cops[side][:, 2] = util.toarray(grfs.getDependentColumn(f'ground_force_{side}_pz'))
+
+        # Plot raw GRF (before cutting off or filtering)
+        fig = pl.figure(figsize=(12, 10))
+        ax_FX = fig.add_subplot(6, 1, 1)
+        ax_FY = fig.add_subplot(6, 1, 2)
+        ax_FZ = fig.add_subplot(6, 1, 3)
+        ax_MX = fig.add_subplot(6, 1, 4)
+        ax_MY = fig.add_subplot(6, 1, 5)
+        ax_MZ = fig.add_subplot(6, 1, 6)
+        for iside, side in enumerate(sides):
+            ax_FX.plot(time, forces[side][:, 0], lw=2, color='black')
+            ax_FY.plot(time, forces[side][:, 1], lw=2, color='black')
+            ax_FZ.plot(time, forces[side][:, 2], lw=2, color='black')
+            ax_MX.plot(time, moments[side][:, 0], lw=2, color='black')
+            ax_MY.plot(time, moments[side][:, 1], lw=2, color='black')
+            ax_MZ.plot(time, moments[side][:, 2], lw=2, color='black')
+
+        # Gaussian filter
+        # ---------------
+        for side in sides:
+            for item in [forces, moments]:
+                for i in np.arange(item[side].shape[1]):
+                    item[side][:, i] = gaussian_filter1d(item[side][:, i], 
+                        self.gaussian_smoothing_sigma)
+
+        # Critically damped filter (prevents overshoot).
+        for item in [forces, moments]:
+            for side in sides:
+                for direc in range(3):
+                    item[side][:, direc] = util.filter_critically_damped(
+                            item[side][:, direc], self.sample_rate,
+                            self.critically_damped_cutoff_frequency,
+                            order=self.critically_damped_order)
+
+        # Create structured array for MOT file.
+        # -------------------------------------
+        dtype_names = ['time']
+        data_dict = dict()
+        for side in sides:
+            # Forces
+            for idirec, direc in enumerate(['x', 'y', 'z']):
+                colname = f'ground_force_{side}_v{direc}'
+                dtype_names.append(colname)
+                data_dict[colname] = forces[side][:, idirec].reshape(-1)
+
+            # Centers of pressure
+            for idirec, direc in enumerate(['x', 'y', 'z']):
+                colname = f'ground_force_{side}_p{direc}'
+                dtype_names.append(colname)
+                data_dict[colname] = cops[side][:, idirec].reshape(-1)
+
+            # Moments
+            for idirec, direc in enumerate(['x', 'y', 'z']):
+                colname = f'ground_torque_{side}_{direc}'
+                dtype_names.append(colname)
+                data_dict[colname] = moments[side][:, idirec].reshape(-1)
+
+        mot_data = np.empty(nrow, dtype={'names': dtype_names,
+            'formats': len(dtype_names) * ['f8']})
+        mot_data['time'] = time #[[0] + range(nrow-1)]
+        for k, v in data_dict.items():
+            mot_data[k] = v
+
+        util.ndarray2storage(mot_data, target[0], name='ground reactions')
+
+        # Plot filtered GRFs
+        # ------------------
+        for side in sides:
+            ax_FX.plot(time, forces[side][:, 0], lw=1.5, color='red')
+            ax_FY.plot(time, forces[side][:, 1], lw=1.5, color='red')
+            ax_FZ.plot(time, forces[side][:, 2], lw=1.5, color='red')
+            ax_MX.plot(time, moments[side][:, 0], lw=1.5, color='red')
+            ax_MY.plot(time, moments[side][:, 1], lw=1.5, color='red')
+            ax_MZ.plot(time, moments[side][:, 2], lw=1.5, color='red')
+        ax_FX.set_ylabel('FX')
+        ax_FY.set_ylabel('FY')
+        ax_FZ.set_ylabel('FZ')
+        ax_MX.set_ylabel('MX')
+        ax_MY.set_ylabel('MY')
+        ax_MZ.set_ylabel('MZ')
+        fig.savefig(target[1])
+        pl.close()
 
 
 class TaskScaleMuscleMaxIsometricForce(osp.SubjectTask):
@@ -260,6 +492,7 @@ class TaskAdjustScaledModel(osp.SubjectTask):
         super(TaskAdjustScaledModel, self).__init__(subject)
         self.subject = subject
         self.study = subject.study
+        self.mass = subject.mass
         self.name = '%s_adjust_scaled_model' % self.subject.name
         self.doc = 'Make adjustments to model marker post-scale'
         self.scaled_model_fpath = os.path.join(
@@ -290,23 +523,33 @@ class TaskAdjustScaledModel(osp.SubjectTask):
             loc.set(adj[0], adj[1])
             marker.set_location(loc)
 
-        # print('Unlocking subtalar joints...')
-        # coordSet = model.updCoordinateSet()
-        # for coordName in ['subtalar_angle']:
-        #     for side in ['_l', '_r']:
-        #         coord = coordSet.get(f'{coordName}{side}')
-        #         coord.set_locked(False)
-        #         coord.set_clamped(False)
+        print('Unlocking subtalar joints...')
+        coordSet = model.updCoordinateSet()
+        for coordName in ['subtalar_angle']:
+            for side in ['_l', '_r']:
+                coord = coordSet.get(f'{coordName}{side}')
+                coord.set_locked(False)
+                coord.set_clamped(False)
 
-        # print('Changing foot-ground contact disspation...')
-        # forceSet = model.updForceSet()
-        # for iforce in np.arange(forceSet.getSize()):
-        #     force = forceSet.get(int(iforce))
-        #     if 'contact' in force.getName():
-        #         SSHSF = osim.SmoothSphereHalfSpaceForce.safeDownCast(force)
-        #         SSHSF.set_dissipation(2.0)
-        #         SSHSF.set_stiffness(3e6)
+        print('Adding lumbar passive stiffness and damping...')
+        coordNames = ['lumbar_extension', 'lumbar_bending', 'lumbar_rotation']
+        stiffnesses = [1.0, 1.5, 0.5] # N-m/rad*kg
+        for coordName, stiffness in zip(coordNames, stiffnesses):
+            sgf = osim.SpringGeneralizedForce(coordName)
+            sgf.setName(f'passive_stiffness_{coordName}')
+            sgf.setStiffness(stiffness * self.mass)
+            sgf.setViscosity(1.0)
+            model.addForce(sgf)
 
+        print('Adding subtalar passive stiffness and damping...')
+        for coordName in ['subtalar_angle_r', 'subtalar_angle_l']:
+            sgf = osim.SpringGeneralizedForce(coordName)
+            sgf.setName(f'passive_stiffness_{coordName}')
+            sgf.setStiffness(5.0 * self.mass)
+            sgf.setViscosity(1.0)
+            model.addForce(sgf)
+
+        model.initSystem()
         model.finalizeConnections()
         model.printToXML(target[0])
 
@@ -393,11 +636,14 @@ class TaskMocoUnperturbedWalkingGuess(osp.TrialTask):
     REGISTRY = []
     def __init__(self, trial, initial_time, final_time, mesh_interval=0.02,
                 walking_speed=1.25, constrain_average_speed=True, guess_fpath=None, 
-                constrain_initial_state=False, periodic=True, 
-                costs_enabled=True, pelvis_boundary_conditions=True, **kwargs):
+                constrain_initial_state=False, periodic=True, cost_scale=1.0,
+                costs_enabled=True, pelvis_boundary_conditions=True,
+                reserve_strength=0, **kwargs):
         super(TaskMocoUnperturbedWalkingGuess, self).__init__(trial)
-        config_name = f'unperturbed_guess_mesh{int(1000*mesh_interval)}'
+        config_name = (f'unperturbed_guess_mesh{int(1000*mesh_interval)}'
+                       f'_scale{int(cost_scale)}')
         if not costs_enabled: config_name += f'_costsDisabled'
+        if reserve_strength: config_name += f'_reserve{reserve_strength}'
         if periodic: config_name += f'_periodic'
         self.config_name = config_name
         self.name = trial.subject.name + '_moco_' + config_name
@@ -405,6 +651,8 @@ class TaskMocoUnperturbedWalkingGuess(osp.TrialTask):
         self.final_time = final_time
         self.mesh_interval = mesh_interval
         self.walking_speed = walking_speed
+        self.weights = trial.study.weights
+        self.cost_scale = cost_scale
         self.root_dir = trial.study.config['doit_path']
         self.constrain_initial_state = constrain_initial_state
         self.constrain_average_speed = constrain_average_speed
@@ -412,6 +660,7 @@ class TaskMocoUnperturbedWalkingGuess(osp.TrialTask):
         self.costs_enabled = costs_enabled
         self.pelvis_boundary_conditions = pelvis_boundary_conditions
         self.guess_fpath = guess_fpath
+        self.reserve_strength = reserve_strength
 
         expdata_dir = os.path.join(trial.results_exp_path, 'tracking_data', 'expdata')
         extloads_dir = os.path.join(trial.results_exp_path, 'tracking_data', 'extloads')
@@ -434,7 +683,7 @@ class TaskMocoUnperturbedWalkingGuess(osp.TrialTask):
         self.emg_fpath = os.path.join(trial.results_exp_path, 'expdata', 
             'emg.sto')
 
-        self.add_action([trial.subject.scaled_model_fpath,
+        self.add_action([trial.subject.sim_model_fpath,
                          self.tracking_coordinates_fpath,
                          self.coordinates_std_fpath,
                          self.tracking_extloads_fpath,
@@ -446,22 +695,9 @@ class TaskMocoUnperturbedWalkingGuess(osp.TrialTask):
 
     def run_tracking_problem(self, file_dep, target):
 
-        weights = {
-            'state_tracking_weight'  : 1e-2,
-            'control_weight'         : 1e-2,
-            'grf_tracking_weight'    : 1e-4,
-            'com_tracking_weight'    : 1e-2,
-            'base_of_support_weight' : 0,
-            'head_accel_weight'      : 0,
-            'upright_torso_weight'   : 0,
-            'torso_tracking_weight'  : 0,
-            'foot_tracking_weight'   : 0, 
-            'pelvis_tracking_weight' : 0,
-            'aux_deriv_weight'       : 1e-3,
-            'metabolics_weight'      : 0,
-            'accel_weight'           : 1e-3,
-            'regularization_weight'  : 0
-        }
+        weights = copy.deepcopy(self.weights)
+        for weight_name in weights:
+            weights[weight_name] /= self.cost_scale
 
         config = MocoTrackConfig(
             self.config_name, self.config_name, 'black', weights,
@@ -495,6 +731,8 @@ class TaskMocoUnperturbedWalkingGuess(osp.TrialTask):
             self.mesh_interval, 
             self.walking_speed,
             [config],
+            reserves=bool(self.reserve_strength),
+            reserve_strength=self.reserve_strength
         )
 
         result.generate_results(self.result_fpath)
@@ -510,7 +748,7 @@ class TaskMocoUnperturbedWalking(osp.TrialTask):
                  periodic=True, two_cycles=False, **kwargs):
         super(TaskMocoUnperturbedWalking, self).__init__(trial)
         suffix = '_two_cycles' if two_cycles else ''
-        self.config_name = f'unperturbed{suffix}_mesh{int(1000*mesh_interval)}'
+        self.config_name = f'unperturbed{suffix}'
         self.name = f'{trial.subject.name}_moco_{self.config_name}'
         self.initial_time = initial_time
         self.final_time = final_time
@@ -559,7 +797,7 @@ class TaskMocoUnperturbedWalking(osp.TrialTask):
             trial.results_exp_path, 
             f'{trial.id}_joint_angle_standard_deviations.csv')
 
-        self.add_action([trial.subject.scaled_model_fpath,
+        self.add_action([trial.subject.sim_model_fpath,
                          self.tracking_coordinates_fpath,
                          self.coordinates_std_fpath,
                          self.tracking_extloads_fpath,
@@ -642,7 +880,7 @@ class TaskMocoAnkleTorquePerturbedWalking(osp.TrialTask):
         time = int(100*torque_parameters[1])
         delay = int(1000*perturb_response_delay)
         suffix = '_two_cycles' if two_cycles else ''
-        self.config_name = (f'perturb{suffix}_torque{torque}'
+        self.config_name = (f'perturbed{suffix}_torque{torque}'
                             f'_time{time}_delay{delay}')
         self.name = f'{trial.subject.name}_moco_{self.config_name}'
         self.suffix = suffix
@@ -659,7 +897,7 @@ class TaskMocoAnkleTorquePerturbedWalking(osp.TrialTask):
         self.final_time = final_time
         self.right_strikes = right_strikes
         self.left_strikes = left_strikes
-        self.model_fpath = trial.subject.scaled_model_fpath
+        self.model_fpath = trial.subject.sim_model_fpath
         self.periodic = periodic
 
         ankle_torque_left_parameters = list()
@@ -883,7 +1121,7 @@ class TaskMocoAnkleTorqueBaselineWalking(osp.TrialTask):
         self.final_time = final_time
         self.right_strikes = right_strikes
         self.left_strikes = left_strikes
-        self.model_fpath = trial.subject.scaled_model_fpath
+        self.model_fpath = trial.subject.sim_model_fpath
         self.constrain_initial_state = constrain_initial_state
 
         ankle_torque_left_parameters = list()
@@ -1011,7 +1249,7 @@ class TaskMocoAnkleTorquePerturbedFromBaselineWalking(osp.TrialTask):
         self.final_time = final_time
         self.right_strikes = right_strikes
         self.left_strikes = left_strikes
-        self.model_fpath = trial.subject.scaled_model_fpath
+        self.model_fpath = trial.subject.sim_model_fpath
         self.constrain_initial_state = constrain_initial_state
         self.bound_controls = bound_controls
         self.perturb_response_delay = perturb_response_delay
