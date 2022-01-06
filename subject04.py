@@ -191,6 +191,11 @@ def add_to_study(study):
         ik_setup_task, id_setup_task, 
         initial_time, final_time)
 
+    # sensitivity tasks
+    # -----------------
+    helpers.generate_sensitivity_tasks(study, subject, walk2_trial,
+        initial_time, final_time)
+
     # unperturbed walking tasks
     # -------------------------
     helpers.generate_unperturbed_tasks(study, subject, walk2_trial, 

@@ -59,7 +59,7 @@ study.error_markers = error_markers
 scale = 1.0
 study.weights = {
     'state_tracking_weight':  1e3 * scale,
-    'control_weight':         1e1 * scale,
+    'control_weight':         5e1 * scale,
     'grf_tracking_weight':    1e0 * scale,
     'com_tracking_weight':    0 * scale,
     'base_of_support_weight': 0 * scale,

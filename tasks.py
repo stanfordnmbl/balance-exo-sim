@@ -739,6 +739,95 @@ class TaskMocoUnperturbedWalkingGuess(osp.TrialTask):
         result.report_results(self.result_fpath)
 
 
+class TaskMocoSensitivityAnalysis(osp.TrialTask):
+    REGISTRY = []
+    def __init__(self, trial, initial_time, final_time, mesh_interval=0.02,
+                tolerance=1e-2, walking_speed=1.25, guess_fpath=None, **kwargs):
+        super(TaskMocoSensitivityAnalysis, self).__init__(trial)
+        suffix = f'mesh{int(1000*mesh_interval)}_tol{int(1e4*tolerance)}'
+        config_name = f'unperturbed_sensitivity_{suffix}'
+        self.config_name = config_name
+        self.name = trial.subject.name + '_moco_' + config_name
+        self.initial_time = initial_time
+        self.final_time = final_time
+        self.mesh_interval = mesh_interval
+        self.tolerance = tolerance
+        self.walking_speed = walking_speed
+        self.weights = trial.study.weights
+        self.root_dir = trial.study.config['doit_path']
+        self.guess_fpath = guess_fpath
+
+        expdata_dir = os.path.join(trial.results_exp_path, 'tracking_data', 'expdata')
+        extloads_dir = os.path.join(trial.results_exp_path, 'tracking_data', 'extloads')
+        self.tracking_coordinates_fpath = os.path.join(expdata_dir, 'coordinates.sto')
+        self.coordinates_std_fpath = os.path.join(trial.results_exp_path, 
+            f'{trial.id}_joint_angle_standard_deviations.csv')
+        self.tracking_extloads_fpath = os.path.join(extloads_dir, 'external_loads.xml')
+        self.tracking_grfs_fpath = os.path.join(expdata_dir, 'ground_reaction.mot')
+
+        self.result_fpath = os.path.join(self.study.config['results_path'],
+            'sensitiviy', trial.subject.name, suffix)
+        if not os.path.exists(self.result_fpath): os.makedirs(self.result_fpath)
+
+        self.archive_fpath = os.path.join(self.study.config['results_path'],
+            'sensitivity', trial.subject.name, suffix, 'archive')
+        if not os.path.exists(self.archive_fpath): os.makedirs(self.archive_fpath)
+
+        self.grf_fpath = os.path.join(trial.results_exp_path, 'expdata', 
+            'ground_reaction.mot')
+        self.emg_fpath = os.path.join(trial.results_exp_path, 'expdata', 
+            'emg.sto')
+
+        self.add_action([trial.subject.sim_model_fpath,
+                         self.tracking_coordinates_fpath,
+                         self.coordinates_std_fpath,
+                         self.tracking_extloads_fpath,
+                         self.tracking_grfs_fpath,
+                         self.emg_fpath],
+                        [os.path.join(self.result_fpath, 
+                            self.config_name + '.sto')],
+                        self.run_tracking_problem)
+
+    def run_tracking_problem(self, file_dep, target):
+
+        weights = copy.deepcopy(self.weights)
+        for weight_name in weights:
+            weights[weight_name] /= self.cost_scale
+
+        config = MocoTrackConfig(
+            self.config_name, self.config_name, 'black', weights,
+            constrain_average_speed=True,
+            periodic=True,
+            guess=self.guess_fpath
+            )
+
+        cycles = list()
+        for cycle in self.trial.cycles:
+            cycles.append([cycle.start, cycle.end])
+
+        result = MotionTrackingWalking(
+            self.root_dir, # root directory
+            self.result_fpath, # result directory
+            file_dep[0], # model file path
+            file_dep[1], # IK coordinates path
+            file_dep[2], # Coordinates standard deviations
+            file_dep[3], # external loads file 
+            file_dep[4], # GRF MOT file
+            file_dep[5], # EMG data
+            self.initial_time,
+            self.final_time, 
+            cycles,
+            self.trial.right_strikes,
+            self.trial.left_strikes,
+            self.mesh_interval, 
+            self.walking_speed,
+            [config]
+        )
+
+        result.generate_results(self.result_fpath)
+        result.report_results(self.result_fpath)
+
+
 class TaskMocoUnperturbedWalking(osp.TrialTask):
     REGISTRY = []
     def __init__(self, trial, initial_time, final_time, mesh_interval=0.02,

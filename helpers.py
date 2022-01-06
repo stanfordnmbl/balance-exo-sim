@@ -157,6 +157,48 @@ def generate_unperturbed_tasks(study, subject, trial,
         guess_fpath=unperturbed_guess_fpath,
         periodic=True)
 
+def generate_sensitivity_tasks(study, subject, trial,
+        initial_time, final_time):
+
+    guess_fpath = os.path.join(
+        study.config['results_path'],
+        'guess', subject.name, 
+        'unperturbed_guess_mesh35_scale1_periodic.sto')
+    for mesh in [0.04, 0.03, 0.02]:
+        trial.add_task(
+            tasks.TaskMocoSensitivityAnalysis,
+            initial_time, final_time,
+            guess_fpath=guess_fpath, 
+            mesh_interval=mesh,
+            tolerance=1e-2, 
+            walking_speed=study.walking_speed)
+        suffix = f'mesh{int(1000*mesh)}_tol100'
+        label = f'unperturbed_sensitivity_{suffix}'
+        guess_fpath = os.path.join(
+            study.config['results_path'], 'sensitivity',
+            subject.name, suffix, 
+            f'{label}.sto')
+       
+    guess_fpath = os.path.join(
+        study.config['results_path'],
+        'guess', subject.name, 
+        'unperturbed_guess_mesh35_scale1_periodic.sto')
+    for tol in [1e0, 1e-1, 1e-2, 1e-3]:
+        trial.add_task(
+            tasks.TaskMocoSensitivityAnalysis,
+            initial_time, final_time,
+            guess_fpath=guess_fpath, 
+            mesh_interval=0.01,
+            tolerance=tol, 
+            walking_speed=study.walking_speed)
+        suffix = f'mesh10_tol{int(1e4*tol)}'
+        label = f'unperturbed_sensitivity_{suffix}'
+        guess_fpath = os.path.join(
+            study.config['results_path'], 'sensitivity',
+            subject.name, suffix, 
+            f'{label}.sto')
+
+
 def generate_perturbed_tasks(study, subject, trial, 
         initial_time, final_time, right_strikes, 
         left_strikes):
