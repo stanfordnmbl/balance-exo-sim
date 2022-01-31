@@ -236,5 +236,5 @@ lower*.sto
 controls*.sto
 
 # Results file
-# /results
+/results/**/tracking*.txt
 
