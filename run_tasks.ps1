@@ -71,11 +71,11 @@
 # doit subject19_moco_unperturbed_guess_mesh20_scale1_periodic
 # doit subject19_moco_unperturbed
 
-doit forget subject01_moco_unperturbed
-doit forget subject02_moco_unperturbed
-doit forget subject04_moco_unperturbed
-doit forget subject18_moco_unperturbed
-doit forget subject19_moco_unperturbed
+doit subject01_moco_unperturbed
+doit subject02_moco_unperturbed
+doit subject04_moco_unperturbed
+doit subject18_moco_unperturbed
+doit subject19_moco_unperturbed
 
 # Sensitivity analysis
 # --------------------
