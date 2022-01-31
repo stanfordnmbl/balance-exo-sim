@@ -59,12 +59,12 @@ study.error_markers = error_markers
 scale = 1.0
 study.weights = {
     'state_tracking_weight':  1e3 * scale,
-    'control_weight':         5e1 * scale,
+    'control_weight':         1e2 * scale,
     'grf_tracking_weight':    1e0 * scale,
     'com_tracking_weight':    0 * scale,
     'base_of_support_weight': 0 * scale,
     'head_accel_weight':      0 * scale,
-    'upright_torso_weight':   1e0 * scale,
+    'upright_torso_weight':   1e1 * scale,
     'torso_tracking_weight':  0 * scale,
     'foot_tracking_weight':   0 * scale,
     'pelvis_tracking_weight': 0 * scale, 
@@ -94,6 +94,14 @@ subject19.add_to_study(study)
 # Copy mocap data
 # ---------------
 study.add_task(TaskCopyMotionCaptureData, walk125=(2, '_newCOP3'))
+
+# Validate
+# --------
+subjects = ['subject01', 'subject02', 'subject04', 
+            'subject18', 'subject19']
+masses = [72.85, 76.48, 80.30, 64.09, 68.5]
+study.add_task(TaskPlotSensitivityResults, subjects)
+study.add_task(TaskPlotUnperturbedResults, subjects, masses)
 
 # Analysis
 # -------=

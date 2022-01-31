@@ -742,10 +742,11 @@ class TaskMocoUnperturbedWalkingGuess(osp.TrialTask):
 class TaskMocoSensitivityAnalysis(osp.TrialTask):
     REGISTRY = []
     def __init__(self, trial, initial_time, final_time, mesh_interval=0.02,
-                tolerance=1e-2, walking_speed=1.25, guess_fpath=None, **kwargs):
+                tolerance=1e-2, walking_speed=1.25, guess_fpath=None,
+                mesh_or_tol_analysis='mesh', randomize_guess=False, **kwargs):
         super(TaskMocoSensitivityAnalysis, self).__init__(trial)
         suffix = f'mesh{int(1000*mesh_interval)}_tol{int(1e4*tolerance)}'
-        config_name = f'unperturbed_sensitivity_{suffix}'
+        config_name = f'unperturbed_sensitivity_{suffix}_{mesh_or_tol_analysis}'
         self.config_name = config_name
         self.name = trial.subject.name + '_moco_' + config_name
         self.initial_time = initial_time
@@ -756,6 +757,7 @@ class TaskMocoSensitivityAnalysis(osp.TrialTask):
         self.weights = trial.study.weights
         self.root_dir = trial.study.config['doit_path']
         self.guess_fpath = guess_fpath
+        self.randomize_guess = randomize_guess
 
         expdata_dir = os.path.join(trial.results_exp_path, 'tracking_data', 'expdata')
         extloads_dir = os.path.join(trial.results_exp_path, 'tracking_data', 'extloads')
@@ -766,7 +768,7 @@ class TaskMocoSensitivityAnalysis(osp.TrialTask):
         self.tracking_grfs_fpath = os.path.join(expdata_dir, 'ground_reaction.mot')
 
         self.result_fpath = os.path.join(self.study.config['results_path'],
-            'sensitiviy', trial.subject.name, suffix)
+            'sensitivity', trial.subject.name, suffix)
         if not os.path.exists(self.result_fpath): os.makedirs(self.result_fpath)
 
         self.archive_fpath = os.path.join(self.study.config['results_path'],
@@ -789,16 +791,12 @@ class TaskMocoSensitivityAnalysis(osp.TrialTask):
                         self.run_tracking_problem)
 
     def run_tracking_problem(self, file_dep, target):
-
-        weights = copy.deepcopy(self.weights)
-        for weight_name in weights:
-            weights[weight_name] /= self.cost_scale
-
         config = MocoTrackConfig(
-            self.config_name, self.config_name, 'black', weights,
-            constrain_average_speed=True,
+            self.config_name, self.config_name, 'black', self.weights,
+            constrain_average_speed=False,
             periodic=True,
-            guess=self.guess_fpath
+            guess=self.guess_fpath,
+            randomize_guess=self.randomize_guess
             )
 
         cycles = list()
@@ -832,8 +830,7 @@ class TaskMocoUnperturbedWalking(osp.TrialTask):
     REGISTRY = []
     def __init__(self, trial, initial_time, final_time, mesh_interval=0.02,
                  walking_speed=1.25, constrain_average_speed=False,
-                 guess_fpath=None, track_grfs=True, 
-                 constrain_initial_state=False,
+                 guess_fpath=None, constrain_initial_state=False,
                  periodic=True, two_cycles=False, **kwargs):
         super(TaskMocoUnperturbedWalking, self).__init__(trial)
         suffix = '_two_cycles' if two_cycles else ''
@@ -845,7 +842,6 @@ class TaskMocoUnperturbedWalking(osp.TrialTask):
         self.walking_speed = walking_speed
         self.constrain_average_speed = constrain_average_speed
         self.guess_fpath = guess_fpath
-        self.track_grfs = track_grfs
         self.root_dir = trial.study.config['doit_path']
         self.constrain_initial_state = constrain_initial_state
         self.periodic = periodic
@@ -864,6 +860,8 @@ class TaskMocoUnperturbedWalking(osp.TrialTask):
             extloads_dir, 'external_loads.xml')
         self.tracking_grfs_fpath = os.path.join(
             expdata_dir, 'ground_reaction.mot')
+        self.emg_fpath = os.path.join(
+            trial.results_exp_path, 'expdata', 'emg.sto')
 
         self.result_fpath = os.path.join(
             self.study.config['results_path'], f'unperturbed{suffix}', 
@@ -876,15 +874,6 @@ class TaskMocoUnperturbedWalking(osp.TrialTask):
             trial.subject.name, 'archive')
         if not os.path.exists(self.archive_fpath): 
             os.makedirs(self.archive_fpath)
-
-        self.grf_fpath = os.path.join(
-            trial.results_exp_path, 'expdata', 'ground_reaction.mot')
-        self.emg_fpath = os.path.join(
-            trial.results_exp_path, 'expdata', 'emg.sto')
-
-        self.coordinates_std_fpath = os.path.join(
-            trial.results_exp_path, 
-            f'{trial.id}_joint_angle_standard_deviations.csv')
 
         self.add_action([trial.subject.sim_model_fpath,
                          self.tracking_coordinates_fpath,
@@ -899,15 +888,13 @@ class TaskMocoUnperturbedWalking(osp.TrialTask):
 
     def run_tracking_problem(self, file_dep, target):
 
-        weights = copy.deepcopy(self.weights)
-        if not self.track_grfs:    
-            weights['grf_tracking_weight'] = 0.0
-
         config = MocoTrackConfig(
-            self.config_name, self.config_name, 'black', weights,
+            self.config_name, self.config_name, 'black', self.weights,
             constrain_average_speed=self.constrain_average_speed,
             constrain_initial_state=self.constrain_initial_state,
             periodic=self.periodic,
+            periodic_values=False,
+            periodic_speeds=False,
             guess=self.guess_fpath,
             )
 
@@ -937,25 +924,6 @@ class TaskMocoUnperturbedWalking(osp.TrialTask):
         result.report_results(self.result_fpath)
 
 
-class TaskMocoDoublePeriodicTrajectory(osp.TrialTask):
-    REGISTRY = []
-    def __init__(self, trial, traj_fpath, **kwargs):
-        super(TaskMocoDoublePeriodicTrajectory, self).__init__(trial)
-        self.name = f'{trial.id}_moco_double_periodic_trajectory'
-        self.traj_fpath = traj_fpath
-        self.double_traj_fpath = traj_fpath.replace(
-            '.sto', '_doubled.sto')
-
-        self.add_action([self.traj_fpath],
-                        [self.double_traj_fpath],
-                        self.double_periodic_trajectory)
-
-    def double_periodic_trajectory(self, file_dep, target):
-        traj = osim.MocoTrajectory(file_dep[0])
-        double_traj = osim.createPeriodicTrajectory(traj)
-        double_traj.write(target[0])
-
-
 class TaskMocoAnkleTorquePerturbedWalking(osp.TrialTask):
     REGISTRY = []
     def __init__(self, trial, initial_time, final_time, right_strikes, 
@@ -963,14 +931,13 @@ class TaskMocoAnkleTorquePerturbedWalking(osp.TrialTask):
                  walking_speed=1.25, constrain_initial_state=True, 
                  bound_controls=True, side='right', two_cycles=False,
                  torque_parameters=[0.5, 0.5, 0.25, 0.1],
-                 perturb_response_delay=0.0, periodic=False):
+                 perturb_response_delay=5.0, periodic=False):
         super(TaskMocoAnkleTorquePerturbedWalking, self).__init__(trial)
         torque = int(100*torque_parameters[0])
         time = int(100*torque_parameters[1])
-        delay = int(1000*perturb_response_delay)
         suffix = '_two_cycles' if two_cycles else ''
         self.config_name = (f'perturbed{suffix}_torque{torque}'
-                            f'_time{time}_delay{delay}')
+                            f'_time{time}')
         self.name = f'{trial.subject.name}_moco_{self.config_name}'
         self.suffix = suffix
         self.mesh_interval = mesh_interval
@@ -1126,11 +1093,11 @@ class TaskMocoAnkleTorquePerturbedWalkingPost(osp.TrialTask):
             trial.subject.name)
         shutil.copyfile(
             os.path.join(self.unperturbed_result_fpath, 
-                         f'unperturbed{self.suffix}_mesh10.sto'),
+                         f'unperturbed{self.suffix}.sto'),
             os.path.join(self.result_fpath, f'unperturbed{self.suffix}.sto'))
         shutil.copyfile(
             os.path.join(self.unperturbed_result_fpath, 
-                         f'unperturbed{self.suffix}_mesh10_grfs.sto'),
+                         f'unperturbed{self.suffix}_grfs.sto'),
             os.path.join(self.result_fpath, 
                          f'unperturbed{self.suffix}_grfs.sto'))
         
@@ -1149,375 +1116,6 @@ class TaskMocoAnkleTorquePerturbedWalkingPost(osp.TrialTask):
         configs = list()
         config = MocoTrackConfig(
             f'unperturbed{self.suffix}', f'unperturbed{self.suffix}', 'black', 
-            self.weights, guess=file_dep[5])
-        configs.append(config)
-
-        config = MocoTrackConfig(
-            self.config_name, self.config_name, 
-            'red', self.weights,
-            ankle_torque_right_parameters=self.ankle_torque_right_parameters,
-            ankle_torque_left_parameters=self.ankle_torque_left_parameters,
-            ankle_torque_side=self.side,
-            )
-        configs.append(config)
-
-        cycles = list()
-        for cycle in self.trial.cycles:
-            cycles.append([cycle.start, cycle.end])
-
-        result = MotionTrackingWalking(
-            self.root_dir,      # root directory
-            self.result_fpath,  # result directory
-            file_dep[0],        # model file path
-            file_dep[1],        # IK coordinates path
-            file_dep[2],        # Coordinates STD path
-            file_dep[3],        # external loads file 
-            file_dep[4],        # GRF MOT file
-            file_dep[5],        # EMG data
-            self.initial_time,
-            self.final_time,
-            cycles,
-            self.right_strikes,
-            self.left_strikes,
-            self.mesh_interval, 
-            self.walking_speed,
-            configs,
-        )
-
-        result.report_results(self.result_fpath)
-
-
-class TaskMocoAnkleTorqueBaselineWalking(osp.TrialTask):
-    REGISTRY = []
-    def __init__(self, trial, initial_time, final_time, right_strikes, 
-                 left_strikes, guess_fpath=None, mesh_interval=0.02, 
-                 walking_speed=1.25, side='both',
-                 constrain_initial_state=False,
-                 torque_parameters=[0.5, 0.5, 0.25, 0.1],
-                 periodic=False,
-                 two_cycles=False, **kwargs):
-        super(TaskMocoAnkleTorqueBaselineWalking, self).__init__(trial)
-        suffix = '_two_cycles' if two_cycles else ''
-        self.name = f'{trial.subject.name}_moco_baseline_ankle_torque{suffix}'
-        self.mesh_interval = mesh_interval
-        self.walking_speed = walking_speed
-        self.periodic = periodic
-        self.guess_fpath = guess_fpath
-        self.root_dir = trial.study.config['doit_path']
-        self.weights = trial.study.weights
-        self.side = side
-        self.initial_time = initial_time
-        self.final_time = final_time
-        self.right_strikes = right_strikes
-        self.left_strikes = left_strikes
-        self.model_fpath = trial.subject.sim_model_fpath
-        self.constrain_initial_state = constrain_initial_state
-
-        ankle_torque_left_parameters = list()
-        ankle_torque_right_parameters = list()
-        for rhs in self.right_strikes:
-            ankle_torque_right_parameters.append(torque_parameters)
-        for lhs in self.left_strikes:
-            ankle_torque_left_parameters.append(torque_parameters)
-
-        self.ankle_torque_left_parameters = ankle_torque_left_parameters
-        self.ankle_torque_right_parameters = ankle_torque_right_parameters
-
-        expdata_dir = os.path.join(
-            trial.results_exp_path, 'tracking_data', 'expdata')
-        extloads_dir = os.path.join(
-            trial.results_exp_path, 'tracking_data', 'extloads')
-        self.tracking_coordinates_fpath = os.path.join(
-            expdata_dir, 'coordinates.sto')
-        self.coordinates_std_fpath = os.path.join(
-            trial.results_exp_path, 
-            f'{trial.id}_joint_angle_standard_deviations.csv')
-        self.tracking_extloads_fpath = os.path.join(
-            extloads_dir, 'external_loads.xml')
-        self.tracking_grfs_fpath = os.path.join(
-            expdata_dir, 'ground_reaction.mot')
-
-        self.result_fpath = os.path.join(
-            self.study.config['results_path'],
-            f'baseline_torque{suffix}', trial.subject.name)
-        if not os.path.exists(self.result_fpath): 
-            os.makedirs(self.result_fpath)
-
-        self.archive_fpath = os.path.join(
-            self.study.config['results_path'],
-            f'baseline_torque{suffix}', trial.subject.name, 'archive')
-        if not os.path.exists(self.archive_fpath): 
-            os.makedirs(self.archive_fpath)
-
-        self.grf_fpath = os.path.join(
-            trial.results_exp_path, 'expdata', 'ground_reaction.mot')
-        self.emg_fpath = os.path.join(
-            trial.results_exp_path, 'expdata', 'emg.sto')
-
-        self.config_name = f'baseline_torque{suffix}'
-        self.add_action([self.model_fpath,
-                         self.tracking_coordinates_fpath,
-                         self.coordinates_std_fpath,
-                         self.tracking_extloads_fpath,
-                         self.tracking_grfs_fpath,
-                         self.emg_fpath],
-                        [],
-                        self.run_tracking_problem)
-
-    def run_tracking_problem(self, file_dep, target):
-        
-        config = MocoTrackConfig(
-            self.config_name, self.config_name, 'black', self.weights,
-            guess=self.guess_fpath,
-            constrain_initial_state=self.constrain_initial_state,
-            use_guess_for_initial_muscle_states=self.constrain_initial_state,
-            use_guess_for_initial_kinematic_states=self.constrain_initial_state,
-            ankle_torque_perturbation=True,
-            ankle_torque_left_parameters=self.ankle_torque_left_parameters,
-            ankle_torque_right_parameters=self.ankle_torque_right_parameters,
-            ankle_torque_first_cycle_only=False,
-            ankle_torque_side=self.side,
-            periodic=self.periodic)
-
-        cycles = list()
-        for cycle in self.trial.cycles:
-            cycles.append([cycle.start, cycle.end])
-
-        result = MotionTrackingWalking(
-            self.root_dir,      # root directory
-            self.result_fpath,  # result directory
-            file_dep[0],        # model file path
-            file_dep[1],        # IK coordinates path
-            file_dep[2],        # Coord stds
-            file_dep[3],        # external loads file 
-            file_dep[4],        # GRF MOT file
-            file_dep[5],        # EMG data
-            self.initial_time,
-            self.final_time, 
-            cycles,
-            self.right_strikes,
-            self.left_strikes,
-            self.mesh_interval, 
-            self.walking_speed,
-            [config],
-        )
-
-        result.generate_results(self.result_fpath)
-        result.report_results(self.result_fpath)
-
-
-class TaskMocoAnkleTorquePerturbedFromBaselineWalking(osp.TrialTask):
-    REGISTRY = []
-    def __init__(self, trial, initial_time, final_time, right_strikes, 
-                 left_strikes, ankle_torque_left_parameters, 
-                 ankle_torque_right_parameters, 
-                 guess_fpath=None, mesh_interval=0.02, periodic=False,
-                 walking_speed=1.25, side='both', constrain_initial_state=True, 
-                 perturb_response_delay=0.0, bound_controls=True,
-                 two_cycles=False):
-        super(TaskMocoAnkleTorquePerturbedFromBaselineWalking, self).__init__(
-            trial)
-        parameters = ankle_torque_right_parameters[0]
-        torque = int(100*parameters[0])
-        time = int(100*parameters[1])
-        delay = int(1000*perturb_response_delay)
-        self.suffix = '_two_cycles' if two_cycles else ''
-        self.config_name = (f'perturb_from_baseline{self.suffix}'
-                            f'_torque{torque}_time{time}_delay{delay}')
-        self.name = f'{trial.subject.name}_moco_{self.config_name}'
-        self.mesh_interval = mesh_interval
-        self.walking_speed = walking_speed
-        self.periodic = periodic
-        self.guess_fpath = guess_fpath
-        self.root_dir = trial.study.config['doit_path']
-        self.weights = trial.study.weights
-        self.ankle_torque_left_parameters = ankle_torque_left_parameters
-        self.ankle_torque_right_parameters = ankle_torque_right_parameters
-        self.side = side
-        self.initial_time = initial_time
-        self.final_time = final_time
-        self.right_strikes = right_strikes
-        self.left_strikes = left_strikes
-        self.model_fpath = trial.subject.sim_model_fpath
-        self.constrain_initial_state = constrain_initial_state
-        self.bound_controls = bound_controls
-        self.perturb_response_delay = perturb_response_delay
-
-        expdata_dir = os.path.join(
-            trial.results_exp_path, 'tracking_data', 'expdata')
-        extloads_dir = os.path.join(
-            trial.results_exp_path, 'tracking_data', 'extloads')
-        self.tracking_coordinates_fpath = os.path.join(
-            expdata_dir, 'coordinates.sto')
-        self.coordinates_std_fpath = os.path.join(
-            trial.results_exp_path, 
-            f'{trial.id}_joint_angle_standard_deviations.csv')
-        self.tracking_extloads_fpath = os.path.join(
-            extloads_dir, 'external_loads.xml')
-        self.tracking_grfs_fpath = os.path.join(
-            expdata_dir, 'ground_reaction.mot')
-
-        self.result_fpath = os.path.join(
-            self.study.config['results_path'],
-            self.config_name, 
-            trial.subject.name)
-        if not os.path.exists(self.result_fpath): 
-            os.makedirs(self.result_fpath)
-
-        self.archive_fpath = os.path.join(
-            self.study.config['results_path'],
-            self.config_name, 
-            trial.subject.name, 'archive')
-        if not os.path.exists(self.archive_fpath): 
-            os.makedirs(self.archive_fpath)
-
-        self.grf_fpath = os.path.join(
-            trial.results_exp_path, 'expdata', 'ground_reaction.mot')
-        self.emg_fpath = os.path.join(
-            trial.results_exp_path, 'expdata', 'emg.sto')
-
-        self.add_action([self.model_fpath,
-                         self.tracking_coordinates_fpath,
-                         self.coordinates_std_fpath,
-                         self.tracking_extloads_fpath,
-                         self.tracking_grfs_fpath,
-                         self.emg_fpath],
-                        [],
-                        self.run_tracking_problem)
-
-    def run_tracking_problem(self, file_dep, target):
-
-        weights = copy.deepcopy(self.weights)
-        weights['grf_tracking_weight'] = 0
-        config = MocoTrackConfig(
-            self.config_name, self.config_name, 'black', weights,
-            guess=self.guess_fpath,
-            constrain_initial_state=self.constrain_initial_state,
-            use_guess_for_initial_muscle_states=True,
-            use_guess_for_initial_kinematic_states=True,
-            bound_controls=self.bound_controls,
-            control_bound_solution_fpath=self.guess_fpath,
-            perturb_response_delay=self.perturb_response_delay,
-            perturb_start_sim_at_onset=True,
-            ankle_torque_perturbation=True,
-            ankle_torque_left_parameters=self.ankle_torque_left_parameters,
-            ankle_torque_right_parameters=self.ankle_torque_right_parameters,
-            ankle_torque_first_cycle_only=False,
-            ankle_torque_side=self.side,
-            periodic=self.periodic)
-
-        cycles = list()
-        for cycle in self.trial.cycles:
-            cycles.append([cycle.start, cycle.end])
-
-        result = MotionTrackingWalking(
-            self.root_dir,      # root directory
-            self.result_fpath,  # result directory
-            file_dep[0],        # model file path
-            file_dep[1],        # IK coordinates path
-            file_dep[2],        # Coord stds
-            file_dep[3],        # external loads file 
-            file_dep[4],        # GRF MOT file
-            file_dep[5],        # EMG data
-            self.initial_time,
-            self.final_time, 
-            cycles,
-            self.right_strikes,
-            self.left_strikes,
-            self.mesh_interval, 
-            self.walking_speed,
-            [config],
-        )
-
-        result.generate_results(self.result_fpath)
-        result.report_results(self.result_fpath)
-
-
-class TaskMocoAnkleTorquePerturbedFromBaselineWalkingPost(osp.TrialTask):
-    REGISTRY = []
-    def __init__(self, trial, generate_task, **kwargs):
-        super(TaskMocoAnkleTorquePerturbedFromBaselineWalkingPost, 
-              self).__init__(trial)
-        self.name = f'{generate_task.name}_post'
-        self.weights = trial.study.weights
-        self.root_dir = trial.study.config['doit_path']
-        self.walking_speed = generate_task.walking_speed
-        self.mesh_interval = generate_task.mesh_interval
-        self.guess_fpath = generate_task.guess_fpath
-        self.result_fpath = generate_task.result_fpath
-        self.archive_fpath = generate_task.archive_fpath
-        self.model_fpath = generate_task.model_fpath
-        self.tracking_coordinates_fpath = \
-            generate_task.tracking_coordinates_fpath
-        self.coordinates_std_fpath = generate_task.coordinates_std_fpath
-        self.tracking_extloads_fpath = generate_task.tracking_extloads_fpath
-        self.tracking_grfs_fpath = generate_task.tracking_grfs_fpath
-        self.emg_fpath = generate_task.emg_fpath
-        self.guess_fpath = generate_task.guess_fpath
-        self.ankle_torque_left_parameters = \
-            generate_task.ankle_torque_left_parameters
-        self.ankle_torque_right_parameters = \
-            generate_task.ankle_torque_right_parameters
-        self.side = generate_task.side
-        self.initial_time = generate_task.initial_time
-        self.final_time = generate_task.final_time
-        self.right_strikes = generate_task.right_strikes
-        self.left_strikes = generate_task.left_strikes
-        self.config_name = generate_task.config_name
-        self.suffix = generate_task.suffix
-
-        # Copy over unperturbed solution so we can plot against the
-        # perturbed solution
-        self.unperturbed_result_fpath = os.path.join(
-            self.study.config['results_path'], f'unperturbed{self.suffix}', 
-            trial.subject.name)
-        shutil.copyfile(
-            os.path.join(self.unperturbed_result_fpath, 
-                         f'unperturbed{self.suffix}_mesh20.sto'),
-            os.path.join(self.result_fpath, f'unperturbed{self.suffix}.sto'))
-        shutil.copyfile(
-            os.path.join(self.unperturbed_result_fpath, 
-                         f'unperturbed{self.suffix}_mesh20_grfs.sto'),
-            os.path.join(self.result_fpath, 
-                         f'unperturbed{self.suffix}_grfs.sto'))
-
-        # Copy over baseline solution so we can plot against the
-        # perturbed solution
-        self.baseline_result_fpath = os.path.join(
-            self.study.config['results_path'], f'baseline_torque{self.suffix}', 
-            trial.subject.name)
-        shutil.copyfile(
-            os.path.join(self.baseline_result_fpath, 
-                         f'baseline_torque{self.suffix}.sto'),
-            os.path.join(self.result_fpath, 
-                         f'baseline_torque{self.suffix}.sto'))
-        shutil.copyfile(
-            os.path.join(self.baseline_result_fpath, 
-                         f'baseline_torque{self.suffix}_grfs.sto'),
-            os.path.join(self.result_fpath, 
-                         f'baseline_torque{self.suffix}_grfs.sto'))
-        
-        self.add_action([self.model_fpath,
-                         self.tracking_coordinates_fpath,
-                         self.coordinates_std_fpath,
-                         self.tracking_extloads_fpath,
-                         self.tracking_grfs_fpath,
-                         self.emg_fpath,
-                         self.guess_fpath],
-                        [],
-                        self.run_tracking_problem)
-
-    def run_tracking_problem(self, file_dep, target):
-
-        configs = list()
-        config = MocoTrackConfig(
-            f'unperturbed{self.suffix}', f'unperturbed{self.suffix}', 'black', 
-            self.weights, guess=file_dep[5])
-        configs.append(config)
-
-        config = MocoTrackConfig(
-            f'baseline_torque{self.suffix}', 
-            f'baseline_torque{self.suffix}', 'blue', 
             self.weights, guess=file_dep[5])
         configs.append(config)
 
@@ -2107,6 +1705,459 @@ class TaskValidateKinematics(osp.StudyTask):
         fig.savefig(target[1])
         fig.savefig(target[1].replace('.pdf', '.png'), dpi=600)
         pl.close(fig)
+
+
+class TaskPlotSensitivityResults(osp.StudyTask):
+    REGISTRY = []
+    def __init__(self, study, subjects):
+        super(TaskPlotSensitivityResults, self).__init__(study)
+        self.name = 'plot_sensitivity_analysis_results'
+        self.results_path = os.path.join(study.config['results_path'], 
+            'sensitivity')
+        self.validate_path = os.path.join(study.config['validate_path'],
+            'sensitivity')
+        if not os.path.exists(self.validate_path): 
+            os.makedirs(self.validate_path)
+        self.subjects = subjects
+        self.meshes = [0.05, 0.04, 0.03, 0.02, 0.01]
+        self.tols = [1e1, 1e0, 1e-1, 1e-2]
+        self.tol_exps = [1, 0, -1, -2]
+
+        deps_mesh = list()
+        for subject in subjects:
+            for mesh in self.meshes:
+                suffix = f'mesh{int(1000*mesh)}_tol1000'
+                result = f'unperturbed_sensitivity_{suffix}_mesh.sto'
+                result_fpath = os.path.join(self.results_path,
+                    subject, suffix, result)
+                deps_mesh.append(result_fpath)
+
+        self.add_action(deps_mesh, 
+                        [os.path.join(self.validate_path, 
+                            'sensitivity_mesh.png')], 
+                        self.plot_sensitivity_mesh)
+
+        deps_tol = list()
+        for subject in subjects:
+            for tol in self.tols:
+                suffix = f'mesh10_tol{int(1e4*tol)}'
+                result = f'unperturbed_sensitivity_{suffix}_tol.sto'
+                result_fpath = os.path.join(
+                    self.results_path,
+                    subject, suffix, result)
+                deps_tol.append(result_fpath)
+
+        self.add_action(deps_tol, 
+                        [os.path.join(self.validate_path, 
+                            'sensitivity_tol.png')], 
+                        self.plot_sensitivity_tol)
+
+    def plot_sensitivity_mesh(self, file_dep, target):
+        
+        idep = 0
+        objectives = np.zeros([len(self.subjects), len(self.meshes)])
+        norm_objectives = np.zeros_like(objectives)
+        for isubj, subject in enumerate(self.subjects):
+            for imesh, mesh in enumerate(self.meshes):
+                table = osim.TimeSeriesTable(file_dep[idep])
+                objective = float(table.getTableMetaDataAsString('objective'))
+                objectives[isubj, imesh] = objective
+                idep = idep + 1
+
+        for isubj, subject in enumerate(self.subjects):
+            norm_objectives[isubj, :] = objectives[isubj, :] / objectives[isubj, -1]
+
+        norm_obj_mean = np.mean(norm_objectives[:, :-1], axis=0)
+        norm_obj_std = np.std(norm_objectives[:, :-1], axis=0)   
+
+        fig = pl.figure(figsize=(3.5, 2.5))
+        ax = fig.add_subplot(1,1,1)
+        x = np.arange(len(norm_obj_mean))
+        ax.bar(x, norm_obj_mean)
+        plotline, caplines, barlinecols = ax.errorbar(
+                x, norm_obj_mean, yerr=norm_obj_std, color='black', fmt='none',
+                capsize=0, solid_capstyle='projecting', lw=1, lolims=True)
+        caplines[0].set_marker('_')
+        caplines[0].set_markersize(8)
+        tick_labels = [f'{1000*mesh}' for mesh in self.meshes[:-1]]
+        ax.set_xticks(x)
+        ax.set_xticklabels(tick_labels)
+        ax.set_ylim(1.0, 1.5)
+        ax.set_yticks([1, 1.25, 1.5])
+        ax.set_ylabel('normalized objective')
+        ax.set_xlabel('mesh interval (ms)')
+        ax.axhline(y=1.0, color='gray', linewidth=0.5, ls='--', zorder=0)
+
+        fig.tight_layout()
+        fig.savefig(target[0], dpi=600)
+        pl.close(fig)
+
+    def plot_sensitivity_tol(self, file_dep, target):
+
+        idep = 0
+        objectives = np.zeros([len(self.subjects), len(self.tols)])
+        norm_objectives = np.zeros_like(objectives)
+        for isubj, subject in enumerate(self.subjects):
+            for itol, tol in enumerate(self.tols):
+                table = osim.TimeSeriesTable(file_dep[idep])
+                objective = float(table.getTableMetaDataAsString('objective'))
+                objectives[isubj, itol] = objective
+                idep = idep + 1
+
+        for isubj, subject in enumerate(self.subjects):
+            norm_objectives[isubj, :] = objectives[isubj, :] / objectives[isubj, -1]
+
+        norm_obj_mean = np.mean(norm_objectives[:, :-1], axis=0)
+        norm_obj_std = np.std(norm_objectives[:, :-1], axis=0)   
+
+        fig = pl.figure(figsize=(3.5, 2.5))
+        ax = fig.add_subplot(1,1,1)
+        x = np.arange(len(norm_obj_mean))
+        ax.bar(x, norm_obj_mean)
+        plotline, caplines, barlinecols = ax.errorbar(
+                x, norm_obj_mean, yerr=norm_obj_std, color='black', fmt='none',
+                capsize=0, solid_capstyle='projecting', lw=1, lolims=True)
+        caplines[0].set_marker('_')
+        caplines[0].set_markersize(8)
+        tick_labels = [f'$10^{i}$' for i in self.tol_exps[:-1]]
+        ax.set_xticks(x)
+        ax.set_xticklabels(tick_labels)
+        ax.set_ylim(1.0, 1.05)
+        ax.set_yticks([1, 1.025, 1.05])
+        ax.set_ylabel('normalized objective')
+        ax.set_xlabel('convergence tolerance')
+        ax.axhline(y=1.0, color='gray', linewidth=0.5, ls='--', zorder=0)
+
+        fig.tight_layout()
+        fig.savefig(target[0], dpi=600)
+        pl.close(fig)
+
+
+class TaskPlotUnperturbedResults(osp.StudyTask):
+    REGISTRY = []
+    def __init__(self, study, subjects, masses):
+        super(TaskPlotUnperturbedResults, self).__init__(study)
+        self.name = 'plot_unperturbed_results'
+        self.results_path = os.path.join(study.config['results_path'], 
+            'unperturbed')
+        self.validate_path = os.path.join(study.config['validate_path'],
+            'unperturbed')
+        if not os.path.exists(self.validate_path): 
+            os.makedirs(self.validate_path)
+        self.subjects = subjects
+        self.masses = masses
+        self.exp_color = 'black'
+        self.unp_color = 'deepskyblue'
+        self.emg_map = {
+           'tibant_r' : 'tibant_r',
+           'soleus_r' : 'soleus_r',
+           'gasmed_r' : 'gasmed_r',
+           'semimem_r': 'semimem_r',
+           'vasint_r' : 'vaslat_r',
+           'recfem_r' : 'recfem_r',
+           'glmax2_r' : 'glmax2_r',
+           'glmed1_r' : 'glmed1_r',
+        }
+     
+        unperturbed_fpaths = list()
+        unperturbed_grf_fpaths = list()
+        coordinates_fpaths = list()
+        grf_fpaths = list()
+        emg_fpaths = list()
+        for subject in subjects:
+            expdata_dir = os.path.join(
+                study.config['results_path'], 'experiments', subject, 'walk2')
+            coordinates_fpaths.append(os.path.join(
+                expdata_dir, 'tracking_data', 'expdata', 'coordinates.sto'))
+            grf_fpaths.append(os.path.join(
+                expdata_dir, 'tracking_data', 'expdata', 'ground_reaction.mot'))
+            emg_fpaths.append(os.path.join(
+                expdata_dir, 'expdata', 'emg.sto'))
+            unperturbed_fpaths.append(os.path.join(
+                self.study.config['results_path'], 'unperturbed', 
+                subject, 'unperturbed.sto'))
+            unperturbed_grf_fpaths.append(os.path.join(
+                self.study.config['results_path'], 'unperturbed', 
+                subject, 'unperturbed_grfs.sto'))
+
+        self.add_action(unperturbed_fpaths + coordinates_fpaths, 
+                        [os.path.join(self.validate_path, 
+                            'unperturbed_coordinates.png')], 
+                        self.plot_unperturbed_coordinates)
+
+        self.add_action(unperturbed_grf_fpaths + grf_fpaths, 
+                        [os.path.join(self.validate_path, 
+                            'unperturbed_grfs.png')], 
+                        self.plot_unperturbed_grfs)
+
+        self.add_action(unperturbed_fpaths + emg_fpaths, 
+                        [os.path.join(self.validate_path, 
+                            'unperturbed_muscle_activity.png')], 
+                        self.plot_unperturbed_muscle_activity)
+
+    def plot_unperturbed_coordinates(self, file_dep, target): 
+
+        numSubjects = len(self.subjects)
+        N = 100
+        pgc = np.linspace(0, 100, N)
+        labels = ['hip flexion', 'hip adduction', 'knee flexion', 'ankle dorsiflexion']
+        coordinates = ['hip_flexion', 'hip_adduction', 'knee_angle', 'ankle_angle']
+        joints = ['hip', 'hip', 'walker_knee', 'ankle']
+        bounds = [[-20, 40],
+                  [-20, 10],
+                  [0, 80],
+                  [-20, 30]]
+        unperturbed_dict = dict()
+        experiment_dict = dict()
+        for coord in coordinates:
+            for side in ['l', 'r']:
+                unperturbed_dict[f'{coord}_{side}'] = np.zeros((N, numSubjects))
+                experiment_dict[f'{coord}_{side}'] = np.zeros((N, numSubjects))
+
+        for i in np.arange(numSubjects):
+            unperturbed = osim.TimeSeriesTable(file_dep[i])
+            utime = np.array(unperturbed.getIndependentColumn())
+            utime_interp = np.linspace(utime[0], utime[-1], N)
+            experiment = osim.TimeSeriesTable(file_dep[i+numSubjects])
+            etime = np.array(experiment.getIndependentColumn())
+            istart = np.argmin(abs(etime-utime[0]))
+            iend = np.argmin(abs(etime-utime[-1]))
+            etime_interp = np.linspace(etime[istart], etime[iend], N)
+
+            for ic, coord in enumerate(coordinates):
+                for side in ['l', 'r']:
+                    unperturbed_col = (180.0 / np.pi) * util.toarray(unperturbed.getDependentColumn(
+                        f'/jointset/{joints[ic]}_{side}/{coord}_{side}/value'))
+                    experiment_col = util.toarray(
+                        experiment.getDependentColumn(f'{coord}_{side}'))[istart:iend+1]
+                    unperturbed_dict[f'{coord}_{side}'][:, i] = np.interp(
+                        utime_interp, utime, unperturbed_col)
+                    experiment_dict[f'{coord}_{side}'][:, i] = np.interp(
+                        etime_interp, etime[istart:iend+1], experiment_col)
+
+        import matplotlib.gridspec as gridspec
+        fig = plt.figure(figsize=(5, 8))
+        gs = gridspec.GridSpec(len(coordinates), 2)
+        for ic, coord in enumerate(coordinates):
+            for iside, side in enumerate(['l','r']):
+                ax = fig.add_subplot(gs[ic, iside])
+                exp_mean = np.mean(experiment_dict[f'{coord}_{side}'], axis=1)
+                exp_std = np.std(experiment_dict[f'{coord}_{side}'], axis=1)
+                unp_mean = np.mean(unperturbed_dict[f'{coord}_{side}'], axis=1)
+                unp_std = np.std(unperturbed_dict[f'{coord}_{side}'], axis=1)
+
+                h_exp, = ax.plot(pgc, exp_mean, color=self.exp_color, lw=2.5)
+                ax.fill_between(pgc, exp_mean + exp_std, exp_mean - exp_std, color=self.exp_color,
+                    alpha=0.3, linewidth=0.0, edgecolor='none')
+                h_unp, = ax.plot(pgc, unp_mean, color=self.unp_color, lw=2)
+                ax.fill_between(pgc, unp_mean + unp_std, unp_mean - unp_std, color=self.unp_color,
+                    alpha=0.3, linewidth=0.0, edgecolor='none')
+                # ax.axhline(y=0, color='black', alpha=0.4, linestyle='--', zorder=0, lw=0.75)
+                ax.set_ylim(bounds[ic][0], bounds[ic][1])
+                ax.set_xlim(0, 100)
+                ax.grid(color='black', zorder=0, alpha=0.2, lw=0.5, ls='--')
+                util.publication_spines(ax)
+
+                if not ic and not iside:
+                    ax.legend([h_exp, h_unp], ['experiment', 'unperturbed'],
+                        fancybox=False, frameon=True)
+
+                if ic == len(coordinates)-1:
+                    ax.set_xlabel('time (% gait cycle)')
+                    ax.spines['bottom'].set_position(('outward', 10))
+                else:
+                    ax.spines['bottom'].set_visible(False)
+                    ax.set_xticklabels([])
+                    ax.tick_params(axis='x', which='both', bottom=False, 
+                                top=False, labelbottom=False)
+
+                if not iside:
+                    ax.spines['left'].set_position(('outward', 10))
+                    ax.set_ylabel(f'{labels[ic]} (deg)')
+                else:
+                    ax.spines['left'].set_visible(False)
+                    ax.set_yticklabels([])
+                    ax.tick_params(axis='y', which='both', left=False, 
+                                right=False, labelbottom=False)
+
+        fig.tight_layout()
+        fig.savefig(os.path.join(self.validate_path, 
+                'unperturbed_coordinates.png'), dpi=600)
+        plt.close()
+
+
+    def plot_unperturbed_grfs(self, file_dep, target):
+
+        numSubjects = len(self.subjects)
+        N = 200
+        pgc = np.linspace(0, 100, N)
+        labels = ['anterior-posterior', 'vertical', 'medio-lateral']
+        forces = ['vx', 'vy', 'vz']
+        bounds = [[-0.2, 0.2],
+                  [0, 1.25],
+                  [-0.1, 0.1]]
+        tick_intervals = [0.1, 0.25, 0.05]
+        unperturbed_dict = dict()
+        experiment_dict = dict()
+        for force in forces:
+            unperturbed_dict[f'ground_force_r_{force}'] = np.zeros((N, numSubjects))
+            experiment_dict[f'ground_force_r_{force}'] = np.zeros((N, numSubjects))
+
+        for isubj in np.arange(numSubjects):
+            unperturbed = osim.TimeSeriesTable(file_dep[isubj])
+            utime = np.array(unperturbed.getIndependentColumn())
+            utime_interp = np.linspace(utime[0], utime[-1], N)
+            experiment = osim.TimeSeriesTable(file_dep[isubj+numSubjects])
+            etime = np.array(experiment.getIndependentColumn())
+            istart = np.argmin(abs(etime-utime[0]))
+            iend = np.argmin(abs(etime-utime[-1]))
+            etime_interp = np.linspace(etime[istart], etime[iend], N)
+            BW = 9.81 * self.masses[isubj]
+
+            for iforce, force in enumerate(forces):
+                label = f'ground_force_r_{force}'
+                unperturbed_col = util.toarray(unperturbed.getDependentColumn(label)) / BW
+                experiment_col = util.toarray(
+                    experiment.getDependentColumn(label))[istart:iend+1] / BW
+
+                unperturbed_dict[label][:, isubj] = np.interp(
+                    utime_interp, utime, unperturbed_col)
+                experiment_dict[label][:, isubj] = np.interp(
+                    etime_interp, etime[istart:iend+1], experiment_col)
+
+        import matplotlib.gridspec as gridspec
+        fig = plt.figure(figsize=(4, 7))
+        gs = gridspec.GridSpec(len(forces), 1)
+        for iforce, force in enumerate(forces):
+            label = f'ground_force_r_{force}'
+            ax = fig.add_subplot(gs[iforce, 0])
+            exp_mean = np.mean(experiment_dict[label], axis=1)
+            exp_std = np.std(experiment_dict[label], axis=1)
+            unp_mean = np.mean(unperturbed_dict[label], axis=1)
+            unp_std = np.std(unperturbed_dict[label], axis=1)
+
+            h_exp, = ax.plot(pgc, exp_mean, color=self.exp_color, lw=2.5)
+            ax.fill_between(pgc, exp_mean + exp_std, exp_mean - exp_std, color=self.exp_color,
+                alpha=0.3, linewidth=0.0, edgecolor='none')
+            h_unp, = ax.plot(pgc, unp_mean, color=self.unp_color, lw=2)
+            ax.fill_between(pgc, unp_mean + unp_std, unp_mean - unp_std, color=self.unp_color,
+                alpha=0.3, linewidth=0.0, edgecolor='none')
+            # ax.axhline(y=0, color='black', alpha=0.4, linestyle='--', zorder=0, lw=0.75)
+            ax.set_ylim(bounds[iforce][0], bounds[iforce][1])
+            ax.set_yticks(np.linspace(bounds[iforce][0], bounds[iforce][1], 
+                int((bounds[iforce][1] - bounds[iforce][0]) / tick_intervals[iforce]) + 1))
+            ax.set_xlim(0, 100)
+            ax.grid(color='black', zorder=0, alpha=0.2, lw=0.5, ls='--')
+            util.publication_spines(ax)
+
+            if not iforce:
+                ax.legend([h_exp, h_unp], ['experiment', 'unperturbed'],
+                    fancybox=False, frameon=True)
+
+            if iforce == len(forces)-1:
+                ax.set_xlabel('time (% gait cycle)')
+                ax.spines['bottom'].set_position(('outward', 10))
+            else:
+                ax.spines['bottom'].set_visible(False)
+                ax.set_xticklabels([])
+                ax.tick_params(axis='x', which='both', bottom=False, 
+                            top=False, labelbottom=False)
+
+            ax.spines['left'].set_position(('outward', 10))
+            ax.set_ylabel(f'{labels[iforce]} (BW)')
+
+        fig.tight_layout()
+        fig.savefig(os.path.join(self.validate_path, 
+                'unperturbed_grfs.png'), dpi=600)
+        plt.close()
+
+
+    def plot_unperturbed_muscle_activity(self, file_dep, target):
+
+        numSubjects = len(self.subjects)
+        N = 200
+        pgc = np.linspace(0, 100, N)
+        labels = ['glut. max.', 'glut. med.', 'rec. fem.', 'vas. int.', 'semimem.',
+                  'gas. med.', 'soleus', 'tib. ant.']
+        activations = ['glmax2', 'glmed1', 'recfem', 'vasint', 'semimem', 'gasmed', 
+                       'soleus', 'tibant']
+
+        unperturbed_dict = dict()
+        experiment_dict = dict()
+        for activation in activations:
+            unperturbed_dict[f'{activation}_r'] = np.zeros((N, numSubjects))
+            experiment_dict[f'{activation}_r'] = np.zeros((N, numSubjects))
+
+        for isubj in np.arange(numSubjects):
+            unperturbed = osim.TimeSeriesTable(file_dep[isubj])
+            utime = np.array(unperturbed.getIndependentColumn())
+            utime_interp = np.linspace(utime[0], utime[-1], N)
+            experiment = osim.TimeSeriesTable(file_dep[isubj+numSubjects])
+            etime = np.array(experiment.getIndependentColumn())
+            istart = np.argmin(abs(etime-utime[0]))
+            iend = np.argmin(abs(etime-utime[-1]))
+            etime_interp = np.linspace(etime[istart], etime[iend], N)
+
+            for iact, activation in enumerate(activations):
+                label = f'{activation}_r'
+                unperturbed_col = util.toarray(unperturbed.getDependentColumn(
+                    f'/forceset/{label}/activation'))
+                experiment_col = util.toarray(
+                    experiment.getDependentColumn(self.emg_map[label]))[istart:iend+1]
+
+                max_emg = np.max(experiment_col)
+                experiment_col_temp = experiment_col - 0.05
+                experiment_col_rescale = experiment_col_temp * (max_emg / np.max(experiment_col_temp))
+
+                unperturbed_dict[label][:, isubj] = np.interp(
+                    utime_interp, utime, unperturbed_col)
+                experiment_dict[label][:, isubj] = np.interp(
+                    etime_interp, etime[istart:iend+1], experiment_col_rescale)
+
+        import matplotlib.gridspec as gridspec
+        fig = plt.figure(figsize=(4, 12))
+        gs = gridspec.GridSpec(len(activations), 1)
+        for iact, activation in enumerate(activations):
+            label = f'{activation}_r'
+            ax = fig.add_subplot(gs[iact, 0])
+            exp_mean = np.mean(experiment_dict[label], axis=1)
+            exp_std = np.std(experiment_dict[label], axis=1)
+            unp_mean = np.mean(unperturbed_dict[label], axis=1)
+            unp_std = np.std(unperturbed_dict[label], axis=1)
+
+            h_exp, = ax.plot(pgc, exp_mean, color=self.exp_color, lw=2.5)
+            ax.fill_between(pgc, exp_mean + exp_std, exp_mean - exp_std, color=self.exp_color,
+                alpha=0.3, linewidth=0.0, edgecolor='none')
+            h_unp, = ax.plot(pgc, unp_mean, color=self.unp_color, lw=2)
+            ax.fill_between(pgc, unp_mean + unp_std, unp_mean - unp_std, color=self.unp_color,
+                alpha=0.3, linewidth=0.0, edgecolor='none')
+            # ax.axhline(y=0, color='black', alpha=0.4, linestyle='--', zorder=0, lw=0.75)
+            ax.set_ylim(0, 1)
+            ax.set_yticks([0, 0.5, 1])
+            ax.set_xlim(0, 100)
+            ax.grid(color='black', zorder=0, alpha=0.2, lw=0.5, ls='--')
+            util.publication_spines(ax)
+
+            if not iact:
+                ax.legend([h_exp, h_unp], ['experiment', 'unperturbed'],
+                    fancybox=False, frameon=True)
+
+            if iact == len(activations)-1:
+                ax.set_xlabel('time (% gait cycle)')
+                ax.spines['bottom'].set_position(('outward', 10))
+            else:
+                ax.spines['bottom'].set_visible(False)
+                ax.set_xticklabels([])
+                ax.tick_params(axis='x', which='both', bottom=False, 
+                            top=False, labelbottom=False)
+
+            ax.spines['left'].set_position(('outward', 10))
+            ax.set_ylabel(f'{labels[iact]}')
+
+        fig.tight_layout()
+        fig.savefig(os.path.join(self.validate_path, 
+                'unperturbed_muscle_activity.png'), dpi=600)
+        plt.close()
 
 
 class TaskPlotCOMTrackingErrorsAnklePerturb(osp.StudyTask):
@@ -3332,336 +3383,6 @@ class TaskPlotCOMVersusAnklePerturbTorque(osp.StudyTask):
             plt.close()
 
 
-class TaskPlotPerturbFromBaselineResults(osp.StudyTask):
-    REGISTRY = []
-    def __init__(self, study, subjects, masses, time, torques, delay, 
-                 two_cycles=False):
-        super(TaskPlotPerturbFromBaselineResults, self).__init__(study)
-        self.two_cycles = two_cycles
-        self.suffix = '_two_cycles' if self.two_cycles else ''
-        self.name = f'plot_perturb_from_baseline_results{self.suffix}'
-        self.results_path = os.path.join(study.config['results_path'], 
-            'experiments')
-        self.analysis_path = os.path.join(study.config['analysis_path'],
-            f'perturb_from_baseline_results{self.suffix}')
-        if not os.path.exists(self.analysis_path): 
-            os.makedirs(self.analysis_path)
-        self.subjects = subjects
-        self.torques = torques
-        self.time = time
-
-        self.labels = list()
-        self.alphas = list()
-        self.colors = list()
-        self.linewidths = list()
-        self.masses = list()
-        cmap = plt.get_cmap('viridis')
-        cmap_indices = np.linspace(0, 1, len(self.torques))
-        deps = list()
-        for subject, mass in zip(subjects, masses):
-            # Perturbed solutions
-            for torque, cmap_idx in zip(self.torques, cmap_indices):
-                if torque == 50:
-                    deps.append(
-                        os.path.join(
-                            self.study.config['results_path'], 
-                            f'baseline_torque{self.suffix}', subject,
-                            (f'tracking_baseline_torque{self.suffix}'
-                             f'_center_of_mass.sto')))
-                    deps.append(
-                        os.path.join(
-                            self.study.config['results_path'], 
-                            f'baseline_torque{self.suffix}', subject,
-                            'ankle_perturbation_force_right.sto'))
-                else:
-                    label = (f'torque{torque}_time{self.time}'
-                             f'_delay{int(1000*delay)}')
-                    deps.append(
-                        os.path.join(
-                            self.study.config['results_path'], 
-                            f'perturb_from_baseline{self.suffix}_{label}', 
-                            subject, 
-                            (f'tracking_perturb_from_baseline{self.suffix}'
-                             f'_{label}_center_of_mass.sto')))
-                    deps.append(
-                        os.path.join(
-                            self.study.config['results_path'], 
-                            f'perturb_from_baseline{self.suffix}_{label}', 
-                            subject, 'ankle_perturbation_force_right.sto'))
-                self.labels.append(f'{torque}%')
-                self.alphas.append(1.0)
-                self.colors.append(cmap(cmap_idx))
-                self.linewidths.append(2)
-                self.masses.append(mass)
-
-        self.add_action(deps, 
-                        [os.path.join(self.analysis_path, 
-                            'com_versus_perturb_torque_position_zx.png'), 
-                         os.path.join(self.analysis_path, 
-                            'com_versus_perturb_torque_position_xy.png'),
-                         os.path.join(self.analysis_path, 
-                            'com_versus_perturb_torque_z_pos_vel_acc.png'), 
-                         os.path.join(self.analysis_path, 
-                            'com_and_torque_versus_time.png')], 
-                        self.plot_com_tracking_errors)
-
-    def plot_com_tracking_errors(self, file_dep, target):
-
-        # Add an element for the unperturbed trial so the arrays match length
-        numSubjects = len(self.subjects)
-        numLabels = len(self.labels)
-        fig0 = plt.figure(figsize=(4, 3*numSubjects))
-        fig1 = plt.figure(figsize=(4, 3*numSubjects))
-        fig2 = plt.figure(figsize=(5, 8))
-        fig3 = plt.figure(figsize=(8, 4))
-
-        def update_lims(pos, min_pos, max_pos):
-            if np.min(pos) < min_pos:
-                min_pos = math.floor(np.min(pos))
-            if np.max(pos) > max_pos:
-                max_pos = math.ceil(np.max(pos))
-
-            return min_pos, max_pos
-
-        min_pos_z = -2
-        max_pos_z = 2
-        ax_xz_pos = fig0.add_subplot(1, 1, 1)
-        ax_xy_pos = fig1.add_subplot(1, 1, 1)
-
-        ax_pos = fig2.add_subplot(3, 1, 1)
-        ax_vel = fig2.add_subplot(3, 1, 2)
-        ax_acc = fig2.add_subplot(3, 1, 3)
-
-        ax_ml_pos = fig3.add_subplot(2, 1, 1)
-        ax_torque = fig3.add_subplot(2, 1, 2)
-
-        zipped = zip(self.labels, self.colors, self.alphas, 
-                     self.linewidths, self.masses)
-        for i, (label, color, alpha, lw, mass) in enumerate(zipped):
-            
-            # Get current table and values
-            currTable = osim.TimeSeriesTable(file_dep[2*i])
-            curr_pos_x = currTable.getDependentColumn(
-                '/|com_position_x').to_numpy()
-            curr_pos_y = currTable.getDependentColumn(
-                '/|com_position_y').to_numpy()
-            curr_pos_z = currTable.getDependentColumn(
-                '/|com_position_z').to_numpy()
-            curr_vel_z = currTable.getDependentColumn(
-                '/|com_velocity_z').to_numpy()
-            curr_acc_z = currTable.getDependentColumn(
-                '/|com_acceleration_z').to_numpy()
-
-            time = currTable.getIndependentColumn()
-            initial_time = time[0]
-            final_time = time[-1]
-            duration = final_time - initial_time
-
-            # Start all positions at zero
-            plot_pos_x = curr_pos_x - curr_pos_x[0]
-            plot_pos_y = curr_pos_y - curr_pos_y[0]
-            plot_pos_z = curr_pos_z - curr_pos_z[0]
-
-            # Get ankle torques
-            currTorqueTable = osim.TimeSeriesTable(file_dep[2*i + 1])
-            torqueTime = currTorqueTable.getIndependentColumn()
-            rightAnkleTorque = currTorqueTable.getDependentColumn(
-                '/forceset/ankle_angle_r_perturbation').to_numpy()
-
-            # Position: anterior-posterior vs medio-lateral
-            s = 35
-            min_pos_z, max_pos_z = update_lims(
-                100*plot_pos_z, min_pos_z, max_pos_z)
-            ax_xz_pos.plot(100*plot_pos_z, plot_pos_x, color=color, 
-                linewidth=lw, zorder=0, solid_capstyle='round', 
-                clip_on=False, alpha=alpha)
-            ax_xz_pos.scatter(100*plot_pos_z[0], plot_pos_x[0], s=s, 
-                color=color, marker='o', clip_on=False, alpha=alpha)
-            ax_xz_pos.scatter(100*plot_pos_z[-1], plot_pos_x[-1], s=s, 
-                color=color, marker='X', clip_on=False, alpha=alpha)
-            ax_xz_pos.set_xlim(min_pos_z, max_pos_z)
-            xf = math.ceil(1.25 * duration)
-            ax_xz_pos.set_ylim(0, xf)
-            ax_xz_pos.set_xlabel('medio-lateral COM position (cm)')
-            ax_xz_pos.set_ylabel('anterior-posterior COM position (m)')
-            util.publication_spines(ax_xz_pos, True)
-            fig0.tight_layout()
-            fig0.savefig(target[0], dpi=600)
-            plt.close()
-
-            # Position: superior-inferior vs anterior-posterior
-            ax_xy_pos.plot(plot_pos_x, 100*plot_pos_y, color=color, 
-                linewidth=lw, zorder=0, solid_capstyle='round', 
-                clip_on=False, alpha=alpha)
-            ax_xy_pos.scatter(plot_pos_x[0], 100*plot_pos_y[0], s=s, 
-                color=color, marker='o', clip_on=False, alpha=alpha)
-            ax_xy_pos.scatter(plot_pos_x[-1], 100*plot_pos_y[-1], s=s, 
-                color=color, marker='X', clip_on=False, alpha=alpha)                
-            ax_xy_pos.set_xlabel('anterior-posterior COM position (m)')
-            ax_xy_pos.set_xlim(0, xf)
-            ax_xy_pos.set_ylabel('superior-inferior COM position (cm)')
-            ax_xy_pos.set_ylim(-2, 6)
-            util.publication_spines(ax_xy_pos, True)
-            fig1.tight_layout()
-            fig1.savefig(target[1], dpi=600)
-            plt.close()
-
-            # Position, velocity, acceleration versus time
-            final_per = 200 if self.two_cycles else 100
-            pgc = np.linspace(0, final_per, len(time))
-            ax_pos.plot(pgc, 100*plot_pos_z, color=color, linewidth=lw, 
-                        solid_capstyle='round', clip_on=False, alpha=alpha)
-            ax_pos.set_ylim(min_pos_z, max_pos_z)
-            ax_pos.set_yticks(
-                np.linspace(min_pos_z, max_pos_z, 
-                            max_pos_z - min_pos_z + 1))
-            ax_pos.set_ylabel('position (cm)')
-            ax_pos.set_xlim(0, final_per)
-            ax_pos.axhline(y=0, color='gray', linestyle='--',
-                       linewidth=0.5, alpha=0.7, zorder=0)
-            util.publication_spines(ax_pos)
-            ax_pos.spines['bottom'].set_visible(False)
-            ax_pos.spines['left'].set_position(('outward', 10))
-            ax_pos.tick_params(axis='x', which='both', bottom=False, 
-                               top=False, labelbottom=False)  
-
-            ax_vel.plot(pgc, curr_vel_z, color=color, linewidth=lw,
-                        solid_capstyle='round', clip_on=False, alpha=alpha)
-            ax_vel.set_xticklabels([])
-            ax_vel.set_ylabel('velocity (m/s)')
-            ax_vel.set_xlim(0, final_per)
-            ax_vel.set_ylim(-0.3, 0.3)
-            ax_vel.set_yticks([-0.3, -0.2, -0.1, 0, 0.1, 0.2, 0.3])
-            ax_vel.axhline(y=0, color='gray', linestyle='--',
-                       linewidth=0.5, alpha=0.7, zorder=0)
-            util.publication_spines(ax_vel)
-            ax_vel.spines['bottom'].set_visible(False)
-            ax_vel.spines['left'].set_position(('outward', 10))
-            ax_vel.tick_params(axis='x', which='both', bottom=False, 
-                               top=False, labelbottom=False)
-
-            ax_acc.plot(pgc, curr_acc_z, color=color, linewidth=lw,
-                        solid_capstyle='round', clip_on=False, alpha=alpha)
-            ax_acc.set_ylabel('acceleration (m/s^2)')
-            ax_acc.set_xlabel('time (% gait cycle)')
-            ax_acc.set_ylim(-2, 2)
-            ax_acc.axhline(y=0, color='gray', linestyle='--',
-                       linewidth=0.5, alpha=0.7, zorder=0)
-            ax_acc.set_xlim(0, final_per)
-            util.publication_spines(ax_acc)
-            ax_acc.spines['bottom'].set_position(('outward', 10))
-            ax_acc.spines['left'].set_position(('outward', 10))
-
-            fig2.tight_layout()
-            fig2.savefig(target[2], dpi=600)
-            plt.close()
-
-            # import pdb
-            # pdb.set_trace()
-
-            # Recreate experiment plot
-            # ax_ml_pos.scatter(time, 100*plot_pos_z, color=color, s=1)
-            ax_ml_pos.plot(time, 100*plot_pos_z, color=color, 
-                linewidth=lw, solid_capstyle='round', clip_on=False, 
-                alpha=alpha)
-            ax_ml_pos.set_ylim(min_pos_z, max_pos_z)
-            ax_ml_pos.set_yticks(
-                np.linspace(min_pos_z, max_pos_z, 
-                            max_pos_z - min_pos_z + 1))
-            ax_ml_pos.set_ylabel('position (cm)')
-            # ax_ml_pos.set_xlim(0, final_per)
-            ax_ml_pos.axhline(y=0, color='gray', linestyle='--',
-                       linewidth=0.5, alpha=0.7, zorder=0)
-            util.publication_spines(ax_ml_pos)
-            ax_ml_pos.spines['bottom'].set_visible(False)
-            ax_ml_pos.spines['left'].set_position(('outward', 10))
-            ax_ml_pos.tick_params(axis='x', which='both', bottom=False, 
-                               top=False, labelbottom=False)  
-
-            torque_pgc = np.linspace(0, final_per, len(torqueTime))
-            # ax_torque.scatter(torqueTime, 
-            #     rightAnkleTorque / mass, color=color)
-            ax_torque.plot(torqueTime, 
-                rightAnkleTorque / mass, color=color, 
-                linewidth=lw, solid_capstyle='round', clip_on=False, 
-                alpha=alpha)
-            # ax_torque.set_xlim(0, final_per)
-            ax_torque.set_xlabel('time (% gait cycle)')
-            util.publication_spines(ax_torque)
-            ax_torque.spines['bottom'].set_position(('outward', 10))
-            ax_torque.spines['left'].set_position(('outward', 10))
-            ax_torque.set_ylabel('torque (N-m/kg)')
-
-            fig3.tight_layout()
-            fig3.savefig(target[3], dpi=600)
-            plt.close()
-
-        # def plot_com_versus_time(axes, diff_vel, diff_acc, marker, 
-        #         colors, label):
-        #     ax_vel_ml = axes[0]
-        #     ax_vel_ap = axes[1]
-        #     ax_acc_ml = axes[2]
-        #     ax_acc_ap = axes[3]
-
-        #     # Remove elements with zero diffs
-        #     diff_vel = diff_vel[1:, :, :]
-        #     diff_acc = diff_acc[1:, :, :]
-
-        #     diff_vel_mean = np.mean(diff_vel, axis=2)
-        #     diff_acc_mean = np.mean(diff_acc, axis=2)
-
-        #     ax_vel_ml.bar(self.torques,  diff_vel_mean[:, 2], color=colors,
-        #         width=7)
-        #     ax_vel_ml.set_ylabel('medio-lateral')
-        #     # ax_vel_ml.set_ylim(-0.2, 0.2)
-        #     ax_vel_ml.set_xticks(self.torques)
-        #     ax_vel_ml.set_xticklabels([])
-        #     ax_vel_ml.legend(fontsize=6, fancybox=False, frameon=False)
-        #     ax_vel_ml.set_title('center-of-mass\nvelocity (m/s)', fontsize=8)
-
-        #     ax_vel_ap.bar(self.torques,  diff_vel_mean[:, 0], color=colors,
-        #         width=7)
-        #     ax_vel_ap.set_ylabel('anterior-posterior')
-        #     # ax_vel_ap.set_ylim(-0.2, 0.2)
-        #     ax_vel_ap.set_xticks(self.torques)
-        #     ax_vel_ap.set_xticklabels(self.labels[1:])
-        #     ax_vel_ap.set_xlabel('peak torque\n(% BW)')
-
-        #     ax_acc_ml.bar(self.torques,  diff_acc_mean[:, 2], color=colors,
-        #         width=7)
-        #     # ax_acc_ml.set_ylim(-2.0, 2.0)
-        #     ax_acc_ml.set_xticks(self.torques)
-        #     ax_acc_ml.set_xticklabels([])
-        #     ax_acc_ml.set_title('center-of-mass\nacceleration (m/s^2)', 
-        #         fontsize=8)
-
-        #     ax_acc_ap.bar(self.torques,  diff_acc_mean[:, 0], color=colors,
-        #         width=7)
-        #     # ax_acc_ap.set_ylim(-2.0, 2.0)
-        #     ax_acc_ap.set_xticks(self.torques)
-        #     ax_acc_ap.set_xticklabels(self.labels[1:])
-        #     ax_acc_ap.set_xlabel('peak torque\n(% BW)')
-
-        #     for ax in [ax_vel_ml, ax_vel_ap, ax_acc_ml, ax_acc_ap]:
-        #         util.publication_spines(ax)
-        #         ax.axhline(y=0, color='gray', linestyle='--',
-        #                    linewidth=0.5, alpha=0.7, zorder=0)
-
-        # fig3 = plt.figure(figsize=(4.5, 4.5))
-        # ax_vel_ml = fig3.add_subplot(221)
-        # ax_vel_ap = fig3.add_subplot(223)
-        # ax_acc_ml = fig3.add_subplot(222)
-        # ax_acc_ap = fig3.add_subplot(224)
-        # axes = [ax_vel_ml, ax_vel_ap, ax_acc_ml, ax_acc_ap]
-        # plot_com_versus_time(axes, max_diff_vel, max_diff_acc, 'o', 'orange',
-        #     'maximum change')
-        # plot_com_versus_time(axes, peak_diff_vel, peak_diff_acc, 'o', 
-        #     self.colors[1:], 'change at peak torque')
-        # fig3.tight_layout()
-        # fig3.savefig(target[3], dpi=600)
-        # plt.close()
-
-
 class TaskPlotGroundReactionsAnklePerturb(osp.StudyTask):
     REGISTRY = []
     def __init__(self, study, subject, time, torques, color, delay, 
@@ -3707,7 +3428,7 @@ class TaskPlotGroundReactionsAnklePerturb(osp.StudyTask):
         # Unperturbed grfs
         deps.append(os.path.join(self.study.config['results_path'], 
             f'unperturbed{self.suffix}', subject, 
-            f'unperturbed{self.suffix}_mesh10_grfs.sto'))
+            f'unperturbed{self.suffix}_grfs.sto'))
 
         for torque in self.torques:
             label = f'torque{torque}_time{self.time}_delay{delay}'
@@ -4184,3 +3905,723 @@ class TaskPlotAnklePerturbationTorques(osp.StudyTask):
         fig.tight_layout()
         fig.savefig(target[0], dpi=600)
         plt.close()
+
+
+
+################
+## DEPRECATED ##
+################
+
+# class TaskMocoDoublePeriodicTrajectory(osp.TrialTask):
+#     REGISTRY = []
+#     def __init__(self, trial, traj_fpath, **kwargs):
+#         super(TaskMocoDoublePeriodicTrajectory, self).__init__(trial)
+#         self.name = f'{trial.id}_moco_double_periodic_trajectory'
+#         self.traj_fpath = traj_fpath
+#         self.double_traj_fpath = traj_fpath.replace(
+#             '.sto', '_doubled.sto')
+
+#         self.add_action([self.traj_fpath],
+#                         [self.double_traj_fpath],
+#                         self.double_periodic_trajectory)
+
+#     def double_periodic_trajectory(self, file_dep, target):
+#         traj = osim.MocoTrajectory(file_dep[0])
+#         double_traj = osim.createPeriodicTrajectory(traj)
+#         double_traj.write(target[0])
+
+# class TaskMocoAnkleTorqueBaselineWalking(osp.TrialTask):
+#     REGISTRY = []
+#     def __init__(self, trial, initial_time, final_time, right_strikes, 
+#                  left_strikes, guess_fpath=None, mesh_interval=0.02, 
+#                  walking_speed=1.25, side='both',
+#                  constrain_initial_state=False,
+#                  torque_parameters=[0.5, 0.5, 0.25, 0.1],
+#                  periodic=False,
+#                  two_cycles=False, **kwargs):
+#         super(TaskMocoAnkleTorqueBaselineWalking, self).__init__(trial)
+#         suffix = '_two_cycles' if two_cycles else ''
+#         self.name = f'{trial.subject.name}_moco_baseline_ankle_torque{suffix}'
+#         self.mesh_interval = mesh_interval
+#         self.walking_speed = walking_speed
+#         self.periodic = periodic
+#         self.guess_fpath = guess_fpath
+#         self.root_dir = trial.study.config['doit_path']
+#         self.weights = trial.study.weights
+#         self.side = side
+#         self.initial_time = initial_time
+#         self.final_time = final_time
+#         self.right_strikes = right_strikes
+#         self.left_strikes = left_strikes
+#         self.model_fpath = trial.subject.sim_model_fpath
+#         self.constrain_initial_state = constrain_initial_state
+
+#         ankle_torque_left_parameters = list()
+#         ankle_torque_right_parameters = list()
+#         for rhs in self.right_strikes:
+#             ankle_torque_right_parameters.append(torque_parameters)
+#         for lhs in self.left_strikes:
+#             ankle_torque_left_parameters.append(torque_parameters)
+
+#         self.ankle_torque_left_parameters = ankle_torque_left_parameters
+#         self.ankle_torque_right_parameters = ankle_torque_right_parameters
+
+#         expdata_dir = os.path.join(
+#             trial.results_exp_path, 'tracking_data', 'expdata')
+#         extloads_dir = os.path.join(
+#             trial.results_exp_path, 'tracking_data', 'extloads')
+#         self.tracking_coordinates_fpath = os.path.join(
+#             expdata_dir, 'coordinates.sto')
+#         self.coordinates_std_fpath = os.path.join(
+#             trial.results_exp_path, 
+#             f'{trial.id}_joint_angle_standard_deviations.csv')
+#         self.tracking_extloads_fpath = os.path.join(
+#             extloads_dir, 'external_loads.xml')
+#         self.tracking_grfs_fpath = os.path.join(
+#             expdata_dir, 'ground_reaction.mot')
+
+#         self.result_fpath = os.path.join(
+#             self.study.config['results_path'],
+#             f'baseline_torque{suffix}', trial.subject.name)
+#         if not os.path.exists(self.result_fpath): 
+#             os.makedirs(self.result_fpath)
+
+#         self.archive_fpath = os.path.join(
+#             self.study.config['results_path'],
+#             f'baseline_torque{suffix}', trial.subject.name, 'archive')
+#         if not os.path.exists(self.archive_fpath): 
+#             os.makedirs(self.archive_fpath)
+
+#         self.grf_fpath = os.path.join(
+#             trial.results_exp_path, 'expdata', 'ground_reaction.mot')
+#         self.emg_fpath = os.path.join(
+#             trial.results_exp_path, 'expdata', 'emg.sto')
+
+#         self.config_name = f'baseline_torque{suffix}'
+#         self.add_action([self.model_fpath,
+#                          self.tracking_coordinates_fpath,
+#                          self.coordinates_std_fpath,
+#                          self.tracking_extloads_fpath,
+#                          self.tracking_grfs_fpath,
+#                          self.emg_fpath],
+#                         [],
+#                         self.run_tracking_problem)
+
+#     def run_tracking_problem(self, file_dep, target):
+        
+#         config = MocoTrackConfig(
+#             self.config_name, self.config_name, 'black', self.weights,
+#             guess=self.guess_fpath,
+#             constrain_initial_state=self.constrain_initial_state,
+#             use_guess_for_initial_muscle_states=self.constrain_initial_state,
+#             use_guess_for_initial_kinematic_states=self.constrain_initial_state,
+#             ankle_torque_perturbation=True,
+#             ankle_torque_left_parameters=self.ankle_torque_left_parameters,
+#             ankle_torque_right_parameters=self.ankle_torque_right_parameters,
+#             ankle_torque_first_cycle_only=False,
+#             ankle_torque_side=self.side,
+#             periodic=self.periodic)
+
+#         cycles = list()
+#         for cycle in self.trial.cycles:
+#             cycles.append([cycle.start, cycle.end])
+
+#         result = MotionTrackingWalking(
+#             self.root_dir,      # root directory
+#             self.result_fpath,  # result directory
+#             file_dep[0],        # model file path
+#             file_dep[1],        # IK coordinates path
+#             file_dep[2],        # Coord stds
+#             file_dep[3],        # external loads file 
+#             file_dep[4],        # GRF MOT file
+#             file_dep[5],        # EMG data
+#             self.initial_time,
+#             self.final_time, 
+#             cycles,
+#             self.right_strikes,
+#             self.left_strikes,
+#             self.mesh_interval, 
+#             self.walking_speed,
+#             [config],
+#         )
+
+#         result.generate_results(self.result_fpath)
+#         result.report_results(self.result_fpath)
+
+
+# class TaskMocoAnkleTorquePerturbedFromBaselineWalking(osp.TrialTask):
+#     REGISTRY = []
+#     def __init__(self, trial, initial_time, final_time, right_strikes, 
+#                  left_strikes, ankle_torque_left_parameters, 
+#                  ankle_torque_right_parameters, 
+#                  guess_fpath=None, mesh_interval=0.02, periodic=False,
+#                  walking_speed=1.25, side='both', constrain_initial_state=True, 
+#                  perturb_response_delay=0.0, bound_controls=True,
+#                  two_cycles=False):
+#         super(TaskMocoAnkleTorquePerturbedFromBaselineWalking, self).__init__(
+#             trial)
+#         parameters = ankle_torque_right_parameters[0]
+#         torque = int(100*parameters[0])
+#         time = int(100*parameters[1])
+#         delay = int(1000*perturb_response_delay)
+#         self.suffix = '_two_cycles' if two_cycles else ''
+#         self.config_name = (f'perturb_from_baseline{self.suffix}'
+#                             f'_torque{torque}_time{time}_delay{delay}')
+#         self.name = f'{trial.subject.name}_moco_{self.config_name}'
+#         self.mesh_interval = mesh_interval
+#         self.walking_speed = walking_speed
+#         self.periodic = periodic
+#         self.guess_fpath = guess_fpath
+#         self.root_dir = trial.study.config['doit_path']
+#         self.weights = trial.study.weights
+#         self.ankle_torque_left_parameters = ankle_torque_left_parameters
+#         self.ankle_torque_right_parameters = ankle_torque_right_parameters
+#         self.side = side
+#         self.initial_time = initial_time
+#         self.final_time = final_time
+#         self.right_strikes = right_strikes
+#         self.left_strikes = left_strikes
+#         self.model_fpath = trial.subject.sim_model_fpath
+#         self.constrain_initial_state = constrain_initial_state
+#         self.bound_controls = bound_controls
+#         self.perturb_response_delay = perturb_response_delay
+
+#         expdata_dir = os.path.join(
+#             trial.results_exp_path, 'tracking_data', 'expdata')
+#         extloads_dir = os.path.join(
+#             trial.results_exp_path, 'tracking_data', 'extloads')
+#         self.tracking_coordinates_fpath = os.path.join(
+#             expdata_dir, 'coordinates.sto')
+#         self.coordinates_std_fpath = os.path.join(
+#             trial.results_exp_path, 
+#             f'{trial.id}_joint_angle_standard_deviations.csv')
+#         self.tracking_extloads_fpath = os.path.join(
+#             extloads_dir, 'external_loads.xml')
+#         self.tracking_grfs_fpath = os.path.join(
+#             expdata_dir, 'ground_reaction.mot')
+
+#         self.result_fpath = os.path.join(
+#             self.study.config['results_path'],
+#             self.config_name, 
+#             trial.subject.name)
+#         if not os.path.exists(self.result_fpath): 
+#             os.makedirs(self.result_fpath)
+
+#         self.archive_fpath = os.path.join(
+#             self.study.config['results_path'],
+#             self.config_name, 
+#             trial.subject.name, 'archive')
+#         if not os.path.exists(self.archive_fpath): 
+#             os.makedirs(self.archive_fpath)
+
+#         self.grf_fpath = os.path.join(
+#             trial.results_exp_path, 'expdata', 'ground_reaction.mot')
+#         self.emg_fpath = os.path.join(
+#             trial.results_exp_path, 'expdata', 'emg.sto')
+
+#         self.add_action([self.model_fpath,
+#                          self.tracking_coordinates_fpath,
+#                          self.coordinates_std_fpath,
+#                          self.tracking_extloads_fpath,
+#                          self.tracking_grfs_fpath,
+#                          self.emg_fpath],
+#                         [],
+#                         self.run_tracking_problem)
+
+#     def run_tracking_problem(self, file_dep, target):
+
+#         weights = copy.deepcopy(self.weights)
+#         weights['grf_tracking_weight'] = 0
+#         config = MocoTrackConfig(
+#             self.config_name, self.config_name, 'black', weights,
+#             guess=self.guess_fpath,
+#             constrain_initial_state=self.constrain_initial_state,
+#             use_guess_for_initial_muscle_states=True,
+#             use_guess_for_initial_kinematic_states=True,
+#             bound_controls=self.bound_controls,
+#             control_bound_solution_fpath=self.guess_fpath,
+#             perturb_response_delay=self.perturb_response_delay,
+#             perturb_start_sim_at_onset=True,
+#             ankle_torque_perturbation=True,
+#             ankle_torque_left_parameters=self.ankle_torque_left_parameters,
+#             ankle_torque_right_parameters=self.ankle_torque_right_parameters,
+#             ankle_torque_first_cycle_only=False,
+#             ankle_torque_side=self.side,
+#             periodic=self.periodic)
+
+#         cycles = list()
+#         for cycle in self.trial.cycles:
+#             cycles.append([cycle.start, cycle.end])
+
+#         result = MotionTrackingWalking(
+#             self.root_dir,      # root directory
+#             self.result_fpath,  # result directory
+#             file_dep[0],        # model file path
+#             file_dep[1],        # IK coordinates path
+#             file_dep[2],        # Coord stds
+#             file_dep[3],        # external loads file 
+#             file_dep[4],        # GRF MOT file
+#             file_dep[5],        # EMG data
+#             self.initial_time,
+#             self.final_time, 
+#             cycles,
+#             self.right_strikes,
+#             self.left_strikes,
+#             self.mesh_interval, 
+#             self.walking_speed,
+#             [config],
+#         )
+
+#         result.generate_results(self.result_fpath)
+#         result.report_results(self.result_fpath)
+
+
+# class TaskMocoAnkleTorquePerturbedFromBaselineWalkingPost(osp.TrialTask):
+#     REGISTRY = []
+#     def __init__(self, trial, generate_task, **kwargs):
+#         super(TaskMocoAnkleTorquePerturbedFromBaselineWalkingPost, 
+#               self).__init__(trial)
+#         self.name = f'{generate_task.name}_post'
+#         self.weights = trial.study.weights
+#         self.root_dir = trial.study.config['doit_path']
+#         self.walking_speed = generate_task.walking_speed
+#         self.mesh_interval = generate_task.mesh_interval
+#         self.guess_fpath = generate_task.guess_fpath
+#         self.result_fpath = generate_task.result_fpath
+#         self.archive_fpath = generate_task.archive_fpath
+#         self.model_fpath = generate_task.model_fpath
+#         self.tracking_coordinates_fpath = \
+#             generate_task.tracking_coordinates_fpath
+#         self.coordinates_std_fpath = generate_task.coordinates_std_fpath
+#         self.tracking_extloads_fpath = generate_task.tracking_extloads_fpath
+#         self.tracking_grfs_fpath = generate_task.tracking_grfs_fpath
+#         self.emg_fpath = generate_task.emg_fpath
+#         self.guess_fpath = generate_task.guess_fpath
+#         self.ankle_torque_left_parameters = \
+#             generate_task.ankle_torque_left_parameters
+#         self.ankle_torque_right_parameters = \
+#             generate_task.ankle_torque_right_parameters
+#         self.side = generate_task.side
+#         self.initial_time = generate_task.initial_time
+#         self.final_time = generate_task.final_time
+#         self.right_strikes = generate_task.right_strikes
+#         self.left_strikes = generate_task.left_strikes
+#         self.config_name = generate_task.config_name
+#         self.suffix = generate_task.suffix
+
+#         # Copy over unperturbed solution so we can plot against the
+#         # perturbed solution
+#         self.unperturbed_result_fpath = os.path.join(
+#             self.study.config['results_path'], f'unperturbed{self.suffix}', 
+#             trial.subject.name)
+#         shutil.copyfile(
+#             os.path.join(self.unperturbed_result_fpath, 
+#                          f'unperturbed{self.suffix}_mesh20.sto'),
+#             os.path.join(self.result_fpath, f'unperturbed{self.suffix}.sto'))
+#         shutil.copyfile(
+#             os.path.join(self.unperturbed_result_fpath, 
+#                          f'unperturbed{self.suffix}_mesh20_grfs.sto'),
+#             os.path.join(self.result_fpath, 
+#                          f'unperturbed{self.suffix}_grfs.sto'))
+
+#         # Copy over baseline solution so we can plot against the
+#         # perturbed solution
+#         self.baseline_result_fpath = os.path.join(
+#             self.study.config['results_path'], f'baseline_torque{self.suffix}', 
+#             trial.subject.name)
+#         shutil.copyfile(
+#             os.path.join(self.baseline_result_fpath, 
+#                          f'baseline_torque{self.suffix}.sto'),
+#             os.path.join(self.result_fpath, 
+#                          f'baseline_torque{self.suffix}.sto'))
+#         shutil.copyfile(
+#             os.path.join(self.baseline_result_fpath, 
+#                          f'baseline_torque{self.suffix}_grfs.sto'),
+#             os.path.join(self.result_fpath, 
+#                          f'baseline_torque{self.suffix}_grfs.sto'))
+        
+#         self.add_action([self.model_fpath,
+#                          self.tracking_coordinates_fpath,
+#                          self.coordinates_std_fpath,
+#                          self.tracking_extloads_fpath,
+#                          self.tracking_grfs_fpath,
+#                          self.emg_fpath,
+#                          self.guess_fpath],
+#                         [],
+#                         self.run_tracking_problem)
+
+#     def run_tracking_problem(self, file_dep, target):
+
+#         configs = list()
+#         config = MocoTrackConfig(
+#             f'unperturbed{self.suffix}', f'unperturbed{self.suffix}', 'black', 
+#             self.weights, guess=file_dep[5])
+#         configs.append(config)
+
+#         config = MocoTrackConfig(
+#             f'baseline_torque{self.suffix}', 
+#             f'baseline_torque{self.suffix}', 'blue', 
+#             self.weights, guess=file_dep[5])
+#         configs.append(config)
+
+#         config = MocoTrackConfig(
+#             self.config_name, self.config_name, 
+#             'red', self.weights,
+#             ankle_torque_right_parameters=self.ankle_torque_right_parameters,
+#             ankle_torque_left_parameters=self.ankle_torque_left_parameters,
+#             ankle_torque_side=self.side,
+#             )
+#         configs.append(config)
+
+#         cycles = list()
+#         for cycle in self.trial.cycles:
+#             cycles.append([cycle.start, cycle.end])
+
+#         result = MotionTrackingWalking(
+#             self.root_dir,      # root directory
+#             self.result_fpath,  # result directory
+#             file_dep[0],        # model file path
+#             file_dep[1],        # IK coordinates path
+#             file_dep[2],        # Coordinates STD path
+#             file_dep[3],        # external loads file 
+#             file_dep[4],        # GRF MOT file
+#             file_dep[5],        # EMG data
+#             self.initial_time,
+#             self.final_time,
+#             cycles,
+#             self.right_strikes,
+#             self.left_strikes,
+#             self.mesh_interval, 
+#             self.walking_speed,
+#             configs,
+#         )
+#         result.report_results(self.result_fpath)
+
+# class TaskPlotPerturbFromBaselineResults(osp.StudyTask):
+#     REGISTRY = []
+#     def __init__(self, study, subjects, masses, time, torques, delay, 
+#                  two_cycles=False):
+#         super(TaskPlotPerturbFromBaselineResults, self).__init__(study)
+#         self.two_cycles = two_cycles
+#         self.suffix = '_two_cycles' if self.two_cycles else ''
+#         self.name = f'plot_perturb_from_baseline_results{self.suffix}'
+#         self.results_path = os.path.join(study.config['results_path'], 
+#             'experiments')
+#         self.analysis_path = os.path.join(study.config['analysis_path'],
+#             f'perturb_from_baseline_results{self.suffix}')
+#         if not os.path.exists(self.analysis_path): 
+#             os.makedirs(self.analysis_path)
+#         self.subjects = subjects
+#         self.torques = torques
+#         self.time = time
+
+#         self.labels = list()
+#         self.alphas = list()
+#         self.colors = list()
+#         self.linewidths = list()
+#         self.masses = list()
+#         cmap = plt.get_cmap('viridis')
+#         cmap_indices = np.linspace(0, 1, len(self.torques))
+#         deps = list()
+#         for subject, mass in zip(subjects, masses):
+#             # Perturbed solutions
+#             for torque, cmap_idx in zip(self.torques, cmap_indices):
+#                 if torque == 50:
+#                     deps.append(
+#                         os.path.join(
+#                             self.study.config['results_path'], 
+#                             f'baseline_torque{self.suffix}', subject,
+#                             (f'tracking_baseline_torque{self.suffix}'
+#                              f'_center_of_mass.sto')))
+#                     deps.append(
+#                         os.path.join(
+#                             self.study.config['results_path'], 
+#                             f'baseline_torque{self.suffix}', subject,
+#                             'ankle_perturbation_force_right.sto'))
+#                 else:
+#                     label = (f'torque{torque}_time{self.time}'
+#                              f'_delay{int(1000*delay)}')
+#                     deps.append(
+#                         os.path.join(
+#                             self.study.config['results_path'], 
+#                             f'perturb_from_baseline{self.suffix}_{label}', 
+#                             subject, 
+#                             (f'tracking_perturb_from_baseline{self.suffix}'
+#                              f'_{label}_center_of_mass.sto')))
+#                     deps.append(
+#                         os.path.join(
+#                             self.study.config['results_path'], 
+#                             f'perturb_from_baseline{self.suffix}_{label}', 
+#                             subject, 'ankle_perturbation_force_right.sto'))
+#                 self.labels.append(f'{torque}%')
+#                 self.alphas.append(1.0)
+#                 self.colors.append(cmap(cmap_idx))
+#                 self.linewidths.append(2)
+#                 self.masses.append(mass)
+
+#         self.add_action(deps, 
+#                         [os.path.join(self.analysis_path, 
+#                             'com_versus_perturb_torque_position_zx.png'), 
+#                          os.path.join(self.analysis_path, 
+#                             'com_versus_perturb_torque_position_xy.png'),
+#                          os.path.join(self.analysis_path, 
+#                             'com_versus_perturb_torque_z_pos_vel_acc.png'), 
+#                          os.path.join(self.analysis_path, 
+#                             'com_and_torque_versus_time.png')], 
+#                         self.plot_com_tracking_errors)
+
+#     def plot_com_tracking_errors(self, file_dep, target):
+
+#         # Add an element for the unperturbed trial so the arrays match length
+#         numSubjects = len(self.subjects)
+#         numLabels = len(self.labels)
+#         fig0 = plt.figure(figsize=(4, 3*numSubjects))
+#         fig1 = plt.figure(figsize=(4, 3*numSubjects))
+#         fig2 = plt.figure(figsize=(5, 8))
+#         fig3 = plt.figure(figsize=(8, 4))
+
+#         def update_lims(pos, min_pos, max_pos):
+#             if np.min(pos) < min_pos:
+#                 min_pos = math.floor(np.min(pos))
+#             if np.max(pos) > max_pos:
+#                 max_pos = math.ceil(np.max(pos))
+
+#             return min_pos, max_pos
+
+#         min_pos_z = -2
+#         max_pos_z = 2
+#         ax_xz_pos = fig0.add_subplot(1, 1, 1)
+#         ax_xy_pos = fig1.add_subplot(1, 1, 1)
+
+#         ax_pos = fig2.add_subplot(3, 1, 1)
+#         ax_vel = fig2.add_subplot(3, 1, 2)
+#         ax_acc = fig2.add_subplot(3, 1, 3)
+
+#         ax_ml_pos = fig3.add_subplot(2, 1, 1)
+#         ax_torque = fig3.add_subplot(2, 1, 2)
+
+#         zipped = zip(self.labels, self.colors, self.alphas, 
+#                      self.linewidths, self.masses)
+#         for i, (label, color, alpha, lw, mass) in enumerate(zipped):
+            
+#             # Get current table and values
+#             currTable = osim.TimeSeriesTable(file_dep[2*i])
+#             curr_pos_x = currTable.getDependentColumn(
+#                 '/|com_position_x').to_numpy()
+#             curr_pos_y = currTable.getDependentColumn(
+#                 '/|com_position_y').to_numpy()
+#             curr_pos_z = currTable.getDependentColumn(
+#                 '/|com_position_z').to_numpy()
+#             curr_vel_z = currTable.getDependentColumn(
+#                 '/|com_velocity_z').to_numpy()
+#             curr_acc_z = currTable.getDependentColumn(
+#                 '/|com_acceleration_z').to_numpy()
+
+#             time = currTable.getIndependentColumn()
+#             initial_time = time[0]
+#             final_time = time[-1]
+#             duration = final_time - initial_time
+
+#             # Start all positions at zero
+#             plot_pos_x = curr_pos_x - curr_pos_x[0]
+#             plot_pos_y = curr_pos_y - curr_pos_y[0]
+#             plot_pos_z = curr_pos_z - curr_pos_z[0]
+
+#             # Get ankle torques
+#             currTorqueTable = osim.TimeSeriesTable(file_dep[2*i + 1])
+#             torqueTime = currTorqueTable.getIndependentColumn()
+#             rightAnkleTorque = currTorqueTable.getDependentColumn(
+#                 '/forceset/ankle_angle_r_perturbation').to_numpy()
+
+#             # Position: anterior-posterior vs medio-lateral
+#             s = 35
+#             min_pos_z, max_pos_z = update_lims(
+#                 100*plot_pos_z, min_pos_z, max_pos_z)
+#             ax_xz_pos.plot(100*plot_pos_z, plot_pos_x, color=color, 
+#                 linewidth=lw, zorder=0, solid_capstyle='round', 
+#                 clip_on=False, alpha=alpha)
+#             ax_xz_pos.scatter(100*plot_pos_z[0], plot_pos_x[0], s=s, 
+#                 color=color, marker='o', clip_on=False, alpha=alpha)
+#             ax_xz_pos.scatter(100*plot_pos_z[-1], plot_pos_x[-1], s=s, 
+#                 color=color, marker='X', clip_on=False, alpha=alpha)
+#             ax_xz_pos.set_xlim(min_pos_z, max_pos_z)
+#             xf = math.ceil(1.25 * duration)
+#             ax_xz_pos.set_ylim(0, xf)
+#             ax_xz_pos.set_xlabel('medio-lateral COM position (cm)')
+#             ax_xz_pos.set_ylabel('anterior-posterior COM position (m)')
+#             util.publication_spines(ax_xz_pos, True)
+#             fig0.tight_layout()
+#             fig0.savefig(target[0], dpi=600)
+#             plt.close()
+
+#             # Position: superior-inferior vs anterior-posterior
+#             ax_xy_pos.plot(plot_pos_x, 100*plot_pos_y, color=color, 
+#                 linewidth=lw, zorder=0, solid_capstyle='round', 
+#                 clip_on=False, alpha=alpha)
+#             ax_xy_pos.scatter(plot_pos_x[0], 100*plot_pos_y[0], s=s, 
+#                 color=color, marker='o', clip_on=False, alpha=alpha)
+#             ax_xy_pos.scatter(plot_pos_x[-1], 100*plot_pos_y[-1], s=s, 
+#                 color=color, marker='X', clip_on=False, alpha=alpha)                
+#             ax_xy_pos.set_xlabel('anterior-posterior COM position (m)')
+#             ax_xy_pos.set_xlim(0, xf)
+#             ax_xy_pos.set_ylabel('superior-inferior COM position (cm)')
+#             ax_xy_pos.set_ylim(-2, 6)
+#             util.publication_spines(ax_xy_pos, True)
+#             fig1.tight_layout()
+#             fig1.savefig(target[1], dpi=600)
+#             plt.close()
+
+#             # Position, velocity, acceleration versus time
+#             final_per = 200 if self.two_cycles else 100
+#             pgc = np.linspace(0, final_per, len(time))
+#             ax_pos.plot(pgc, 100*plot_pos_z, color=color, linewidth=lw, 
+#                         solid_capstyle='round', clip_on=False, alpha=alpha)
+#             ax_pos.set_ylim(min_pos_z, max_pos_z)
+#             ax_pos.set_yticks(
+#                 np.linspace(min_pos_z, max_pos_z, 
+#                             max_pos_z - min_pos_z + 1))
+#             ax_pos.set_ylabel('position (cm)')
+#             ax_pos.set_xlim(0, final_per)
+#             ax_pos.axhline(y=0, color='gray', linestyle='--',
+#                        linewidth=0.5, alpha=0.7, zorder=0)
+#             util.publication_spines(ax_pos)
+#             ax_pos.spines['bottom'].set_visible(False)
+#             ax_pos.spines['left'].set_position(('outward', 10))
+#             ax_pos.tick_params(axis='x', which='both', bottom=False, 
+#                                top=False, labelbottom=False)  
+
+#             ax_vel.plot(pgc, curr_vel_z, color=color, linewidth=lw,
+#                         solid_capstyle='round', clip_on=False, alpha=alpha)
+#             ax_vel.set_xticklabels([])
+#             ax_vel.set_ylabel('velocity (m/s)')
+#             ax_vel.set_xlim(0, final_per)
+#             ax_vel.set_ylim(-0.3, 0.3)
+#             ax_vel.set_yticks([-0.3, -0.2, -0.1, 0, 0.1, 0.2, 0.3])
+#             ax_vel.axhline(y=0, color='gray', linestyle='--',
+#                        linewidth=0.5, alpha=0.7, zorder=0)
+#             util.publication_spines(ax_vel)
+#             ax_vel.spines['bottom'].set_visible(False)
+#             ax_vel.spines['left'].set_position(('outward', 10))
+#             ax_vel.tick_params(axis='x', which='both', bottom=False, 
+#                                top=False, labelbottom=False)
+
+#             ax_acc.plot(pgc, curr_acc_z, color=color, linewidth=lw,
+#                         solid_capstyle='round', clip_on=False, alpha=alpha)
+#             ax_acc.set_ylabel('acceleration (m/s^2)')
+#             ax_acc.set_xlabel('time (% gait cycle)')
+#             ax_acc.set_ylim(-2, 2)
+#             ax_acc.axhline(y=0, color='gray', linestyle='--',
+#                        linewidth=0.5, alpha=0.7, zorder=0)
+#             ax_acc.set_xlim(0, final_per)
+#             util.publication_spines(ax_acc)
+#             ax_acc.spines['bottom'].set_position(('outward', 10))
+#             ax_acc.spines['left'].set_position(('outward', 10))
+
+#             fig2.tight_layout()
+#             fig2.savefig(target[2], dpi=600)
+#             plt.close()
+
+#             # import pdb
+#             # pdb.set_trace()
+
+#             # Recreate experiment plot
+#             # ax_ml_pos.scatter(time, 100*plot_pos_z, color=color, s=1)
+#             ax_ml_pos.plot(time, 100*plot_pos_z, color=color, 
+#                 linewidth=lw, solid_capstyle='round', clip_on=False, 
+#                 alpha=alpha)
+#             ax_ml_pos.set_ylim(min_pos_z, max_pos_z)
+#             ax_ml_pos.set_yticks(
+#                 np.linspace(min_pos_z, max_pos_z, 
+#                             max_pos_z - min_pos_z + 1))
+#             ax_ml_pos.set_ylabel('position (cm)')
+#             # ax_ml_pos.set_xlim(0, final_per)
+#             ax_ml_pos.axhline(y=0, color='gray', linestyle='--',
+#                        linewidth=0.5, alpha=0.7, zorder=0)
+#             util.publication_spines(ax_ml_pos)
+#             ax_ml_pos.spines['bottom'].set_visible(False)
+#             ax_ml_pos.spines['left'].set_position(('outward', 10))
+#             ax_ml_pos.tick_params(axis='x', which='both', bottom=False, 
+#                                top=False, labelbottom=False)  
+
+#             torque_pgc = np.linspace(0, final_per, len(torqueTime))
+#             # ax_torque.scatter(torqueTime, 
+#             #     rightAnkleTorque / mass, color=color)
+#             ax_torque.plot(torqueTime, 
+#                 rightAnkleTorque / mass, color=color, 
+#                 linewidth=lw, solid_capstyle='round', clip_on=False, 
+#                 alpha=alpha)
+#             # ax_torque.set_xlim(0, final_per)
+#             ax_torque.set_xlabel('time (% gait cycle)')
+#             util.publication_spines(ax_torque)
+#             ax_torque.spines['bottom'].set_position(('outward', 10))
+#             ax_torque.spines['left'].set_position(('outward', 10))
+#             ax_torque.set_ylabel('torque (N-m/kg)')
+
+#             fig3.tight_layout()
+#             fig3.savefig(target[3], dpi=600)
+#             plt.close()
+
+        # def plot_com_versus_time(axes, diff_vel, diff_acc, marker, 
+        #         colors, label):
+        #     ax_vel_ml = axes[0]
+        #     ax_vel_ap = axes[1]
+        #     ax_acc_ml = axes[2]
+        #     ax_acc_ap = axes[3]
+
+        #     # Remove elements with zero diffs
+        #     diff_vel = diff_vel[1:, :, :]
+        #     diff_acc = diff_acc[1:, :, :]
+
+        #     diff_vel_mean = np.mean(diff_vel, axis=2)
+        #     diff_acc_mean = np.mean(diff_acc, axis=2)
+
+        #     ax_vel_ml.bar(self.torques,  diff_vel_mean[:, 2], color=colors,
+        #         width=7)
+        #     ax_vel_ml.set_ylabel('medio-lateral')
+        #     # ax_vel_ml.set_ylim(-0.2, 0.2)
+        #     ax_vel_ml.set_xticks(self.torques)
+        #     ax_vel_ml.set_xticklabels([])
+        #     ax_vel_ml.legend(fontsize=6, fancybox=False, frameon=False)
+        #     ax_vel_ml.set_title('center-of-mass\nvelocity (m/s)', fontsize=8)
+
+        #     ax_vel_ap.bar(self.torques,  diff_vel_mean[:, 0], color=colors,
+        #         width=7)
+        #     ax_vel_ap.set_ylabel('anterior-posterior')
+        #     # ax_vel_ap.set_ylim(-0.2, 0.2)
+        #     ax_vel_ap.set_xticks(self.torques)
+        #     ax_vel_ap.set_xticklabels(self.labels[1:])
+        #     ax_vel_ap.set_xlabel('peak torque\n(% BW)')
+
+        #     ax_acc_ml.bar(self.torques,  diff_acc_mean[:, 2], color=colors,
+        #         width=7)
+        #     # ax_acc_ml.set_ylim(-2.0, 2.0)
+        #     ax_acc_ml.set_xticks(self.torques)
+        #     ax_acc_ml.set_xticklabels([])
+        #     ax_acc_ml.set_title('center-of-mass\nacceleration (m/s^2)', 
+        #         fontsize=8)
+
+        #     ax_acc_ap.bar(self.torques,  diff_acc_mean[:, 0], color=colors,
+        #         width=7)
+        #     # ax_acc_ap.set_ylim(-2.0, 2.0)
+        #     ax_acc_ap.set_xticks(self.torques)
+        #     ax_acc_ap.set_xticklabels(self.labels[1:])
+        #     ax_acc_ap.set_xlabel('peak torque\n(% BW)')
+
+        #     for ax in [ax_vel_ml, ax_vel_ap, ax_acc_ml, ax_acc_ap]:
+        #         util.publication_spines(ax)
+        #         ax.axhline(y=0, color='gray', linestyle='--',
+        #                    linewidth=0.5, alpha=0.7, zorder=0)
+
+        # fig3 = plt.figure(figsize=(4.5, 4.5))
+        # ax_vel_ml = fig3.add_subplot(221)
+        # ax_vel_ap = fig3.add_subplot(223)
+        # ax_acc_ml = fig3.add_subplot(222)
+        # ax_acc_ap = fig3.add_subplot(224)
+        # axes = [ax_vel_ml, ax_vel_ap, ax_acc_ml, ax_acc_ap]
+        # plot_com_versus_time(axes, max_diff_vel, max_diff_acc, 'o', 'orange',
+        #     'maximum change')
+        # plot_com_versus_time(axes, peak_diff_vel, peak_diff_acc, 'o', 
+        #     self.colors[1:], 'change at peak torque')
+        # fig3.tight_layout()
+        # fig3.savefig(target[3], dpi=600)
+        # plt.close()
