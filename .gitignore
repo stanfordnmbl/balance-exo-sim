@@ -235,6 +235,9 @@ upper*.sto
 lower*.sto
 controls*.sto
 
+# Archived results
+/results/**/archive
+
 # Results file
 /results/**/tracking*.txt
 

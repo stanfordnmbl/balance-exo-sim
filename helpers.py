@@ -220,7 +220,7 @@ def generate_perturbed_tasks(study, subject, trial,
 
             torque_parameters = [torque, time, 0.25, 0.1]
             trial.add_task(
-                tasks.TaskMocoAnkleTorquePerturbedWalking,
+                tasks.TaskMocoPerturbedWalking,
                 initial_time, final_time, right_strikes, left_strikes,
                 guess_fpath=guess_fpath, 
                 mesh_interval=0.01, 
@@ -228,7 +228,7 @@ def generate_perturbed_tasks(study, subject, trial,
                 walking_speed=study.walking_speed,
                 side='right')
             trial.add_task(
-                tasks.TaskMocoAnkleTorquePerturbedWalkingPost,
+                tasks.TaskMocoPerturbedWalkingPost,
                 trial.tasks[-1])
 
             label = (f'perturbed_torque{int(100*torque)}'
