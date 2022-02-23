@@ -59,10 +59,10 @@ study.error_markers = error_markers
 
 scale = 0.1
 study.weights = {
-    'state_tracking_weight':   5e3 * scale,
-    'control_weight':          1e3 * scale,
-    'grf_tracking_weight':     1e1 * scale,
-    'upright_torso_weight':    1e0 * scale,
+    'state_tracking_weight':   1e4 * scale,
+    'control_weight':          2e3 * scale,
+    'grf_tracking_weight':     2e1 * scale,
+    'upright_torso_weight':    0 * scale,
     'control_tracking_weight': 0 * scale, 
     'aux_deriv_weight':        1e4 * scale,
     'metabolics_weight':       0 * scale,
@@ -131,6 +131,7 @@ study.add_task(TaskPlotGroundReactions, subjects, 50,
     MLbox=[40, 60, -0.10, -0.04])
 study.add_task(TaskPlotAnkleTorques, subjects[0], 50, 
     [25, 50, 75, 100], cmap(0.5))
+study.add_task(TaskCreatePerturbedVisualization, subjects, 50)
 
 
 study.add_task(TaskPlotCenterOfMass, subjects, 60, 
@@ -151,3 +152,4 @@ study.add_task(TaskPlotGroundReactions, subjects, 60,
     MLbox=[40, 65, -0.10, -0.04])
 study.add_task(TaskPlotAnkleTorques, subjects[0], 60, 
     [25, 50, 75, 100], cmap(0.9))
+study.add_task(TaskCreatePerturbedVisualization, subjects, 60)

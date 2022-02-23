@@ -1457,6 +1457,7 @@ class TaskPlotUnperturbedResults(osp.StudyTask):
            'glmax2_r' : 'glmax2_r',
            'glmed1_r' : 'glmed1_r',
         }
+        self.models = list()
 
         unperturbed_fpaths = list()
         unperturbed_grf_fpaths = list()
@@ -1465,12 +1466,17 @@ class TaskPlotUnperturbedResults(osp.StudyTask):
         emg_fpaths = list()
         experiment_com_fpaths = list()
         unperturbed_com_fpaths = list()
+        
 
         for subject in subjects:
+            self.models.append(os.path.join(
+                self.study.config['results_path'], 'unperturbed', 
+                subject, 'model_unperturbed.osim'))
             expdata_dir = os.path.join(
                 study.config['results_path'], 'experiments', subject, 'walk2')
             coordinates_fpaths.append(os.path.join(
-                expdata_dir, 'tracking_data', 'expdata', 'coordinates.sto'))
+                self.study.config['results_path'], 'unperturbed', 
+                subject, 'unperturbed_experiment_states.sto'))
             grf_fpaths.append(os.path.join(
                 expdata_dir, 'tracking_data', 'expdata', 'ground_reaction.mot'))
             emg_fpaths.append(os.path.join(
@@ -1508,6 +1514,11 @@ class TaskPlotUnperturbedResults(osp.StudyTask):
                             'unperturbed_center_of_mass.png')], 
                         self.plot_unperturbed_center_of_mass)
 
+        self.add_action(unperturbed_fpaths, 
+                        [os.path.join(self.validate_path, 
+                            'unperturbed_step_widths.png')], 
+                        self.plot_unperturbed_step_widths)
+
     def plot_unperturbed_coordinates(self, file_dep, target): 
 
         numSubjects = len(self.subjects)
@@ -1522,10 +1533,11 @@ class TaskPlotUnperturbedResults(osp.StudyTask):
                   [-20, 30]]
         unperturbed_dict = dict()
         experiment_dict = dict()
-        for coord in coordinates:
+        for ic, coord in enumerate(coordinates):
             for side in ['l', 'r']:
-                unperturbed_dict[f'{coord}_{side}'] = np.zeros((N, numSubjects))
-                experiment_dict[f'{coord}_{side}'] = np.zeros((N, numSubjects))
+                key = f'/jointset/{joints[ic]}_{side}/{coord}_{side}/value'
+                unperturbed_dict[key] = np.zeros((N, numSubjects))
+                experiment_dict[key] = np.zeros((N, numSubjects))
 
         for i in np.arange(numSubjects):
             unperturbed = osim.TimeSeriesTable(file_dep[i])
@@ -1539,13 +1551,14 @@ class TaskPlotUnperturbedResults(osp.StudyTask):
 
             for ic, coord in enumerate(coordinates):
                 for side in ['l', 'r']:
-                    unperturbed_col = (180.0 / np.pi) * util.toarray(unperturbed.getDependentColumn(
-                        f'/jointset/{joints[ic]}_{side}/{coord}_{side}/value'))
-                    experiment_col = util.toarray(
-                        experiment.getDependentColumn(f'{coord}_{side}'))[istart:iend+1]
-                    unperturbed_dict[f'{coord}_{side}'][:, i] = np.interp(
+                    key = f'/jointset/{joints[ic]}_{side}/{coord}_{side}/value'
+                    unperturbed_col = (180.0 / np.pi) * util.toarray(
+                        unperturbed.getDependentColumn(key))
+                    experiment_col = (180.0 / np.pi) * util.toarray(
+                        experiment.getDependentColumn(key))[istart:iend+1]
+                    unperturbed_dict[key][:, i] = np.interp(
                         utime_interp, utime, unperturbed_col)
-                    experiment_dict[f'{coord}_{side}'][:, i] = np.interp(
+                    experiment_dict[key][:, i] = np.interp(
                         etime_interp, etime[istart:iend+1], experiment_col)
 
         import matplotlib.gridspec as gridspec
@@ -1553,11 +1566,12 @@ class TaskPlotUnperturbedResults(osp.StudyTask):
         gs = gridspec.GridSpec(len(coordinates), 2)
         for ic, coord in enumerate(coordinates):
             for iside, side in enumerate(['l','r']):
+                key = f'/jointset/{joints[ic]}_{side}/{coord}_{side}/value'
                 ax = fig.add_subplot(gs[ic, iside])
-                exp_mean = np.mean(experiment_dict[f'{coord}_{side}'], axis=1)
-                exp_std = np.std(experiment_dict[f'{coord}_{side}'], axis=1)
-                unp_mean = np.mean(unperturbed_dict[f'{coord}_{side}'], axis=1)
-                unp_std = np.std(unperturbed_dict[f'{coord}_{side}'], axis=1)
+                exp_mean = np.mean(experiment_dict[key], axis=1)
+                exp_std = np.std(experiment_dict[key], axis=1)
+                unp_mean = np.mean(unperturbed_dict[key], axis=1)
+                unp_std = np.std(unperturbed_dict[key], axis=1)
 
                 h_exp, = ax.plot(pgc, exp_mean, color=self.exp_color, lw=2.5)
                 ax.fill_between(pgc, exp_mean + exp_std, exp_mean - exp_std, color=self.exp_color,
@@ -1851,6 +1865,71 @@ class TaskPlotUnperturbedResults(osp.StudyTask):
         fig.savefig(target[0], dpi=600)
         plt.close()
 
+    
+    def plot_unperturbed_step_widths(self, file_dep, target): 
+
+        numSubjects = len(self.subjects)
+        N = 100
+        unperturbed_dict = dict()
+        positions = ['x', 'y', 'z']
+        for ip, pos in enumerate(positions):
+            for side in ['l', 'r']:
+                unperturbed_dict[f'pos_{pos}_{side}'] = np.zeros((N, numSubjects))
+
+        for i in np.arange(numSubjects):
+            unperturbed = osim.MocoTrajectory(file_dep[i])
+            model = osim.Model(self.models[i])
+            model.initSystem()
+
+            for side in ['l', 'r']:
+                posTable = osim.analyzeVec3(model, unperturbed.exportToStatesTable(),
+                                          unperturbed.exportToControlsTable(),
+                                        [f'.*calcn_{side}\|position']).flatten(['_x','_y','_z'])
+                utime = np.array(posTable.getIndependentColumn())
+                utime_interp = np.linspace(utime[0], utime[-1], N)
+
+                for ip, pos in enumerate(positions):
+                    pos_elt = util.toarray(
+                        posTable.getDependentColumn(f'/bodyset/calcn_{side}|position_{pos}'))
+                    unperturbed_dict[f'pos_{pos}_{side}'][:, i] = np.interp(
+                        utime_interp, utime, pos_elt)
+
+        fig = plt.figure(figsize=(3, 5))
+        ax = fig.add_subplot(1,1,1)
+        for i in np.arange(numSubjects):
+
+            time_r = 22
+            time_l = 72
+            pos_z_r = unperturbed_dict['pos_z_r'][time_r, i]
+            pos_z_l = unperturbed_dict['pos_z_l'][time_l, i]
+            width = pos_z_r - pos_z_l
+
+            h_unp, = ax.bar(i+1, width, color='steelblue', zorder=2)
+            util.publication_spines(ax)
+            ax.set_xlabel('subject')
+            ax.set_xlim(0.5, 5.5)
+            ax.margins(x=0)
+            ax.set_xticks([1, 2, 3, 4, 5])
+            ax.set_ylim(0, 0.35)
+            y1 = 0.124*np.ones(7)
+            y2 = 0.212*np.ones(7) 
+            ax.fill_between([0, 1, 2, 3, 4, 5, 6], y1, y2, 
+                color='lightgray', 
+                alpha=0.5, zorder=0)
+            ax.axhline(y=0.168, xmin=0, xmax=6, color='black', 
+                zorder=1, alpha=0.8, lw=0.8)
+            ax.axhline(y=0.08, xmin=0, xmax=6, color='black', 
+                zorder=1, alpha=0.2, ls='--', lw=0.8)
+            ax.axhline(y=0.32, xmin=0, xmax=6, color='black', 
+                zorder=1, alpha=0.2, ls='--', lw=0.8)
+            ax.spines['bottom'].set_position(('outward', 10))
+            ax.spines['left'].set_position(('outward', 10))
+            ax.set_ylabel('step width (m)')
+
+        fig.tight_layout()
+        fig.savefig(target[0], dpi=600)
+        plt.close()
+
 
 # Perturbed walking
 # -----------------
@@ -2093,6 +2172,105 @@ class TaskMocoPerturbedWalkingPost(osp.TrialTask):
 
         result.report_results(self.result_fpath)
 
+
+class TaskCreatePerturbedVisualization(osp.StudyTask):
+    REGISTRY = []
+    def __init__(self, study, subjects, time):
+        super(TaskCreatePerturbedVisualization, self).__init__(study)
+        self.name = f'create_perturbed_visualization_time{time}'
+        self.results_path = os.path.join(study.config['results_path'], 
+            'unperturbed')
+        self.analysis_path = os.path.join(study.config['analysis_path'],
+            'perturbed_visualization')
+        if not os.path.exists(self.analysis_path): 
+            os.makedirs(self.analysis_path)
+        self.subjects = subjects
+        self.time = time
+        self.torques = [25, 50, 75, 100]
+        self.column_labels = ['ground_force_r_vx', 
+                              'ground_force_r_vy',
+                              'ground_force_r_vz', 
+                              'ground_force_r_px',
+                              'ground_force_r_py',
+                              'ground_force_r_pz',
+                              'ground_torque_r_x',
+                              'ground_torque_r_y',
+                              'ground_torque_r_z']
+
+        model_fpaths = list()
+        perturbed_fpaths = list()
+        torque_fpaths = list()
+        for subject in subjects:
+            for torque in self.torques:
+                label = f'torque{torque}_time{self.time}'
+                model_fpaths.append(os.path.join(
+                    self.study.config['results_path'], 
+                    f'perturbed_{label}', subject, 
+                    f'model_perturbed_{label}.osim'))
+                perturbed_fpaths.append(os.path.join(
+                    self.study.config['results_path'], 
+                    f'perturbed_{label}', subject, 
+                    f'perturbed_{label}.sto'))
+                torque_fpaths.append(
+                    os.path.join(self.study.config['results_path'], 
+                    f'perturbed_{label}', subject, 
+                    'ankle_perturbation_force_right.sto'))
+
+        self.add_action(model_fpaths + perturbed_fpaths + torque_fpaths, 
+                        [], 
+                        self.create_perturbed_visualization)
+
+    def create_perturbed_visualization(self, file_dep, target):
+        numSubjects = len(self.subjects)
+        numTorques = len(self.torques)
+        numCond = numSubjects*numTorques
+
+        i = 0
+        for isubj, subject in enumerate(self.subjects):
+            for itorque, torque in enumerate(self.torques):
+                model = osim.Model(file_dep[i])
+                perturbed = osim.TimeSeriesTable(
+                    file_dep[i + numCond])
+                torqueTable = osim.TimeSeriesTable(
+                    file_dep[i + 2*numCond])
+                model.initSystem()
+                
+                time = perturbed.getIndependentColumn()
+                statesTraj = osim.StatesTrajectory().createFromStatesTable(
+                    model, perturbed, True, True)
+
+                extloads = osim.TimeSeriesTable()
+                torque = torqueTable.getDependentColumn(
+                    '/forceset/ankle_angle_r_perturbation').to_numpy()
+                for istate in np.arange(statesTraj.getSize()):
+                    row = osim.RowVector(9, 0.0)
+                    state = statesTraj.get(int(istate))
+                    model.realizePosition(state)
+                    joint = model.getJointSet().get('ankle_r')
+                    frame = joint.getParentFrame()
+                    position = frame.getPositionInGround(state)
+                    rotation = frame.getRotationInGround(state)
+                    import pdb
+                    pdb.set_trace()
+                    direction = rotation.z()
+
+                    torqueIdx = torqueTable.getNearestRowIndexForTime(
+                        time[int(istate)])
+                    row[0] = torque[int(torqueIdx)] * direction[0]
+                    row[1] = torque[int(torqueIdx)] * direction[1]
+                    row[2] = torque[int(torqueIdx)] * direction[2]
+                    row[3] = position[0]
+                    row[4] = position[1]
+                    row[5] = position[2]
+
+                    extloads.appendRow(time[int(istate)], row)
+                    extloads.setColumnLabels(self.column_labels)
+
+                    osim.STOFileAdapter().write(extloads, 
+                        os.path.join(self.analysis_path, 
+                            f'{subject}_torque{torque}_time{self.time}.sto'))
+                
+                i = i + 1
 
 # Analysis
 # --------
