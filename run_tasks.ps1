@@ -3,25 +3,25 @@
 # doit ankle_perturb_sim_copy_data
 # doit ankle_perturb_sim_copy_generic_model_files                              
 
-# Model scaling and adjustments
-# -----------------------------
+# Model scaling
+# -------------
 # doit subject*_scale_setup
 # doit subject*_scale
 # doit subject*_scale_max_force
-# doit subject*_adjust_scaled_model
 
 # Inverse kinematics and inverse dynamics
-# --------------------------------------- 
-# doit subject04_walk2_update_ground_reaction_labels
-# doit subject04_walk2_filter_ground_reactions      
-# doit subject04_walk2_gait_landmarks 
-# doit subject04_walk2_ik_setup           
-# doit subject04_walk2_ik                                  
-# doit subject04_walk2_ik_post
-# doit subject04_walk2_id_setup    
-# doit subject04_walk2_id                                 
-# doit subject04_walk2_joint_angle_standard_deviations
-# doit subject04_walk2_trim_tracking_data
+# # --------------------------------------- 
+# doit subject*_adjust_scaled_model
+# doit subject*_walk2_update_ground_reaction_labels
+# doit subject*_walk2_filter_ground_reactions      
+# doit subject*_walk2_gait_landmarks 
+# doit subject*_walk2_ik_setup           
+# doit subject*_walk2_ik                                  
+# doit subject*_walk2_ik_post
+# doit subject*_walk2_id_setup    
+# doit subject*_walk2_id                                 
+# doit subject*_walk2_joint_angle_standard_deviations
+# doit subject*_walk2_trim_tracking_data
 
 # Sensitivity analysis
 # --------------------
@@ -129,107 +129,362 @@
 # doit subject19_moco_unperturbed
 
 doit subject01_moco_unperturbed
-doit subject02_moco_unperturbed
-doit subject04_moco_unperturbed
-doit subject18_moco_unperturbed
-doit subject19_moco_unperturbed
-doit plot_unperturbed_results
+# doit subject02_moco_unperturbed
+# doit subject04_moco_unperturbed
+# doit subject18_moco_unperturbed
+# doit subject19_moco_unperturbed
+# doit plot_unperturbed_results
 
 # Perturbed walking
 # -------------------
+# doit subject01_moco_perturbed_torque100_time50_rise25_fall10
+# doit subject01_moco_perturbed_torque100_time50_rise25_fall10_post
+
+doit subject01_moco_perturbed_torque100_time50_rise*_fall*
+doit subject01_moco_perturbed_torque100_time50_rise*_fall*_post
+doit subject01_moco_perturbed_torque100_time60_rise*_fall*
+doit subject01_moco_perturbed_torque100_time60_rise*_fall*_post
+
+doit subject01_moco_perturbed_torque100_time50_rise10_fall5
+doit subject01_moco_perturbed_torque100_time50_rise10_fall5_post
+doit subject01_moco_perturbed_torque100_time52_rise10_fall5
+doit subject01_moco_perturbed_torque100_time52_rise10_fall5_post
+doit subject01_moco_perturbed_torque100_time54_rise10_fall5
+doit subject01_moco_perturbed_torque100_time54_rise10_fall5_post
+doit subject01_moco_perturbed_torque100_time56_rise10_fall5
+doit subject01_moco_perturbed_torque100_time56_rise10_fall5_post
+doit subject01_moco_perturbed_torque100_time58_rise10_fall5
+doit subject01_moco_perturbed_torque100_time58_rise10_fall5_post
+doit subject01_moco_perturbed_torque100_time60_rise10_fall5
+doit subject01_moco_perturbed_torque100_time60_rise10_fall5_post
+doit subject01_moco_perturbed_torque100_time40_rise10_fall5
+doit subject01_moco_perturbed_torque100_time40_rise10_fall5_post
+doit subject01_moco_perturbed_torque100_time42_rise10_fall5
+doit subject01_moco_perturbed_torque100_time42_rise10_fall5_post
+doit subject01_moco_perturbed_torque100_time44_rise10_fall5
+doit subject01_moco_perturbed_torque100_time44_rise10_fall5_post
+doit subject01_moco_perturbed_torque100_time46_rise10_fall5
+doit subject01_moco_perturbed_torque100_time46_rise10_fall5_post
+doit subject01_moco_perturbed_torque100_time48_rise10_fall5
+doit subject01_moco_perturbed_torque100_time48_rise10_fall5_post
+
+doit subject01_moco_perturbed_torque100_time50_rise25_fall10
+doit subject01_moco_perturbed_torque100_time50_rise25_fall10_post
+doit subject01_moco_perturbed_torque100_time52_rise25_fall10
+doit subject01_moco_perturbed_torque100_time52_rise25_fall10_post
+doit subject01_moco_perturbed_torque100_time54_rise25_fall10
+doit subject01_moco_perturbed_torque100_time54_rise25_fall10_post
+doit subject01_moco_perturbed_torque100_time56_rise25_fall10
+doit subject01_moco_perturbed_torque100_time56_rise25_fall10_post
+doit subject01_moco_perturbed_torque100_time58_rise25_fall10
+doit subject01_moco_perturbed_torque100_time58_rise25_fall10_post
+doit subject01_moco_perturbed_torque100_time60_rise25_fall10
+doit subject01_moco_perturbed_torque100_time60_rise25_fall10_post
+doit subject01_moco_perturbed_torque100_time40_rise25_fall10
+doit subject01_moco_perturbed_torque100_time40_rise25_fall10_post
+doit subject01_moco_perturbed_torque100_time42_rise25_fall10
+doit subject01_moco_perturbed_torque100_time42_rise25_fall10_post
+doit subject01_moco_perturbed_torque100_time44_rise25_fall10
+doit subject01_moco_perturbed_torque100_time44_rise25_fall10_post
+doit subject01_moco_perturbed_torque100_time46_rise25_fall10
+doit subject01_moco_perturbed_torque100_time46_rise25_fall10_post
+doit subject01_moco_perturbed_torque100_time48_rise25_fall10
+doit subject01_moco_perturbed_torque100_time48_rise25_fall10_post
+
+
+# doit subject*_moco_perturbed_torque*_time40_rise10_fall5
+# doit subject*_moco_perturbed_torque*_time40_rise10_fall5_post
+# doit subject*_moco_perturbed_torque*_time42_rise10_fall5
+# doit subject*_moco_perturbed_torque*_time42_rise10_fall5_post
+# doit subject*_moco_perturbed_torque*_time44_rise10_fall5
+# doit subject*_moco_perturbed_torque*_time44_rise10_fall5_post
+# doit subject*_moco_perturbed_torque*_time46_rise10_fall5
+# doit subject*_moco_perturbed_torque*_time46_rise10_fall5_post
+# doit subject*_moco_perturbed_torque*_time48_rise10_fall5
+# doit subject*_moco_perturbed_torque*_time48_rise10_fall5_post
+# doit subject*_moco_perturbed_torque*_time50_rise10_fall5
+# doit subject*_moco_perturbed_torque*_time50_rise10_fall5_post
+# doit subject*_moco_perturbed_torque*_time52_rise10_fall5
+# doit subject*_moco_perturbed_torque*_time52_rise10_fall5_post
+# doit subject*_moco_perturbed_torque*_time54_rise10_fall5
+# doit subject*_moco_perturbed_torque*_time54_rise10_fall5_post
+# doit subject*_moco_perturbed_torque*_time56_rise10_fall5
+# doit subject*_moco_perturbed_torque*_time56_rise10_fall5_post
+# doit subject*_moco_perturbed_torque*_time58_rise10_fall5
+# doit subject*_moco_perturbed_torque*_time58_rise10_fall5_post
+# doit subject*_moco_perturbed_torque*_time60_rise10_fall5
+# doit subject*_moco_perturbed_torque*_time60_rise10_fall5_post
+
+# doit subject*_moco_perturbed_torque*_time40_rise25_fall10
+# doit subject*_moco_perturbed_torque*_time40_rise25_fall10_post
+# doit subject*_moco_perturbed_torque*_time42_rise25_fall10
+# doit subject*_moco_perturbed_torque*_time42_rise25_fall10_post
+# doit subject*_moco_perturbed_torque*_time44_rise25_fall10
+# doit subject*_moco_perturbed_torque*_time44_rise25_fall10_post
+# doit subject*_moco_perturbed_torque*_time46_rise25_fall10
+# doit subject*_moco_perturbed_torque*_time46_rise25_fall10_post
+# doit subject*_moco_perturbed_torque*_time48_rise25_fall10
+# doit subject*_moco_perturbed_torque*_time48_rise25_fall10_post
+# doit subject*_moco_perturbed_torque*_time50_rise25_fall10
+# doit subject*_moco_perturbed_torque*_time50_rise25_fall10_post
+# doit subject*_moco_perturbed_torque*_time52_rise25_fall10
+# doit subject*_moco_perturbed_torque*_time52_rise25_fall10_post
+# doit subject*_moco_perturbed_torque*_time54_rise25_fall10
+# doit subject*_moco_perturbed_torque*_time54_rise25_fall10_post
+# doit subject*_moco_perturbed_torque*_time56_rise25_fall10
+# doit subject*_moco_perturbed_torque*_time56_rise25_fall10_post
+# doit subject*_moco_perturbed_torque*_time58_rise25_fall10
+# doit subject*_moco_perturbed_torque*_time58_rise25_fall10_post
+# doit subject*_moco_perturbed_torque*_time60_rise25_fall10
+# doit subject*_moco_perturbed_torque*_time60_rise25_fall10_post
+
 # 50% peak time
-doit subject01_moco_perturbed_torque25_time50
-doit subject01_moco_perturbed_torque25_time50_post
-doit subject02_moco_perturbed_torque25_time50
-doit subject02_moco_perturbed_torque25_time50_post
-doit subject04_moco_perturbed_torque25_time50
-doit subject04_moco_perturbed_torque25_time50_post
-doit subject18_moco_perturbed_torque25_time50
-doit subject18_moco_perturbed_torque25_time50_post
-doit subject19_moco_perturbed_torque25_time50
-doit subject19_moco_perturbed_torque25_time50_post
+# -------------
+# doit subject01_moco_perturbed_torque25_time50
+# doit subject01_moco_perturbed_torque25_time50_post
+# doit subject02_moco_perturbed_torque25_time50
+# doit subject02_moco_perturbed_torque25_time50_post
+# doit subject04_moco_perturbed_torque25_time50
+# doit subject04_moco_perturbed_torque25_time50_post
+# doit subject18_moco_perturbed_torque25_time50
+# doit subject18_moco_perturbed_torque25_time50_post
+# doit subject19_moco_perturbed_torque25_time50
+# doit subject19_moco_perturbed_torque25_time50_post
 
-doit subject01_moco_perturbed_torque50_time50
-doit subject01_moco_perturbed_torque50_time50_post
-doit subject02_moco_perturbed_torque50_time50
-doit subject02_moco_perturbed_torque50_time50_post
-doit subject04_moco_perturbed_torque50_time50
-doit subject04_moco_perturbed_torque50_time50_post
-doit subject18_moco_perturbed_torque50_time50
-doit subject18_moco_perturbed_torque50_time50_post
-doit subject19_moco_perturbed_torque50_time50
-doit subject19_moco_perturbed_torque50_time50_post
+# doit subject01_moco_perturbed_torque50_time50
+# doit subject01_moco_perturbed_torque50_time50_post
+# doit subject02_moco_perturbed_torque50_time50
+# doit subject02_moco_perturbed_torque50_time50_post
+# doit subject04_moco_perturbed_torque50_time50
+# doit subject04_moco_perturbed_torque50_time50_post
+# doit subject18_moco_perturbed_torque50_time50
+# doit subject18_moco_perturbed_torque50_time50_post
+# doit subject19_moco_perturbed_torque50_time50
+# doit subject19_moco_perturbed_torque50_time50_post
 
-doit subject01_moco_perturbed_torque75_time50
-doit subject01_moco_perturbed_torque75_time50_post
-doit subject02_moco_perturbed_torque75_time50
-doit subject02_moco_perturbed_torque75_time50_post
-doit subject04_moco_perturbed_torque75_time50
-doit subject04_moco_perturbed_torque75_time50_post
-doit subject18_moco_perturbed_torque75_time50
-doit subject18_moco_perturbed_torque75_time50_post
-doit subject19_moco_perturbed_torque75_time50
-doit subject19_moco_perturbed_torque75_time50_post
+# doit subject01_moco_perturbed_torque75_time50
+# doit subject01_moco_perturbed_torque75_time50_post
+# doit subject02_moco_perturbed_torque75_time50
+# doit subject02_moco_perturbed_torque75_time50_post
+# doit subject04_moco_perturbed_torque75_time50
+# doit subject04_moco_perturbed_torque75_time50_post
+# doit subject18_moco_perturbed_torque75_time50
+# doit subject18_moco_perturbed_torque75_time50_post
+# doit subject19_moco_perturbed_torque75_time50
+# doit subject19_moco_perturbed_torque75_time50_post
 
-doit subject01_moco_perturbed_torque100_time50
-doit subject01_moco_perturbed_torque100_time50_post
-doit subject02_moco_perturbed_torque100_time50
-doit subject02_moco_perturbed_torque100_time50_post
-doit subject04_moco_perturbed_torque100_time50
-doit subject04_moco_perturbed_torque100_time50_post
-doit subject18_moco_perturbed_torque100_time50
-doit subject18_moco_perturbed_torque100_time50_post
-doit subject19_moco_perturbed_torque100_time50
-doit subject19_moco_perturbed_torque100_time50_post
+# doit subject01_moco_perturbed_torque100_time50
+# doit subject01_moco_perturbed_torque100_time50_post
+# doit subject02_moco_perturbed_torque100_time50
+# doit subject02_moco_perturbed_torque100_time50_post
+# doit subject04_moco_perturbed_torque100_time50
+# doit subject04_moco_perturbed_torque100_time50_post
+# doit subject18_moco_perturbed_torque100_time50
+# doit subject18_moco_perturbed_torque100_time50_post
+# doit subject19_moco_perturbed_torque100_time50
+# doit subject19_moco_perturbed_torque100_time50_post
+
+# doit plot_ankle_torques_time50
+# doit plot_center_of_mass_time50
+# doit plot_ground_reactions_time50
+
+# 55% peak time
+# -------------
+# doit subject01_moco_perturbed_torque25_time55
+# doit subject01_moco_perturbed_torque25_time55_post
+# doit subject02_moco_perturbed_torque25_time55
+# doit subject02_moco_perturbed_torque25_time55_post
+# doit subject04_moco_perturbed_torque25_time55
+# doit subject04_moco_perturbed_torque25_time55_post
+# doit subject18_moco_perturbed_torque25_time55
+# doit subject18_moco_perturbed_torque25_time55_post
+# doit subject19_moco_perturbed_torque25_time55
+# doit subject19_moco_perturbed_torque25_time55_post
+
+# doit subject01_moco_perturbed_torque50_time55
+# doit subject01_moco_perturbed_torque50_time55_post
+# doit subject02_moco_perturbed_torque50_time55
+# doit subject02_moco_perturbed_torque50_time55_post
+# doit subject04_moco_perturbed_torque50_time55
+# doit subject04_moco_perturbed_torque50_time55_post
+# doit subject18_moco_perturbed_torque50_time55
+# doit subject18_moco_perturbed_torque50_time55_post
+# doit subject19_moco_perturbed_torque50_time55
+# doit subject19_moco_perturbed_torque50_time55_post
+
+# doit subject01_moco_perturbed_torque75_time55
+# doit subject01_moco_perturbed_torque75_time55_post
+# doit subject02_moco_perturbed_torque75_time55
+# doit subject02_moco_perturbed_torque75_time55_post
+# doit subject04_moco_perturbed_torque75_time55
+# doit subject04_moco_perturbed_torque75_time55_post
+# doit subject18_moco_perturbed_torque75_time55
+# doit subject18_moco_perturbed_torque75_time55_post
+# doit subject19_moco_perturbed_torque75_time55
+# doit subject19_moco_perturbed_torque75_time55_post
+
+# doit subject01_moco_perturbed_torque100_time55
+# doit subject01_moco_perturbed_torque100_time55_post
+# doit subject02_moco_perturbed_torque100_time55
+# doit subject02_moco_perturbed_torque100_time55_post
+# doit subject04_moco_perturbed_torque100_time55
+# doit subject04_moco_perturbed_torque100_time55_post
+# doit subject18_moco_perturbed_torque100_time55
+# doit subject18_moco_perturbed_torque100_time55_post
+# doit subject19_moco_perturbed_torque100_time55
+# doit subject19_moco_perturbed_torque100_time55_post
+
+# doit plot_ankle_torques_time55
+# doit plot_center_of_mass_time55
+# doit plot_ground_reactions_time55
 
 # 60% peak time
-doit subject01_moco_perturbed_torque25_time60
-doit subject01_moco_perturbed_torque25_time60_post
-doit subject02_moco_perturbed_torque25_time60
-doit subject02_moco_perturbed_torque25_time60_post
-doit subject04_moco_perturbed_torque25_time60
-doit subject04_moco_perturbed_torque25_time60_post
-doit subject18_moco_perturbed_torque25_time60
-doit subject18_moco_perturbed_torque25_time60_post
-doit subject19_moco_perturbed_torque25_time60
-doit subject19_moco_perturbed_torque25_time60_post
+# -------------
+# doit subject01_moco_perturbed_torque25_time60
+# doit subject01_moco_perturbed_torque25_time60_post
+# doit subject02_moco_perturbed_torque25_time60
+# doit subject02_moco_perturbed_torque25_time60_post
+# doit subject04_moco_perturbed_torque25_time60
+# doit subject04_moco_perturbed_torque25_time60_post
+# doit subject18_moco_perturbed_torque25_time60
+# doit subject18_moco_perturbed_torque25_time60_post
+# doit subject19_moco_perturbed_torque25_time60
+# doit subject19_moco_perturbed_torque25_time60_post
 
-doit subject01_moco_perturbed_torque50_time60
-doit subject01_moco_perturbed_torque50_time60_post
-doit subject02_moco_perturbed_torque50_time60
-doit subject02_moco_perturbed_torque50_time60_post
-doit subject04_moco_perturbed_torque50_time60
-doit subject04_moco_perturbed_torque50_time60_post
-doit subject18_moco_perturbed_torque50_time60
-doit subject18_moco_perturbed_torque50_time60_post
-doit subject19_moco_perturbed_torque50_time60
-doit subject19_moco_perturbed_torque50_time60_post
+# doit subject01_moco_perturbed_torque50_time60
+# doit subject01_moco_perturbed_torque50_time60_post
+# doit subject02_moco_perturbed_torque50_time60
+# doit subject02_moco_perturbed_torque50_time60_post
+# doit subject04_moco_perturbed_torque50_time60
+# doit subject04_moco_perturbed_torque50_time60_post
+# doit subject18_moco_perturbed_torque50_time60
+# doit subject18_moco_perturbed_torque50_time60_post
+# doit subject19_moco_perturbed_torque50_time60
+# doit subject19_moco_perturbed_torque50_time60_post
 
-doit subject01_moco_perturbed_torque75_time60
-doit subject01_moco_perturbed_torque75_time60_post
-doit subject02_moco_perturbed_torque75_time60
-doit subject02_moco_perturbed_torque75_time60_post
-doit subject04_moco_perturbed_torque75_time60
-doit subject04_moco_perturbed_torque75_time60_post
-doit subject18_moco_perturbed_torque75_time60
-doit subject18_moco_perturbed_torque75_time60_post
-doit subject19_moco_perturbed_torque75_time60
-doit subject19_moco_perturbed_torque75_time60_post
+# doit subject01_moco_perturbed_torque75_time60
+# doit subject01_moco_perturbed_torque75_time60_post
+# doit subject02_moco_perturbed_torque75_time60
+# doit subject02_moco_perturbed_torque75_time60_post
+# doit subject04_moco_perturbed_torque75_time60
+# doit subject04_moco_perturbed_torque75_time60_post
+# doit subject18_moco_perturbed_torque75_time60
+# doit subject18_moco_perturbed_torque75_time60_post
+# doit subject19_moco_perturbed_torque75_time60
+# doit subject19_moco_perturbed_torque75_time60_post
 
-doit subject01_moco_perturbed_torque100_time60
-doit subject01_moco_perturbed_torque100_time60_post
-doit subject02_moco_perturbed_torque100_time60
-doit subject02_moco_perturbed_torque100_time60_post
-doit subject04_moco_perturbed_torque100_time60
-doit subject04_moco_perturbed_torque100_time60_post
-doit subject18_moco_perturbed_torque100_time60
-doit subject18_moco_perturbed_torque100_time60_post
-doit subject19_moco_perturbed_torque100_time60
-doit subject19_moco_perturbed_torque100_time60_post
+# doit subject01_moco_perturbed_torque100_time60
+# doit subject01_moco_perturbed_torque100_time60_post
+# doit subject02_moco_perturbed_torque100_time60
+# doit subject02_moco_perturbed_torque100_time60_post
+# doit subject04_moco_perturbed_torque100_time60
+# doit subject04_moco_perturbed_torque100_time60_post
+# doit subject18_moco_perturbed_torque100_time60
+# doit subject18_moco_perturbed_torque100_time60_post
+# doit subject19_moco_perturbed_torque100_time60
+# doit subject19_moco_perturbed_torque100_time60_post
 
-doit plot_ankle_torques_time50
-doit plot_ankle_torques_time60
-doit plot_center_of_mass_time50
-doit plot_center_of_mass_time60
-doit plot_ground_reactions_time50
-doit plot_ground_reactions_time60
+# doit plot_ankle_torques_time60
+# doit plot_center_of_mass_time60
+# doit plot_ground_reactions_time60
+
+# # 40% peak time
+# # -------------
+# doit subject01_moco_perturbed_torque25_time40
+# doit subject01_moco_perturbed_torque25_time40_post
+# doit subject02_moco_perturbed_torque25_time40
+# doit subject02_moco_perturbed_torque25_time40_post
+# doit subject04_moco_perturbed_torque25_time40
+# doit subject04_moco_perturbed_torque25_time40_post
+# doit subject18_moco_perturbed_torque25_time40
+# doit subject18_moco_perturbed_torque25_time40_post
+# doit subject19_moco_perturbed_torque25_time40
+# doit subject19_moco_perturbed_torque25_time40_post
+
+# doit subject01_moco_perturbed_torque50_time40
+# doit subject01_moco_perturbed_torque50_time40_post
+# doit subject02_moco_perturbed_torque50_time40
+# doit subject02_moco_perturbed_torque50_time40_post
+# doit subject04_moco_perturbed_torque50_time40
+# doit subject04_moco_perturbed_torque50_time40_post
+# doit subject18_moco_perturbed_torque50_time40
+# doit subject18_moco_perturbed_torque50_time40_post
+# doit subject19_moco_perturbed_torque50_time40
+# doit subject19_moco_perturbed_torque50_time40_post
+
+# doit subject01_moco_perturbed_torque75_time40
+# doit subject01_moco_perturbed_torque75_time40_post
+# doit subject02_moco_perturbed_torque75_time40
+# doit subject02_moco_perturbed_torque75_time40_post
+# doit subject04_moco_perturbed_torque75_time40
+# doit subject04_moco_perturbed_torque75_time40_post
+# doit subject18_moco_perturbed_torque75_time40
+# doit subject18_moco_perturbed_torque75_time40_post
+# doit subject19_moco_perturbed_torque75_time40
+# doit subject19_moco_perturbed_torque75_time40_post
+
+# doit subject01_moco_perturbed_torque100_time40
+# doit subject01_moco_perturbed_torque100_time40_post
+# doit subject02_moco_perturbed_torque100_time40
+# doit subject02_moco_perturbed_torque100_time40_post
+# doit subject04_moco_perturbed_torque100_time40
+# doit subject04_moco_perturbed_torque100_time40_post
+# doit subject18_moco_perturbed_torque100_time40
+# doit subject18_moco_perturbed_torque100_time40_post
+# doit subject19_moco_perturbed_torque100_time40
+# doit subject19_moco_perturbed_torque100_time40_post
+
+# doit plot_ankle_torques_time40
+# doit plot_center_of_mass_time40
+# doit plot_ground_reactions_time40
+
+# # 45% peak time
+# # -------------
+# doit subject01_moco_perturbed_torque25_time45
+# doit subject01_moco_perturbed_torque25_time45_post
+# doit subject02_moco_perturbed_torque25_time45
+# doit subject02_moco_perturbed_torque25_time45_post
+# doit subject04_moco_perturbed_torque25_time45
+# doit subject04_moco_perturbed_torque25_time45_post
+# doit subject18_moco_perturbed_torque25_time45
+# doit subject18_moco_perturbed_torque25_time45_post
+# doit subject19_moco_perturbed_torque25_time45
+# doit subject19_moco_perturbed_torque25_time45_post
+
+# doit subject01_moco_perturbed_torque50_time45
+# doit subject01_moco_perturbed_torque50_time45_post
+# doit subject02_moco_perturbed_torque50_time45
+# doit subject02_moco_perturbed_torque50_time45_post
+# doit subject04_moco_perturbed_torque50_time45
+# doit subject04_moco_perturbed_torque50_time45_post
+# doit subject18_moco_perturbed_torque50_time45
+# doit subject18_moco_perturbed_torque50_time45_post
+# doit subject19_moco_perturbed_torque50_time45
+# doit subject19_moco_perturbed_torque50_time45_post
+
+# doit subject01_moco_perturbed_torque75_time45
+# doit subject01_moco_perturbed_torque75_time45_post
+# doit subject02_moco_perturbed_torque75_time45
+# doit subject02_moco_perturbed_torque75_time45_post
+# doit subject04_moco_perturbed_torque75_time45
+# doit subject04_moco_perturbed_torque75_time45_post
+# doit subject18_moco_perturbed_torque75_time45
+# doit subject18_moco_perturbed_torque75_time45_post
+# doit subject19_moco_perturbed_torque75_time45
+# doit subject19_moco_perturbed_torque75_time45_post
+
+# doit subject01_moco_perturbed_torque100_time45
+# doit subject01_moco_perturbed_torque100_time45_post
+# doit subject02_moco_perturbed_torque100_time45
+# doit subject02_moco_perturbed_torque100_time45_post
+# doit subject04_moco_perturbed_torque100_time45
+# doit subject04_moco_perturbed_torque100_time45_post
+# doit subject18_moco_perturbed_torque100_time45
+# doit subject18_moco_perturbed_torque100_time45_post
+# doit subject19_moco_perturbed_torque100_time45
+# doit subject19_moco_perturbed_torque100_time45_post
+
+# doit plot_ankle_torques_time45
+# doit plot_center_of_mass_time45
+# doit plot_ground_reactions_time45
+

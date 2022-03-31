@@ -207,22 +207,25 @@ def generate_sensitivity_tasks(study, subject, trial,
 
 def generate_perturbed_tasks(study, subject, trial, 
         initial_time, final_time, right_strikes, 
-        left_strikes):
+        left_strikes, rise, fall):
 
-    unperturbed_guess_fpath = os.path.join(
+    unperturbed_fpath = os.path.join(
             study.config['results_path'], 'unperturbed', 
             subject.name, 'unperturbed.sto')
 
-    for time in [0.5, 0.6]:
-        for torque in [0.25, 0.50, 0.75, 1.0]:
-            if torque == 0.25:
-                guess_fpath = unperturbed_guess_fpath
+    times = [0.4, 0.42, 0.44, 0.46, 0.48, 0.5, 
+             0.52, 0.54, 0.56, 0.58, 0.6]
+    for time in times:
+        for torque in [1.0]:
+            # if torque == 0.5:
+            guess_fpath = unperturbed_fpath
 
-            torque_parameters = [torque, time, 0.25, 0.1]
+            torque_parameters = [torque, time, rise, fall]
             trial.add_task(
                 tasks.TaskMocoPerturbedWalking,
                 initial_time, final_time, right_strikes, left_strikes,
-                guess_fpath=guess_fpath, 
+                guess_fpath=guess_fpath,
+                control_bound_fpath=unperturbed_fpath,
                 mesh_interval=0.01, 
                 torque_parameters=torque_parameters,
                 walking_speed=study.walking_speed,
@@ -231,8 +234,10 @@ def generate_perturbed_tasks(study, subject, trial,
                 tasks.TaskMocoPerturbedWalkingPost,
                 trial.tasks[-1])
 
-            label = (f'perturbed_torque{int(100*torque)}'
-                     f'_time{int(100*time)}')
-            guess_fpath = os.path.join(
-                study.config['results_path'], label,
-                subject.name, f'{label}.sto')
+            # label = (f'perturbed_torque{int(round(100*torque))}'
+            #          f'_time{int(round(100*time))}'
+            #          f'_rise{int(round(100*rise))}'
+            #          f'_fall{int(round(100*fall))}')
+            # guess_fpath = os.path.join(
+            #     study.config['results_path'], label,
+            #     subject.name, f'{label}.sto')
