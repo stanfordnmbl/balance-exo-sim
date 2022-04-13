@@ -1,29 +1,29 @@
 # Data pre-processing
 # ---------------
 # doit forget ankle_perturb_sim_copy_data
-# doit forget ankle_perturb_sim_copy_generic_model_files     
+doit forget ankle_perturb_sim_copy_generic_model_files     
 
 # Model scaling
 # -------------
-# doit forget subject01_scale_setup
-# doit forget subject01_scale
-# doit forget subject01_scale_max_force   
+doit forget subject01_scale_setup
+doit forget subject01_scale
+doit forget subject01_scale_max_force   
 
-# doit forget subject02_scale_setup
-# doit forget subject02_scale
-# doit forget subject02_scale_max_force    
+doit forget subject02_scale_setup
+doit forget subject02_scale
+doit forget subject02_scale_max_force    
 
-# doit forget subject04_scale_setup
-# doit forget subject04_scale
-# doit forget subject04_scale_max_force       
+doit forget subject04_scale_setup
+doit forget subject04_scale
+doit forget subject04_scale_max_force       
 
-# doit forget subject18_scale_setup
-# doit forget subject18_scale
-# doit forget subject18_scale_max_force        
+doit forget subject18_scale_setup
+doit forget subject18_scale
+doit forget subject18_scale_max_force        
 
-# doit forget subject19_scale_setup
-# doit forget subject19_scale
-# doit forget subject19_scale_max_force   
+doit forget subject19_scale_setup
+doit forget subject19_scale
+doit forget subject19_scale_max_force   
 
 # Inverse kinematics and inverse dynamics
 # --------------------------------------- 

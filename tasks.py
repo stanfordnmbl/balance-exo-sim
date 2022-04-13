@@ -391,13 +391,13 @@ class TaskAdjustScaledModel(osp.SubjectTask):
             loc.set(adj[0], adj[1])
             marker.set_location(loc)
 
-        print('Unlocking subtalar and mtp joints...')
-        coordSet = model.updCoordinateSet()
-        for coordName in ['subtalar_angle', 'mtp_angle']:
-            for side in ['_l', '_r']:
-                coord = coordSet.get(f'{coordName}{side}')
-                coord.set_locked(False)
-                coord.set_clamped(False)
+        # print('Unlocking subtalar and mtp joints...')
+        # coordSet = model.updCoordinateSet()
+        # for coordName in ['subtalar_angle', 'mtp_angle']:
+        #     for side in ['_l', '_r']:
+        #         coord = coordSet.get(f'{coordName}{side}')
+        #         coord.set_locked(False)
+        #         coord.set_clamped(False)
 
         print('Adding lumbar passive stiffness and damping...')
         coordNames = ['lumbar_extension', 'lumbar_bending', 'lumbar_rotation']
@@ -413,7 +413,7 @@ class TaskAdjustScaledModel(osp.SubjectTask):
         for coordName in ['subtalar_angle_r', 'subtalar_angle_l']:
             sgf = osim.SpringGeneralizedForce(coordName)
             sgf.setName(f'passive_stiffness_{coordName}')
-            sgf.setStiffness(5.0 * self.mass)
+            sgf.setStiffness(2.0 * self.mass)
             sgf.setViscosity(2.0)
             model.addForce(sgf)
 
@@ -421,25 +421,23 @@ class TaskAdjustScaledModel(osp.SubjectTask):
         for coordName in ['mtp_angle_r', 'mtp_angle_l']:
             sgf = osim.SpringGeneralizedForce(coordName)
             sgf.setName(f'passive_stiffness_{coordName}')
-            sgf.setStiffness(1.0 * self.mass)
+            sgf.setStiffness(0.4 * self.mass)
             sgf.setViscosity(2.0)
             model.addForce(sgf)
 
-        print('Updating contact sphere parameters...')
-        forceSet = model.updForceSet()
-        forceNames = ['contactHeel', 'contactLateralRearfoot', 'contactLateralMidfoot',
-                      'contactLateralToe', 'contactMedialToe', 'contactMedialMidfoot']
-        for forceName in forceNames:
-            for side in ['l', 'r']:
-                sshsForce = osim.SmoothSphereHalfSpaceForce.safeDownCast(
-                    forceSet.get(f'{forceName}_{side}'))
-                sshsForce.set_static_friction(0.5)
-                sshsForce.set_dynamic_friction(0.5)
-                sshsForce.set_viscous_friction(0.5)
-                sshsForce.set_stiffness(3e7)
-                sshsForce.set_dissipation(2)
-                # sshsForce.set_hertz_smoothing(300)
-                # sshsForce.set_hunt_crossley_smoothing(50)
+        # print('Updating contact sphere parameters...')
+        # forceSet = model.updForceSet()
+        # forceNames = ['contactHeel', 'contactLateralRearfoot', 'contactLateralMidfoot',
+        #               'contactLateralToe', 'contactMedialToe', 'contactMedialMidfoot']
+        # for forceName in forceNames:
+        #     for side in ['l', 'r']:
+        #         sshsForce = osim.SmoothSphereHalfSpaceForce.safeDownCast(
+        #             forceSet.get(f'{forceName}_{side}'))
+        #         sshsForce.set_static_friction(0.5)
+        #         sshsForce.set_dynamic_friction(0.5)
+        #         sshsForce.set_viscous_friction(0.5)
+        #         sshsForce.set_stiffness(1e7)
+        #         sshsForce.set_dissipation(2)
 
         # contactSet = model.updContactGeometrySet()
         # contactNames = ['heel', 'lateralRearfoot', 'lateralMidfoot',
@@ -1370,9 +1368,7 @@ class TaskMocoUnperturbedWalkingGuess(osp.TrialTask):
 class TaskMocoUnperturbedWalking(osp.TrialTask):
     REGISTRY = []
     def __init__(self, trial, initial_time, final_time, mesh_interval=0.02,
-                 walking_speed=1.25, constrain_average_speed=False,
-                 guess_fpath=None, constrain_initial_state=False,
-                 periodic=True, **kwargs):
+                 walking_speed=1.25, guess_fpath=None, periodic=True, **kwargs):
         super(TaskMocoUnperturbedWalking, self).__init__(trial)
         self.config_name = 'unperturbed'
         self.name = f'{trial.subject.name}_moco_{self.config_name}'
@@ -1380,10 +1376,8 @@ class TaskMocoUnperturbedWalking(osp.TrialTask):
         self.final_time = final_time
         self.mesh_interval = mesh_interval
         self.walking_speed = walking_speed
-        self.constrain_average_speed = constrain_average_speed
         self.guess_fpath = guess_fpath
         self.root_dir = trial.study.config['doit_path']
-        self.constrain_initial_state = constrain_initial_state
         self.periodic = periodic
         self.periodic_coordinates_to_include = list() 
         self.periodic_coordinates_to_include.append('subtalar_angle_r')
@@ -1435,8 +1429,6 @@ class TaskMocoUnperturbedWalking(osp.TrialTask):
 
         config = MocoTrackConfig(
             self.config_name, self.config_name, 'black', self.weights,
-            constrain_average_speed=self.constrain_average_speed,
-            constrain_initial_state=self.constrain_initial_state,
             periodic=self.periodic,
             periodic_values=True,
             periodic_speeds=True,
@@ -1541,7 +1533,9 @@ class TaskPlotUnperturbedResults(osp.StudyTask):
 
         self.add_action(unperturbed_grf_fpaths + grf_fpaths, 
                         [os.path.join(self.validate_path, 
-                            'unperturbed_grfs.png')], 
+                            'unperturbed_grfs.png'),
+                        os.path.join(self.validate_path, 
+                            'unperturbed_grf_reference.png')], 
                         self.plot_unperturbed_grfs)
 
         self.add_action(unperturbed_fpaths + emg_fpaths, 
@@ -1737,56 +1731,56 @@ class TaskPlotUnperturbedResults(osp.StudyTask):
         fig.savefig(target[0], dpi=600)
         plt.close()
 
-        # fig = plt.figure(figsize=(4, 4))
-        # gs = gridspec.GridSpec(len(forces[:-1]), 1)
-        # for iforce, force in enumerate(forces[:-1]):
-        #     label = f'ground_force_r_{force}'
-        #     ax = fig.add_subplot(gs[iforce, 0])
+        fig = plt.figure(figsize=(4, 2))
+        new_forces = list()
+        new_forces.append(forces[1])
+        gs = gridspec.GridSpec(len(new_forces), 1)
+        for iforce, force in enumerate(new_forces):
+            label = f'ground_force_r_{force}'
+            ax = fig.add_subplot(gs[iforce, 0])
             
-        #     start_index = 0
-        #     end_index = 70
-        #     unp_mean = np.mean(unperturbed_dict[label], axis=1)[start_index:end_index+1]
-        #     unp_std = np.std(unperturbed_dict[label], axis=1)[start_index:end_index+1]
+            start_index = 0
+            end_index = 70
+            unp_mean = np.mean(unperturbed_dict[label], axis=1)[start_index:end_index+1]
+            unp_std = np.std(unperturbed_dict[label], axis=1)[start_index:end_index+1]
 
-        #     h_unp, = ax.plot(pgc[start_index:end_index+1], unp_mean, color='black', lw=2)
-        #     ax.fill_between(pgc[start_index:end_index+1], 
-        #         unp_mean + unp_std, unp_mean - unp_std, color='black',
-        #         alpha=0.3, linewidth=0.0, edgecolor='none')
-        #     # ax.axhline(y=0, color='black', alpha=0.4, linestyle='--', zorder=0, lw=0.75)
-        #     ax.set_ylim(bounds[iforce][0], bounds[iforce][1])
-        #     ax.set_yticks(np.linspace(bounds[iforce][0], bounds[iforce][1], 
-        #         int((bounds[iforce][1] - bounds[iforce][0]) / tick_intervals[iforce]) + 1))
-        #     ax.set_xlim(start_index, end_index)
-        #     ax.grid(color='black', zorder=0, alpha=0.2, lw=0.5, ls='--')
-        #     ax.set_xticks([0, 10, 20, 30, 40, 50, 55, 60, 70])
-        #     ax.set_xticklabels([0, 10, 20, 30, 40, 50, 55, 60, 70])
-        #     util.publication_spines(ax)
+            h_unp, = ax.plot(pgc[start_index:end_index+1], unp_mean, color='black', lw=2)
+            ax.fill_between(pgc[start_index:end_index+1], 
+                unp_mean + unp_std, unp_mean - unp_std, color='black',
+                alpha=0.3, linewidth=0.0, edgecolor='none')
+            # ax.axhline(y=0, color='black', alpha=0.4, linestyle='--', zorder=0, lw=0.75)
+            ax.set_ylim(bounds[1][0], bounds[1][1])
+            ax.set_yticks(np.linspace(bounds[1][0], bounds[1][1], 
+                int((bounds[1][1] - bounds[1][0]) / tick_intervals[1]) + 1))
+            ax.set_xlim(start_index, end_index)
+            ax.grid(color='black', zorder=0, alpha=0.2, lw=0.5, ls='--')
+            ax.set_xticks([0, 10, 20, 30, 40, 50, 60, 70])
+            ax.set_xticklabels([0, 10, 20, 30, 40, 50, 60, 70])
+            util.publication_spines(ax)
 
-        #     zipped = zip(self.times, self.time_colors)
-        #     for i, (time, color) in enumerate(zipped):
-        #         ax.axvline(x=time, color=color, alpha=1.0, 
-        #             linestyle='--', lw=1.5)
+            # zipped = zip(self.times, self.time_colors)
+            # for i, (time, color) in enumerate(zipped):
+            #     ax.axvline(x=time, color=color, alpha=1.0, 
+            #         linestyle='--', lw=1.5)
 
-        #     if iforce == len(forces[:-1])-1:
-        #         ax.set_xlabel('time (% gait cycle)')
-        #         ax.spines['bottom'].set_position(('outward', 10))
-        #         zipped = zip(self.times, self.time_colors)
-        #         for i, (time, color) in enumerate(zipped):
-        #             ax.get_xticklabels()[i+5].set_color(color)
-        #     else:
-        #         ax.spines['bottom'].set_visible(False)
-        #         ax.set_xticklabels([])
-        #         ax.tick_params(axis='x', which='both', bottom=False, 
-        #                     top=False, labelbottom=False)
+            # if iforce == len(forces[:-1])-1:
+            ax.set_xlabel('time (% gait cycle)')
+            ax.spines['bottom'].set_position(('outward', 10))
+                # zipped = zip(self.times, self.time_colors)
+                # for i, (time, color) in enumerate(zipped):
+                #     ax.get_xticklabels()[i+5].set_color(color)
+            # else:
+            #     ax.spines['bottom'].set_visible(False)
+            #     ax.set_xticklabels([])
+            #     ax.tick_params(axis='x', which='both', bottom=False, 
+            #                 top=False, labelbottom=False)
 
-        #     ax.spines['left'].set_position(('outward', 10))
-        #     ax.set_ylabel(f'{labels[iforce]} (BW)')
+            ax.spines['left'].set_position(('outward', 10))
+            ax.set_ylabel(f'{labels[1]} (BW)')
 
-            
-
-        # fig.tight_layout()
-        # fig.savefig(target[1], dpi=600)
-        # plt.close()
+        fig.tight_layout()
+        fig.savefig(target[1], dpi=600)
+        plt.close()
 
 
     def plot_unperturbed_muscle_activity(self, file_dep, target):
@@ -2031,11 +2025,9 @@ class TaskPlotUnperturbedResults(osp.StudyTask):
 class TaskMocoPerturbedWalking(osp.TrialTask):
     REGISTRY = []
     def __init__(self, trial, initial_time, final_time, right_strikes, 
-                 left_strikes, guess_fpath=None, mesh_interval=0.02, 
-                 walking_speed=1.25, constrain_initial_state=True, 
-                 bound_controls=True, control_bound_fpath=None, 
+                 left_strikes, unperturbed_fpath=None, walking_speed=1.25,
                  side='right', torque_parameters=[0.5, 0.5, 0.25, 0.1],
-                 perturb_response_delay=5.0, periodic=False):
+                 perturb_response_delay=5.0):
         super(TaskMocoPerturbedWalking, self).__init__(trial)
         torque = int(round(100*torque_parameters[0]))
         time = int(round(100*torque_parameters[1]))
@@ -2044,13 +2036,9 @@ class TaskMocoPerturbedWalking(osp.TrialTask):
         self.config_name = (f'perturbed_torque{torque}'
                             f'_time{time}_rise{rise}_fall{fall}')
         self.name = f'{trial.subject.name}_moco_{self.config_name}'
-        self.mesh_interval = mesh_interval
         self.walking_speed = walking_speed
-        self.guess_fpath = guess_fpath
+        self.unperturbed_fpath = unperturbed_fpath
         self.root_dir = trial.study.config['doit_path']
-        self.constrain_initial_state = constrain_initial_state
-        self.bound_controls = bound_controls
-        self.control_bound_fpath = control_bound_fpath
         self.perturb_response_delay = perturb_response_delay
         self.weights = trial.study.weights
         self.side = side
@@ -2059,7 +2047,6 @@ class TaskMocoPerturbedWalking(osp.TrialTask):
         self.right_strikes = right_strikes
         self.left_strikes = left_strikes
         self.model_fpath = trial.subject.sim_model_fpath
-        self.periodic = periodic
 
         ankle_torque_left_parameters = list()
         ankle_torque_right_parameters = list()
@@ -2109,24 +2096,14 @@ class TaskMocoPerturbedWalking(osp.TrialTask):
                          self.tracking_grfs_fpath,
                          self.emg_fpath,
                          self.control_bound_fpath,
-                         self.guess_fpath], 
+                         self.unperturbed_fpath], 
                          [self.solution_fpath],
                         self.run_tracking_problem)
 
     def run_tracking_problem(self, file_dep, target):
 
-        weights = copy.deepcopy(self.weights)
-        weights['grf_tracking_weight'] = 0
-        weights['state_tracking_weight'] = 0
-        weights['upright_torso_weight'] = 0
-        weights['control_weight'] = 0
-        weights['control_tracking_weight'] = 1e5
-
         config = MocoTrackConfig(
-            self.config_name, self.config_name, 'black', weights,
-            constrain_initial_state=self.constrain_initial_state,
-            bound_controls=self.bound_controls,
-            control_bound_solution_fpath=file_dep[6],
+            self.config_name, self.config_name, 'black', self.weights,
             perturb_response_delay=self.perturb_response_delay, 
             perturb_start_sim_at_onset=True,
             guess=file_dep[7],
@@ -2134,8 +2111,7 @@ class TaskMocoPerturbedWalking(osp.TrialTask):
             ankle_torque_left_parameters=self.ankle_torque_left_parameters,
             ankle_torque_right_parameters=self.ankle_torque_right_parameters,
             ankle_torque_side=self.side,
-            ankle_torque_first_cycle_only=True,
-            periodic=self.periodic)
+            ankle_torque_first_cycle_only=True)
 
         cycles = list()
         for cycle in self.trial.cycles:

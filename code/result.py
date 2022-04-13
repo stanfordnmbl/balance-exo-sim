@@ -198,6 +198,9 @@ class Result(ABC):
                 musc = model.updMuscles().get(imusc)
                 outputList.append(f'.*{musc.getName()}.*\|{output}')
 
+        for output in ['length', 'lengthening_speed']:
+            outputList.append(f'.*\|{output}')
+
         outputs = osim.analyze(model, solution.exportToStatesTable(),
             solution.exportToControlsTable(), outputList)
 
