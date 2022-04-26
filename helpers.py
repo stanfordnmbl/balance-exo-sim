@@ -207,17 +207,14 @@ def generate_perturbed_tasks(study, subject, trial,
             study.config['results_path'], 'unperturbed', 
             subject.name, 'unperturbed.sto')
 
-    times = [0.4, 0.42, 0.44, 0.46, 0.48, 0.5, 
-             0.52, 0.54, 0.56, 0.58, 0.6]
+    times = [0.5, 0.52, 0.54, 0.56, 0.58, 0.6]
     for time in times:
-        for torque in [0.5]:
+        for torque in [0.25]:
             torque_parameters = [torque, time, rise, fall]
             trial.add_task(
                 tasks.TaskMocoPerturbedWalking,
                 initial_time, final_time, right_strikes, left_strikes,
                 unperturbed_fpath=unperturbed_fpath,
-                control_bound_fpath=unperturbed_fpath,
-                mesh_interval=0.01, 
                 torque_parameters=torque_parameters,
                 walking_speed=study.walking_speed,
                 side='right')

@@ -18,7 +18,8 @@ from matplotlib import colors as mcolors
 # from matplotlib.ticker import FormatStrFormatter
 import matplotlib.patches as patches
 
-from tracking_walking import MotionTrackingWalking, MocoTrackConfig
+from tracking_problem import TrackingProblem, TrackingConfig
+from timestepping_problem import TimeSteppingProblem, TimeSteppingConfig
 
 plt.rcParams['mathtext.fontset'] = 'cm'
 plt.rcParams['mathtext.rm'] = 'serif'
@@ -169,15 +170,15 @@ class TaskFilterGroundReactions(osp.TrialTask):
         cops = {side: np.zeros((nrow, 3)) for side in sides}
 
         for side in sides:
-            forces[side][:, 0] = util.toarray(grfs.getDependentColumn(f'ground_force_{side}_vx'))
-            forces[side][:, 1] = util.toarray(grfs.getDependentColumn(f'ground_force_{side}_vy'))
-            forces[side][:, 2] = util.toarray(grfs.getDependentColumn(f'ground_force_{side}_vz'))
-            moments[side][:, 0] = util.toarray(grfs.getDependentColumn(f'ground_torque_{side}_x'))
-            moments[side][:, 1] = util.toarray(grfs.getDependentColumn(f'ground_torque_{side}_y'))
-            moments[side][:, 2] = util.toarray(grfs.getDependentColumn(f'ground_torque_{side}_z'))
-            cops[side][:, 0] = util.toarray(grfs.getDependentColumn(f'ground_force_{side}_px'))
-            cops[side][:, 1] = util.toarray(grfs.getDependentColumn(f'ground_force_{side}_py'))
-            cops[side][:, 2] = util.toarray(grfs.getDependentColumn(f'ground_force_{side}_pz'))
+            forces[side][:, 0] = util.simtk2numpy(grfs.getDependentColumn(f'ground_force_{side}_vx'))
+            forces[side][:, 1] = util.simtk2numpy(grfs.getDependentColumn(f'ground_force_{side}_vy'))
+            forces[side][:, 2] = util.simtk2numpy(grfs.getDependentColumn(f'ground_force_{side}_vz'))
+            moments[side][:, 0] = util.simtk2numpy(grfs.getDependentColumn(f'ground_torque_{side}_x'))
+            moments[side][:, 1] = util.simtk2numpy(grfs.getDependentColumn(f'ground_torque_{side}_y'))
+            moments[side][:, 2] = util.simtk2numpy(grfs.getDependentColumn(f'ground_torque_{side}_z'))
+            cops[side][:, 0] = util.simtk2numpy(grfs.getDependentColumn(f'ground_force_{side}_px'))
+            cops[side][:, 1] = util.simtk2numpy(grfs.getDependentColumn(f'ground_force_{side}_py'))
+            cops[side][:, 2] = util.simtk2numpy(grfs.getDependentColumn(f'ground_force_{side}_pz'))
 
         # Plot raw GRF (before cutting off or filtering)
         fig = pl.figure(figsize=(12, 10))
@@ -391,16 +392,18 @@ class TaskAdjustScaledModel(osp.SubjectTask):
             loc.set(adj[0], adj[1])
             marker.set_location(loc)
 
-        # print('Unlocking subtalar and mtp joints...')
-        # coordSet = model.updCoordinateSet()
-        # for coordName in ['subtalar_angle', 'mtp_angle']:
-        #     for side in ['_l', '_r']:
-        #         coord = coordSet.get(f'{coordName}{side}')
-        #         coord.set_locked(False)
-        #         coord.set_clamped(False)
+        print('Adding lumbar actuators to the model...')
+        coordNames = ['lumbar_extension', 'lumbar_bending', 'lumbar_rotation']
+        for coordName in coordNames:
+            actu = osim.ActivationCoordinateActuator()
+            actu.set_coordinate(coordName)
+            actu.setName(f'torque_{coordName}')
+            actu.setOptimalForce(self.mass)
+            actu.setMinControl(-1.0)
+            actu.setMaxControl(1.0)
+            model.addForce(actu)
 
         print('Adding lumbar passive stiffness and damping...')
-        coordNames = ['lumbar_extension', 'lumbar_bending', 'lumbar_rotation']
         stiffnesses = [1.0, 1.5, 0.5] # N-m/rad*kg
         for coordName, stiffness in zip(coordNames, stiffnesses):
             sgf = osim.SpringGeneralizedForce(coordName)
@@ -424,29 +427,6 @@ class TaskAdjustScaledModel(osp.SubjectTask):
             sgf.setStiffness(0.4 * self.mass)
             sgf.setViscosity(2.0)
             model.addForce(sgf)
-
-        # print('Updating contact sphere parameters...')
-        # forceSet = model.updForceSet()
-        # forceNames = ['contactHeel', 'contactLateralRearfoot', 'contactLateralMidfoot',
-        #               'contactLateralToe', 'contactMedialToe', 'contactMedialMidfoot']
-        # for forceName in forceNames:
-        #     for side in ['l', 'r']:
-        #         sshsForce = osim.SmoothSphereHalfSpaceForce.safeDownCast(
-        #             forceSet.get(f'{forceName}_{side}'))
-        #         sshsForce.set_static_friction(0.5)
-        #         sshsForce.set_dynamic_friction(0.5)
-        #         sshsForce.set_viscous_friction(0.5)
-        #         sshsForce.set_stiffness(1e7)
-        #         sshsForce.set_dissipation(2)
-
-        # contactSet = model.updContactGeometrySet()
-        # contactNames = ['heel', 'lateralRearfoot', 'lateralMidfoot',
-        #                 'lateralToe', 'medialToe', 'medialMidfoot']
-        # for contactName in contactNames:
-        #     for side in ['l', 'r']:
-        #         contactSphere = osim.ContactSphere.safeDownCast(
-        #             contactSet.get(f'{contactName}_{side}'))
-        #         contactSphere.setRadius(0.25)
 
         model.initSystem()
         model.finalizeConnections()
@@ -483,6 +463,15 @@ class TaskComputeJointAngleStandardDeviations(osp.TrialTask):
                 col = kinematics.getDependentColumn(label).to_numpy()[istart:iend]
                 colInterp = np.interp(timeInterp, time, col)
                 angles[:, ilabel, icycle] = colInterp
+
+        # Normalize by magnitude
+        for ilabel, label in enumerate(labels):
+            minAngle = np.min(angles[:, ilabel, :])
+            maxAngle = np.max(angles[:, ilabel, :])
+            magnitude = maxAngle - minAngle
+
+            if magnitude > np.finfo(float).eps:
+                angles[:, ilabel, :] /= magnitude
 
         angles_std = np.std(angles, axis=2)
         angles_std_mean = np.mean(angles_std, axis=0)
@@ -1094,7 +1083,7 @@ class TaskMocoSensitivityAnalysis(osp.TrialTask):
                         self.run_tracking_problem)
 
     def run_tracking_problem(self, file_dep, target):
-        config = MocoTrackConfig(
+        config = TrackingConfig(
             self.config_name, self.config_name, 'black', self.weights,
             constrain_average_speed=False,
             periodic=True,
@@ -1106,7 +1095,7 @@ class TaskMocoSensitivityAnalysis(osp.TrialTask):
         for cycle in self.trial.cycles:
             cycles.append([cycle.start, cycle.end])
 
-        result = MotionTrackingWalking(
+        result = TrackingProblem(
             self.root_dir, # root directory
             self.result_fpath, # result directory
             file_dep[0], # model file path
@@ -1125,8 +1114,8 @@ class TaskMocoSensitivityAnalysis(osp.TrialTask):
             [config]
         )
 
-        result.generate_results(self.result_fpath)
-        result.report_results(self.result_fpath)
+        result.generate_results()
+        result.report_results()
 
 
 class TaskPlotSensitivityResults(osp.StudyTask):
@@ -1325,7 +1314,7 @@ class TaskMocoUnperturbedWalkingGuess(osp.TrialTask):
         for weight_name in weights:
             weights[weight_name] /= self.cost_scale
 
-        config = MocoTrackConfig(
+        config = TrackingConfig(
             self.config_name, self.config_name, 'black', weights,
             constrain_average_speed=self.constrain_average_speed,
             constrain_initial_state=self.constrain_initial_state,
@@ -1340,7 +1329,7 @@ class TaskMocoUnperturbedWalkingGuess(osp.TrialTask):
         for cycle in self.trial.cycles:
             cycles.append([cycle.start, cycle.end])
 
-        result = MotionTrackingWalking(
+        result = TrackingProblem(
             self.root_dir, # root directory
             self.result_fpath, # result directory
             file_dep[0], # model file path
@@ -1361,8 +1350,8 @@ class TaskMocoUnperturbedWalkingGuess(osp.TrialTask):
             reserve_strength=self.reserve_strength
         )
 
-        result.generate_results(self.result_fpath)
-        result.report_results(self.result_fpath)
+        result.generate_results()
+        result.report_results()
 
 
 class TaskMocoUnperturbedWalking(osp.TrialTask):
@@ -1380,10 +1369,13 @@ class TaskMocoUnperturbedWalking(osp.TrialTask):
         self.root_dir = trial.study.config['doit_path']
         self.periodic = periodic
         self.periodic_coordinates_to_include = list() 
-        self.periodic_coordinates_to_include.append('subtalar_angle_r')
-        self.periodic_coordinates_to_include.append('subtalar_angle_l')
-        self.periodic_coordinates_to_include.append('mtp_angle_r')
-        self.periodic_coordinates_to_include.append('mtp_angle_l')
+        # self.periodic_coordinates_to_include.append('subtalar_angle_r')
+        # self.periodic_coordinates_to_include.append('subtalar_angle_l')
+        # self.periodic_coordinates_to_include.append('mtp_angle_r')
+        # self.periodic_coordinates_to_include.append('mtp_angle_l')
+        # self.periodic_coordinates_to_include.append('lumbar_extension')
+        # self.periodic_coordinates_to_include.append('lumbar_bending')
+        # self.periodic_coordinates_to_include.append('lumbar_rotation')
         self.weights = trial.study.weights
 
         expdata_dir = os.path.join(
@@ -1427,11 +1419,12 @@ class TaskMocoUnperturbedWalking(osp.TrialTask):
 
     def run_tracking_problem(self, file_dep, target):
 
-        config = MocoTrackConfig(
+        config = TrackingConfig(
             self.config_name, self.config_name, 'black', self.weights,
             periodic=self.periodic,
             periodic_values=True,
             periodic_speeds=True,
+            periodic_actuators=True,
             periodic_coordinates_to_include=self.periodic_coordinates_to_include,
             guess=self.guess_fpath,
             )
@@ -1440,7 +1433,7 @@ class TaskMocoUnperturbedWalking(osp.TrialTask):
         for cycle in self.trial.cycles:
             cycles.append([cycle.start, cycle.end])
 
-        result = MotionTrackingWalking(
+        result = TrackingProblem(
             self.root_dir,      # root directory
             self.result_fpath,  # result directory
             file_dep[0],        # model file path
@@ -1458,8 +1451,8 @@ class TaskMocoUnperturbedWalking(osp.TrialTask):
             self.walking_speed,
             [config])
 
-        result.generate_results(self.result_fpath)
-        result.report_results(self.result_fpath)
+        result.generate_results()
+        result.report_results()
 
 
 class TaskPlotUnperturbedResults(osp.StudyTask):
@@ -1521,10 +1514,10 @@ class TaskPlotUnperturbedResults(osp.StudyTask):
                 subject, 'unperturbed_grfs.sto'))
             experiment_com_fpaths.append(os.path.join(
                 self.results_path, subject,
-                'tracking_experiment_center_of_mass.sto'))
+                'center_of_mass_experiment.sto'))
             unperturbed_com_fpaths.append(os.path.join(
                 self.results_path, subject,
-                'tracking_unperturbed_center_of_mass.sto'))
+                'center_of_mass_unperturbed.sto'))
 
         self.add_action(unperturbed_fpaths + coordinates_fpaths, 
                         [os.path.join(self.validate_path, 
@@ -1586,9 +1579,9 @@ class TaskPlotUnperturbedResults(osp.StudyTask):
             for ic, coord in enumerate(coordinates):
                 for side in ['l', 'r']:
                     key = f'/jointset/{joints[ic]}_{side}/{coord}_{side}/value'
-                    unperturbed_col = (180.0 / np.pi) * util.toarray(
+                    unperturbed_col = (180.0 / np.pi) * util.simtk2numpy(
                         unperturbed.getDependentColumn(key))
-                    experiment_col = (180.0 / np.pi) * util.toarray(
+                    experiment_col = (180.0 / np.pi) * util.simtk2numpy(
                         experiment.getDependentColumn(key))[istart:iend+1]
                     unperturbed_dict[key][:, i] = np.interp(
                         utime_interp, utime, unperturbed_col)
@@ -1676,8 +1669,8 @@ class TaskPlotUnperturbedResults(osp.StudyTask):
 
             for iforce, force in enumerate(forces):
                 label = f'ground_force_r_{force}'
-                unperturbed_col = util.toarray(unperturbed.getDependentColumn(label)) / BW
-                experiment_col = util.toarray(
+                unperturbed_col = util.simtk2numpy(unperturbed.getDependentColumn(label)) / BW
+                experiment_col = util.simtk2numpy(
                     experiment.getDependentColumn(label))[istart:iend+1] / BW
 
                 unperturbed_dict[label][:, isubj] = np.interp(
@@ -1811,9 +1804,9 @@ class TaskPlotUnperturbedResults(osp.StudyTask):
 
             for iact, activation in enumerate(activations):
                 label = f'{activation}_r'
-                unperturbed_col = util.toarray(unperturbed.getDependentColumn(
+                unperturbed_col = util.simtk2numpy(unperturbed.getDependentColumn(
                     f'/forceset/{label}/activation'))
-                experiment_col = util.toarray(
+                experiment_col = util.simtk2numpy(
                     experiment.getDependentColumn(self.emg_map[label]))[istart:iend+1]
 
                 max_emg = np.max(experiment_col)
@@ -1893,8 +1886,8 @@ class TaskPlotUnperturbedResults(osp.StudyTask):
 
             for idim, dim in enumerate(dims):
                 label = f'/|com_position_{dim}'
-                unperturbed_col = util.toarray(unperturbed.getDependentColumn(label))
-                experiment_col = util.toarray(
+                unperturbed_col = util.simtk2numpy(unperturbed.getDependentColumn(label))
+                experiment_col = util.simtk2numpy(
                     experiment.getDependentColumn(label))[istart:iend+1]
 
                 unperturbed_dict[label][:, isubj] = np.interp(
@@ -1976,7 +1969,7 @@ class TaskPlotUnperturbedResults(osp.StudyTask):
                 utime_interp = np.linspace(utime[0], utime[-1], N)
 
                 for ip, pos in enumerate(positions):
-                    pos_elt = util.toarray(
+                    pos_elt = util.simtk2numpy(
                         posTable.getDependentColumn(
                             f'/bodyset/calcn_{side}|position_{pos}'))
                     unperturbed_dict[f'pos_{pos}_{side}'][:, i] = np.interp(
@@ -2026,8 +2019,7 @@ class TaskMocoPerturbedWalking(osp.TrialTask):
     REGISTRY = []
     def __init__(self, trial, initial_time, final_time, right_strikes, 
                  left_strikes, unperturbed_fpath=None, walking_speed=1.25,
-                 side='right', torque_parameters=[0.5, 0.5, 0.25, 0.1],
-                 perturb_response_delay=5.0):
+                 side='right', torque_parameters=[0.5, 0.5, 0.25, 0.1]):
         super(TaskMocoPerturbedWalking, self).__init__(trial)
         torque = int(round(100*torque_parameters[0]))
         time = int(round(100*torque_parameters[1]))
@@ -2037,9 +2029,9 @@ class TaskMocoPerturbedWalking(osp.TrialTask):
                             f'_time{time}_rise{rise}_fall{fall}')
         self.name = f'{trial.subject.name}_moco_{self.config_name}'
         self.walking_speed = walking_speed
+        self.mesh_interval = 0.01
         self.unperturbed_fpath = unperturbed_fpath
         self.root_dir = trial.study.config['doit_path']
-        self.perturb_response_delay = perturb_response_delay
         self.weights = trial.study.weights
         self.side = side
         self.initial_time = initial_time
@@ -2080,6 +2072,10 @@ class TaskMocoPerturbedWalking(osp.TrialTask):
         if not os.path.exists(self.result_fpath): 
             os.makedirs(self.result_fpath)
 
+
+        # self.model_fpath = os.path.join(self.result_fpath,
+        #     f'model_{self.config_name}.osim')
+
         self.archive_fpath = os.path.join(
             self.study.config['results_path'], self.config_name, 
             trial.subject.name, 'archive')
@@ -2089,24 +2085,35 @@ class TaskMocoPerturbedWalking(osp.TrialTask):
         self.solution_fpath = os.path.join(self.result_fpath, 
             f'{self.config_name}.sto')
 
+        self.unperturbed_result_fpath = os.path.join(
+            self.study.config['results_path'], 'unperturbed', 
+            trial.subject.name)
+        shutil.copyfile(
+            os.path.join(self.unperturbed_result_fpath, 
+                'unperturbed_experiment_states.sto'),
+            os.path.join(self.result_fpath, 
+                'unperturbed_experiment_states.sto'))
+        shutil.copyfile(
+            os.path.join(self.unperturbed_result_fpath, 
+                'unperturbed_experiment_states.sto'),
+            os.path.join(self.result_fpath, 
+                f'{self.config_name}_experiment_states.sto'))
+
         self.add_action([self.model_fpath,
                          self.tracking_coordinates_fpath,
                          self.coordinates_std_fpath,
                          self.tracking_extloads_fpath,
                          self.tracking_grfs_fpath,
                          self.emg_fpath,
-                         self.control_bound_fpath,
                          self.unperturbed_fpath], 
                          [self.solution_fpath],
                         self.run_tracking_problem)
 
     def run_tracking_problem(self, file_dep, target):
 
-        config = MocoTrackConfig(
+        config = TimeSteppingConfig(
             self.config_name, self.config_name, 'black', self.weights,
-            perturb_response_delay=self.perturb_response_delay, 
-            perturb_start_sim_at_onset=True,
-            guess=file_dep[7],
+            unperturbed_fpath=file_dep[6],
             ankle_torque_perturbation=True,
             ankle_torque_left_parameters=self.ankle_torque_left_parameters,
             ankle_torque_right_parameters=self.ankle_torque_right_parameters,
@@ -2117,7 +2124,7 @@ class TaskMocoPerturbedWalking(osp.TrialTask):
         for cycle in self.trial.cycles:
             cycles.append([cycle.start, cycle.end])
 
-        result = MotionTrackingWalking(
+        result = TimeSteppingProblem(
             self.root_dir,      # root directory
             self.result_fpath,  # result directory
             file_dep[0],        # model file path
@@ -2133,11 +2140,11 @@ class TaskMocoPerturbedWalking(osp.TrialTask):
             self.left_strikes,
             self.mesh_interval, 
             self.walking_speed,
-            [config],
+            [config]
         )
 
-        result.generate_results(self.result_fpath)
-        result.report_results(self.result_fpath)
+        result.generate_results()
+        result.report_results()
 
 
 class TaskMocoPerturbedWalkingPost(osp.TrialTask):
@@ -2149,7 +2156,7 @@ class TaskMocoPerturbedWalkingPost(osp.TrialTask):
         self.root_dir = trial.study.config['doit_path']
         self.walking_speed = generate_task.walking_speed
         self.mesh_interval = generate_task.mesh_interval
-        self.guess_fpath = generate_task.guess_fpath
+        self.unperturbed_fpath = generate_task.unperturbed_fpath
         self.result_fpath = generate_task.result_fpath
         self.archive_fpath = generate_task.archive_fpath
         self.model_fpath = generate_task.model_fpath
@@ -2159,7 +2166,6 @@ class TaskMocoPerturbedWalkingPost(osp.TrialTask):
         self.tracking_extloads_fpath = generate_task.tracking_extloads_fpath
         self.tracking_grfs_fpath = generate_task.tracking_grfs_fpath
         self.emg_fpath = generate_task.emg_fpath
-        self.guess_fpath = generate_task.guess_fpath
         self.ankle_torque_left_parameters = \
             generate_task.ankle_torque_left_parameters
         self.ankle_torque_right_parameters = \
@@ -2194,21 +2200,20 @@ class TaskMocoPerturbedWalkingPost(osp.TrialTask):
                          self.tracking_extloads_fpath,
                          self.tracking_grfs_fpath,
                          self.emg_fpath,
-                         self.guess_fpath],
+                         self.unperturbed_fpath],
                         [self.output_fpath],
                         self.run_tracking_problem)
 
     def run_tracking_problem(self, file_dep, target):
 
         configs = list()
-        config = MocoTrackConfig(
-            'unperturbed', 'unperturbed', 'black', 
-            self.weights, guess=file_dep[5])
+        config = TimeSteppingConfig(
+            'unperturbed', 'unperturbed', 'black', self.weights)
         configs.append(config)
 
-        config = MocoTrackConfig(
-            self.config_name, self.config_name, 
-            'red', self.weights,
+        config = TimeSteppingConfig(
+            self.config_name, self.config_name, 'red', self.weights,
+            ankle_torque_perturbation=True,
             ankle_torque_right_parameters=self.ankle_torque_right_parameters,
             ankle_torque_left_parameters=self.ankle_torque_left_parameters,
             ankle_torque_side=self.side,
@@ -2219,7 +2224,7 @@ class TaskMocoPerturbedWalkingPost(osp.TrialTask):
         for cycle in self.trial.cycles:
             cycles.append([cycle.start, cycle.end])
 
-        result = MotionTrackingWalking(
+        result = TimeSteppingProblem(
             self.root_dir,      # root directory
             self.result_fpath,  # result directory
             file_dep[0],        # model file path
@@ -2238,7 +2243,7 @@ class TaskMocoPerturbedWalkingPost(osp.TrialTask):
             configs,
         )
 
-        result.report_results(self.result_fpath)
+        result.report_results()
 
 
 class TaskCreatePerturbedVisualization(osp.StudyTask):
@@ -2378,8 +2383,8 @@ class TaskPlotAnkleTorques(osp.StudyTask):
             deps.append(
                 os.path.join(self.study.config['results_path'], 
                     f'perturbed_{label}', subject, 
-                    'ankle_perturbation_force_right.sto'))
-            self.alphas.append(torque / 100.0)
+                    'ankle_perturbation_curve_right.sto'))
+            self.alphas.append(torque / study.max_torque_percent)
 
         # Model 
         self.model = os.path.join(self.study.config['results_path'], 
@@ -2407,7 +2412,7 @@ class TaskPlotAnkleTorques(osp.StudyTask):
             time = np.array(torqueTable.getIndependentColumn())
             pgc = 100 * (time - time[0]) / (time[-1] - time[0])
             torque = torqueTable.getDependentColumn(
-                '/forceset/ankle_angle_r_perturbation').to_numpy()
+                '/forceset/perturbation_ankle_angle_r').to_numpy()
 
             ax_l.plot(pgc, torque / mass, color=self.color, 
                 alpha=alpha, linewidth=lw, clip_on=False,
@@ -2435,136 +2440,6 @@ class TaskPlotAnkleTorques(osp.StudyTask):
         ax_r.tick_params(axis='y', which='both', left=False, 
                          top=False, labelleft=False)
 
-        fig.tight_layout()
-        fig.savefig(target[0], dpi=600)
-        plt.close()
-
-
-class TaskPlotNormalizedImpulse(osp.StudyTask):
-    REGISTRY = []
-    def __init__(self, study, subjects, times, colormap, cmap_indices, delay,
-                torque=100):
-        super(TaskPlotNormalizedImpulse, self).__init__(study)
-        self.name = 'plot_normalized_impulse_ankle_perturb'
-        self.results_path = os.path.join(study.config['results_path'], 
-            'experiments')
-        self.analysis_path = os.path.join(study.config['analysis_path'],
-            'normalized_impulse', 'ankle_perturb')
-        if not os.path.exists(self.analysis_path): os.makedirs(self.analysis_path)
-        self.subjects = subjects
-        self.times = times
-
-        self.labels = list()
-        self.labels.append('unperturbed')
-        self.colors = list()
-        self.colors.append('gray')
-        self.start_pgc = list()
-        self.stop_pgc = list()
-        self.start_pgc.append(0)
-        self.stop_pgc.append(100)
-        cmap = plt.get_cmap(colormap)
-        perturb_fpaths = list()
-        for time, cmap_idx in zip(self.times, cmap_indices):
-            label = f'torque{torque}_time{time}_delay{int(1000*delay)}'
-            perturb_fpaths.append(
-                os.path.join('ankle_perturb', label, 
-                    f'tracking_perturb_{label}_center_of_mass.sto')
-                )
-            self.labels.append(f'{time}%')
-            self.colors.append(cmap(cmap_idx))
-            # self.start_pgc.append(time - 25)
-            # self.stop_pgc.append(time + 10)
-            self.start_pgc.append(0)
-            self.stop_pgc.append(100)
-
-        deps = list()
-        for subject in subjects:
-            condition_path = os.path.join(self.results_path, subject, 
-                'unperturbed')
-            # Unperturbed solution
-            deps.append(os.path.join(condition_path, 'moco', 
-                'tracking_unperturbed_center_of_mass.sto'))
-            # Perturbed solutions
-            for perturb_fpath in perturb_fpaths:
-                deps.append(os.path.join(condition_path, perturb_fpath))
-
-        self.add_action(deps, 
-                        [os.path.join(self.analysis_path, 
-                            'absolute_errors.png')
-                        ], 
-                        self.plot_com_tracking_errors)
-
-    def plot_com_tracking_errors(self, file_dep, target):
-
-        def compute_normalized_impulse(table, start_idx, stop_idx):
-            times = np.array(table.getIndependentColumn())
-            times = times[start_idx:stop_idx]
-            pos_x = table.getDependentColumn('/|com_position_x').to_numpy()[start_idx:stop_idx]
-            pos_y = table.getDependentColumn('/|com_position_y').to_numpy()[start_idx:stop_idx]
-            pos_z = table.getDependentColumn('/|com_position_z').to_numpy()[start_idx:stop_idx]
-            acc_x = table.getDependentColumn('/|com_acceleration_x').to_numpy()[start_idx:stop_idx]
-            acc_y = table.getDependentColumn('/|com_acceleration_y').to_numpy()[start_idx:stop_idx]
-            acc_z = table.getDependentColumn('/|com_acceleration_z').to_numpy()[start_idx:stop_idx]
-            normAccel = np.zeros_like(times)
-            for i, time in enumerate(times):
-                normAccel[i] = np.sqrt(acc_x[i] * acc_x[i] + 
-                                       acc_y[i] * acc_y[i] +
-                                       acc_z[i] * acc_z[i])
-
-            delta_x = pos_x[-1] - pos_x[0]
-            delta_y = pos_y[-1] - pos_y[0]
-            delta_z = pos_z[-1] - pos_z[0]
-            deltaPos = np.sqrt(delta_x * delta_x +
-                               delta_y * delta_y +
-                               delta_z * delta_z)
-
-            deltaT = times[-1] - times[0]
-            avgVel = deltaPos / deltaT
-
-            # Trapezoidal rule
-            intNormAccel = 0.5 * deltaT * (normAccel.sum() + 
-                                           normAccel[1:-1].sum())
-
-            return intNormAccel / avgVel
-
-        numSubjects = len(self.subjects)
-        numLabels = len(self.labels)
-        diff_norm_impulse = np.zeros((numLabels, numSubjects))
-        for isubj, subject in enumerate(self.subjects):
-            for ilabel, label in enumerate(self.labels):
-                ref_table = osim.TimeSeriesTable(file_dep[isubj*numLabels])
-                curr_table = osim.TimeSeriesTable(file_dep[isubj*numLabels + ilabel])
-                times = np.array(curr_table.getIndependentColumn())
-                duration = times[-1] - times[0]
-                start_time = times[0] + duration * (self.start_pgc[ilabel] / 100.0)
-                stop_time = times[0] + duration * (self.stop_pgc[ilabel] / 100.0)
-                start_idx = np.argmin(np.abs(times-start_time))
-                stop_idx = np.argmin(np.abs(times-stop_time)) + 1
-                ref_norm_impulse = compute_normalized_impulse(ref_table, 
-                    start_idx, stop_idx)
-                curr_norm_impulse = compute_normalized_impulse(curr_table, 
-                    start_idx, stop_idx)
-                diff_norm_impulse[ilabel, isubj] = curr_norm_impulse - ref_norm_impulse
-
-        # Remove elements with zero diff
-        diff_norm_impulse = diff_norm_impulse[1:, :]
-
-        diff_norm_impulse_mean = np.mean(diff_norm_impulse, axis=1)
-        diff_norm_impulse_std = np.std(diff_norm_impulse, axis=1)
-
-        fig = plt.figure(figsize=(3, 3))
-        ax = fig.add_subplot(111)
-        ax.bar(self.labels[1:], diff_norm_impulse_mean, 0.8, color=self.colors[1:])
-            # yerr=diff_norm_impulse_std)
-        ax.set_ylabel('change in normalized impulse')
-        plt.setp(ax.get_xticklabels(), rotation=30, ha='right', 
-            rotation_mode='anchor')
-        ax.set_xlabel('perturbation time (% gait cycle)')
-        ax.axhline(y=0, color='black', alpha=0.2, linestyle='--', 
-            zorder=0, lw=0.5)
-        ax.set_ylim(-15, 20)
-        ax.set_yticks([-15, -10, -5, 0, 5, 10, 15, 20])
-        util.publication_spines(ax)
         fig.tight_layout()
         fig.savefig(target[0], dpi=600)
         plt.close()
@@ -2632,7 +2507,7 @@ class TaskPlotCenterOfMass(osp.StudyTask):
 
                 if not isubj:
                     self.labels.append(f'{torque}%')
-                    self.alphas.append(torque / 100.0)
+                    self.alphas.append(torque / study.max_torque_percent)
                     self.colors.append(self.color)
                     self.linewidths.append(2)
 
@@ -3169,7 +3044,7 @@ class TaskPlotInstantaneousCenterOfMass(osp.StudyTask):
                 os.path.join(
                     self.study.config['results_path'], 
                     'unperturbed', subject,
-                    'tracking_unperturbed_center_of_mass.sto'))
+                    'center_of_mass_unperturbed.sto'))
 
             # Perturbed solutions
             for torque in self.torques:
@@ -3180,7 +3055,7 @@ class TaskPlotInstantaneousCenterOfMass(osp.StudyTask):
                         os.path.join(
                             self.study.config['results_path'], 
                             label, subject,
-                            f'tracking_{label}_center_of_mass.sto')
+                            f'center_of_mass_{label}.sto')
                         )
 
                     if not isubj:
@@ -3281,7 +3156,7 @@ class TaskPlotInstantaneousCenterOfMass(osp.StudyTask):
             for itime, time in enumerate(self.times): 
 
                 label = f'torque{torque}_time{time}_rise{self.rise}_fall{self.fall}'
-                alpha = torque / 100.0
+                alpha = torque / self.study.max_torque_percent
                 pos_x = np.mean(com_kin_dict[label]['pos_x'], axis=1)
                 pos_y = np.mean(com_kin_dict[label]['pos_y'], axis=1)
                 pos_z = np.mean(com_kin_dict[label]['pos_z'], axis=1)
@@ -3430,7 +3305,7 @@ class TaskPlotGroundReactions(osp.StudyTask):
                 if not isubj:
                     self.labels.append(label)
                     self.colors.append(color)
-                    self.alphas.append(torque / 100.0) 
+                    self.alphas.append(torque / study.max_torque_percent) 
 
 
         self.add_action(deps, 
@@ -3839,7 +3714,7 @@ class TaskPlotInstantaneousGroundReactions(osp.StudyTask):
 
                 label = (f'torque{torque}_time{time}'
                          f'_rise{self.rise}_fall{self.fall}')
-                alpha = torque / 100.0
+                alpha = torque / self.study.max_torque_percent
                 grf_x = np.mean(grf_dict[label]['grfx'], axis=1)
                 grf_y = np.mean(grf_dict[label]['grfy'], axis=1)
                 grf_z = np.mean(grf_dict[label]['grfz'], axis=1)

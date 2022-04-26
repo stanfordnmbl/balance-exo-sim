@@ -167,10 +167,10 @@ def add_to_study(study):
 
     # Trial to use
     gait_events = dict()
-    gait_events['right_strikes'] = [0.292, 1.376, 2.441, 3.508]
-    gait_events['left_toeoffs'] = [0.458, 1.541, 2.605]
-    gait_events['left_strikes'] = [0.832, 1.908, 2.968]
-    gait_events['right_toeoffs'] = [1.005, 2.080, 3.142]
+    gait_events['right_strikes'] = [0.29, 1.38, 2.44, 3.51]
+    gait_events['left_toeoffs'] = [0.46, 1.54, 2.61]
+    gait_events['left_strikes'] = [0.83, 1.91, 2.97]
+    gait_events['right_toeoffs'] = [1.01, 2.08, 3.14]
     walk2_trial = walk2.add_trial(1,
             gait_events=gait_events,
             omit_trial_dir=True,
@@ -182,10 +182,10 @@ def add_to_study(study):
      # Inverse kinematics and inverse dynamics
     ik_setup_task, id_setup_task = helpers.generate_main_tasks(walk2_trial)
 
-    initial_time = 2.441
-    final_time = 3.508
-    right_strikes = [2.441, 3.508]
-    left_strikes = [2.968]
+    initial_time = 2.44
+    final_time = 3.51
+    right_strikes = [2.44, 3.51]
+    left_strikes = [2.97]
     walk2_trial.add_task(
         tasks.TaskComputeJointAngleStandardDeviations, 
         ik_setup_task)
