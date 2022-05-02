@@ -128,30 +128,26 @@
 # doit subject19_moco_unperturbed_guess_mesh20_scale1_periodic
 # doit subject19_moco_unperturbed
 
-# doit subject01_moco_unperturbed
+doit subject01_moco_unperturbed
 doit subject02_moco_unperturbed
+doit subject04_moco_unperturbed
 doit subject18_moco_unperturbed
 doit subject19_moco_unperturbed
-doit subject04_moco_unperturbed
 doit plot_unperturbed_results
 
 # Perturbed walking
 # -----------------
-# doit forget subject01_moco_perturbed_torque25_time50_rise25_fall10
-# doit forget subject01_moco_perturbed_torque25_time50_rise25_fall10_post
-# doit subject01_moco_perturbed_torque25_time50_rise25_fall10
-# doit subject01_moco_perturbed_torque25_time50_rise25_fall10_post
-
-# doit subject02_moco_perturbed_torque*_time50_rise25_fall10
-# doit subject02_moco_perturbed_torque*_time50_rise25_fall10_post
-# doit subject02_moco_perturbed_torque*_time52_rise25_fall10
-# doit subject02_moco_perturbed_torque*_time52_rise25_fall10_post
-# doit subject02_moco_perturbed_torque*_time54_rise25_fall10
-# doit subject02_moco_perturbed_torque*_time54_rise25_fall10_post
-# doit subject02_moco_perturbed_torque*_time56_rise25_fall10
-# doit subject02_moco_perturbed_torque*_time56_rise25_fall10_post
-# doit subject02_moco_perturbed_torque*_time58_rise25_fall10
-# doit subject02_moco_perturbed_torque*_time58_rise25_fall10_post
-# doit subject02_moco_perturbed_torque*_time60_rise25_fall10
-# doit subject02_moco_perturbed_torque*_time60_rise25_fall10_post
+# doit subject*_moco_perturbed_torque50_time50_rise*_fall*
+# doit subject*_moco_perturbed_torque50_time51_rise*_fall*
+# doit subject*_moco_perturbed_torque50_time52_rise*_fall*
+# doit subject*_moco_perturbed_torque50_time53_rise*_fall*
+# doit subject*_moco_perturbed_torque50_time54_rise*_fall*
+# doit subject*_moco_perturbed_torque50_time55_rise*_fall*
+# doit subject*_moco_perturbed_torque50_time56_rise*_fall*
+# doit subject*_moco_perturbed_torque50_time57_rise*_fall*
+# doit subject*_moco_perturbed_torque50_time58_rise*_fall*
+# doit subject*_moco_perturbed_torque50_time59_rise*_fall*
+# doit subject*_moco_perturbed_torque50_time60_rise*_fall*
+# doit subject*_moco_perturbed_torque50_time61_rise*_fall*
+# doit subject*_moco_perturbed_torque50_time62_rise*_fall*
 

@@ -73,6 +73,42 @@ class Result(ABC):
         return np.genfromtxt(table_path, names=True, delimiter='\t',
                              skip_header=num_header_rows)
 
+    def create_model_processor_base(self, config):
+
+        osim.Logger.setLevelString('error')
+
+        # Load model
+        # ----------
+        model = osim.Model(self.model_fpath)
+
+        modelProcessor = osim.ModelProcessor(model)
+
+        modelProcessor.append(osim.ModOpReplaceJointsWithWelds(list()))
+        modelProcessor.append(osim.ModOpReplaceMusclesWithDeGrooteFregly2016())
+        modelProcessor.append(osim.ModOpIgnoreTendonCompliance())
+        modelProcessor.append(osim.ModOpFiberDampingDGF(0.01))
+
+        # Enable tendon compliance for the ankle plantarflexors.
+        # ------------------------------------------------------
+        model = modelProcessor.process()
+        model.initSystem()
+        muscles = model.updMuscles()
+        for imusc in np.arange(muscles.getSize()):
+            muscle = osim.DeGrooteFregly2016Muscle.safeDownCast(muscles.get(int(imusc)))
+            muscName = muscle.getName()
+
+            if ('gas' in muscName) or ('soleus' in muscName):
+                muscle.set_ignore_tendon_compliance(False)
+                muscle.set_tendon_strain_at_one_norm_force(0.10)
+                muscle.set_passive_fiber_strain_at_one_norm_force(2.0)
+
+        model.finalizeConnections()
+        modelProcessor = osim.ModelProcessor(model)
+
+        osim.Logger.setLevelString('info')
+
+        return modelProcessor
+
     def calc_negative_muscle_forces_base(self, model, solution):
         model.initSystem()
         outputs = osim.analyze(model, solution.exportToStatesTable(),
@@ -110,7 +146,8 @@ class Result(ABC):
                        'active_fiber_force', 'passive_fiber_force', 
                        'tendon_force', 'activation', 'cos_pennation_angle', 
                        'active_force_length_multiplier', 
-                       'force_velocity_multiplier', 'passive_force_multiplier']:
+                       'force_velocity_multiplier', 'passive_force_multiplier',
+                       'tendon_length', 'tendon_strain']:
             for imusc in range(model.getMuscles().getSize()):
                 musc = model.updMuscles().get(imusc)
                 outputList.append(f'.*{musc.getName()}.*\|{output}')
@@ -627,10 +664,6 @@ class Result(ABC):
             com_acc_x = simtk2numpy(com.getDependentColumn('/|com_acceleration_x'))
             com_acc_y = simtk2numpy(com.getDependentColumn('/|com_acceleration_y'))
             com_acc_z = simtk2numpy(com.getDependentColumn('/|com_acceleration_z'))
-
-            # com_pos_x =- com_pos_x[0]
-            # com_pos_y =- com_pos_y[0]
-            # com_pos_z =- com_pos_z[0]
 
             lw = 3
             s = 100

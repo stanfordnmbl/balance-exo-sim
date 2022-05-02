@@ -201,16 +201,18 @@ def generate_sensitivity_tasks(study, subject, trial,
 
 def generate_perturbed_tasks(study, subject, trial, 
         initial_time, final_time, right_strikes, 
-        left_strikes, rise, fall):
+        left_strikes):
 
     unperturbed_fpath = os.path.join(
             study.config['results_path'], 'unperturbed', 
             subject.name, 'unperturbed.sto')
 
-    times = [0.5, 0.52, 0.54, 0.56, 0.58, 0.6]
-    for time in times:
-        for torque in [0.25]:
-            torque_parameters = [torque, time, rise, fall]
+    for time in study.times:
+        for torque in study.torques:
+            torque_parameters = [torque / 100.0, 
+                                 time / 100.0, 
+                                 study.rise / 100.0, 
+                                 study.fall / 100.0]
             trial.add_task(
                 tasks.TaskMocoPerturbedWalking,
                 initial_time, final_time, right_strikes, left_strikes,

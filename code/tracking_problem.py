@@ -22,7 +22,6 @@ forceNamesLeftFoot = ['forceset/contactHeel_l',
 class TrackingConfig:
     def __init__(self, name, legend_entry, color, weights, guess=None, 
                  effort_enabled=True, tracking_enabled=True,
-                 # Periodicity arguments
                  periodic=False,
                  periodic_coordinates_to_include=None, 
                  periodic_actuators=True,
@@ -140,38 +139,7 @@ class TrackingProblem(Result):
         return stateBounds
 
     def create_model_processor(self, config):
-
-        # Load model
-        # ----------
-        osim.Logger.setLevelString('warn')
-        model = osim.Model(self.model_fpath)
-
-        modelProcessor = osim.ModelProcessor(model)
-
-        modelProcessor.append(osim.ModOpReplaceJointsWithWelds(list()))
-        modelProcessor.append(osim.ModOpReplaceMusclesWithDeGrooteFregly2016())
-        modelProcessor.append(osim.ModOpIgnoreTendonCompliance())
-        modelProcessor.append(osim.ModOpFiberDampingDGF(0.01))
-
-        # Enable tendon compliance for the ankle plantarflexors.
-        # ------------------------------------------------------
-        model = modelProcessor.process()
-        model.initSystem()
-        muscles = model.updMuscles()
-        for imusc in np.arange(muscles.getSize()):
-            muscle = muscles.get(int(imusc))
-            muscName = muscle.getName()
-            if ('gas' in muscName) or ('soleus' in muscName):
-                muscle.set_ignore_tendon_compliance(False)
-
-        model.finalizeConnections()
-        modelProcessor = osim.ModelProcessor(model)
-        # modelProcessor.append(
-        #         osim.ModOpUseImplicitTendonComplianceDynamicsDGF())
-
-        osim.Logger.setLevelString('info')
-
-        return modelProcessor
+        return self.create_model_processor_base(config)
 
     def run_tracking_problem(self, config):
 
@@ -248,11 +216,6 @@ class TrackingProblem(Result):
                         valueWeight = 1.0  / std 
                         speedWeight = 0.01 / std
 
-
-                    if 'pelvis' in name:
-                        valueWeight *= 10.0
-                        speedWeight *= 10.0
-
             stateWeights.cloneAndAppend(
                 osim.MocoWeight(valuePath, valueWeight))
             stateWeights.cloneAndAppend(
@@ -328,28 +291,6 @@ class TrackingProblem(Result):
         controlEffort.setDivideByDisplacement(True)
         if not config.control_weight or not config.effort_enabled:
             controlEffort.setEnabled(False)
-
-        # Minimize activation effort
-        # --------------------------
-        # footSpeeds = osim.MocoSumSquaredStateGoal('regularize_foot_speeds', 
-        #     config.foot_speeds_weight / 4)
-        # footSpeeds.setEnabled(config.effort_enabled)
-        # footSpeeds.setDivideByDisplacement(True)
-        # for comp in model.getComponentsList():
-        #     if type(comp) is osim.Coordinate: 
-        #         coordName = comp.getName()
-        #         coordValue = comp.getStateVariableNames().get(0)
-        #         coordSpeed = comp.getStateVariableNames().get(1)
-        #         footSpeeds.setWeightForState(coordValue, 0)
-        #         if 'subtalar' in coordName or 'mtp' in coordName:
-        #             footSpeeds.setWeightForState(coordSpeed, 1.0)
-
-        #     elif type(comp) is osim.Actuator:
-        #         for isv in np.arange(comp.getStateVariableNames().getSize()):
-        #             footSpeeds.setWeightForState(
-        #                 comp.getStateVariableNames().get(int(isv), 0))
-
-        # problem.addGoal(footSpeeds)
 
         # Average speed goal
         # ------------------
@@ -475,7 +416,7 @@ class TrackingProblem(Result):
         solver.set_optim_constraint_tolerance(1e-4)
         solver.set_optim_convergence_tolerance(1e-2)
         solver.set_num_mesh_intervals(
-            int((self.final_time - self.initial_time) / self.mesh_interval))
+            int(np.round((self.final_time - self.initial_time) / self.mesh_interval)))
         if config.accel_weight:
             solver.set_multibody_dynamics_mode('implicit')
             solver.set_minimize_implicit_multibody_accelerations(
@@ -502,45 +443,20 @@ class TrackingProblem(Result):
         # Set the guess
         # -------------
         if config.guess: 
-            # guess = osim.MocoTrajectory(config.guess)
-
-            guess  = solver.createGuess()
-
-            prevSol = osim.MocoTrajectory(config.guess)
-
-            statesTable = prevSol.exportToStatesTable()
-            # stateNames = statesTable.getColumnLabels()
-            # for name in stateNames:
-            #     if 'normalized_tendon_force' in name:
-            #         statesTable.removeColumn(name)
-
-            guess.insertStatesTrajectory(statesTable, True)
-            guess.insertControlsTrajectory(prevSol.exportToControlsTable(), True)
-
-            # for mname in prevSol.getMultiplierNames():
-            #     multiplier = prevSol.getMultiplier(mname)
-            #     guessMultiplier = guess.getMultiplier(mname)
-            #     multVec = osim.Vector(int(guessMultiplier.size()), 0.0)
-
-            #     for i in np.arange(guessMultiplier.size()):
-            #         multVec[int(i)] = multiplier[int(i+1)]
-
-            #     guess.setMultiplier(mname, multVec)
-
+            guess = osim.MocoTrajectory(config.guess)
             solver.setGuess(guess)
-
         else:
-            # If no guess provided, use the experimental states trajectory to
-            # construct a guess.
+            # If no guess provided, use the experimental states 
+            # trajectory to construct a guess.
             guess = solver.createGuess()
             guess.insertStatesTrajectory(experimentStates, True)
             solver.setGuess(guess)
 
         # Solve!
         # ------
-        # solutionUnsealed = study.solve()
-        # solution = solutionUnsealed.unseal()
-        # solution.write(self.get_solution_path(config.name))
+        solutionUnsealed = study.solve()
+        solution = solutionUnsealed.unseal()
+        solution.write(self.get_solution_path(config.name))
 
         # Compute ground reaction forces generated by the contact spheres.
         # ----------------------------------------------------------------
@@ -621,7 +537,10 @@ class TrackingProblem(Result):
         self.plot_muscle_mechanics(muscle_mechanics, 'normalized_fiber_velocity')
         self.plot_muscle_mechanics(muscle_mechanics, 'active_force_length_multiplier')
         self.plot_muscle_mechanics(muscle_mechanics, 'force_velocity_multiplier')
-        self.plot_muscle_mechanics(muscle_mechanics, 'passive_force_multiplier')
+        self.plot_muscle_mechanics(muscle_mechanics, 'passive_fiber_force')
+        self.plot_muscle_mechanics(muscle_mechanics, 'active_fiber_force')
+        self.plot_muscle_mechanics(muscle_mechanics, 'tendon_strain')
+        self.plot_muscle_mechanics(muscle_mechanics, 'tendon_length')
 
         # Plot center of mass trajectories
         # --------------------------------

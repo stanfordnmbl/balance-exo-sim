@@ -416,8 +416,8 @@ class TaskAdjustScaledModel(osp.SubjectTask):
         for coordName in ['subtalar_angle_r', 'subtalar_angle_l']:
             sgf = osim.SpringGeneralizedForce(coordName)
             sgf.setName(f'passive_stiffness_{coordName}')
-            sgf.setStiffness(2.0 * self.mass)
-            sgf.setViscosity(2.0)
+            sgf.setStiffness(5.0 * self.mass)
+            sgf.setViscosity(5.0)
             model.addForce(sgf)
 
         print('Adding mtp passive stiffness and damping...')
@@ -428,7 +428,6 @@ class TaskAdjustScaledModel(osp.SubjectTask):
             sgf.setViscosity(2.0)
             model.addForce(sgf)
 
-        model.initSystem()
         model.finalizeConnections()
         model.printToXML(target[0])
 
@@ -2038,7 +2037,7 @@ class TaskMocoPerturbedWalking(osp.TrialTask):
         self.final_time = final_time
         self.right_strikes = right_strikes
         self.left_strikes = left_strikes
-        self.model_fpath = trial.subject.sim_model_fpath
+        self.model_fpath = trial.subject.sim_model_fpath #.replace('final', 'temp')
 
         ankle_torque_left_parameters = list()
         ankle_torque_right_parameters = list()
@@ -2071,10 +2070,6 @@ class TaskMocoPerturbedWalking(osp.TrialTask):
             trial.subject.name)
         if not os.path.exists(self.result_fpath): 
             os.makedirs(self.result_fpath)
-
-
-        # self.model_fpath = os.path.join(self.result_fpath,
-        #     f'model_{self.config_name}.osim')
 
         self.archive_fpath = os.path.join(
             self.study.config['results_path'], self.config_name, 
@@ -2290,7 +2285,7 @@ class TaskCreatePerturbedVisualization(osp.StudyTask):
                 torque_fpaths.append(
                     os.path.join(self.study.config['results_path'], 
                     f'perturbed_{label}', subject, 
-                    'ankle_perturbation_force_right.sto'))
+                    'ankle_perturbation_curve_right.sto'))
 
         self.add_action(model_fpaths + perturbed_fpaths + torque_fpaths, 
                         [], 
@@ -2317,8 +2312,8 @@ class TaskCreatePerturbedVisualization(osp.StudyTask):
 
                 extloads = osim.TimeSeriesTable()
                 torqueVec = torqueTable.getDependentColumn(
-                    '/forceset/ankle_angle_r_perturbation').to_numpy()
-                scale = 8
+                    '/forceset/perturbation_ankle_angle_r').to_numpy()
+                scale = -2000
                 for istate in np.arange(statesTraj.getSize()-2):
                     row = osim.RowVector(9, 0.0)
                     state = statesTraj.get(int(istate))
@@ -2384,7 +2379,7 @@ class TaskPlotAnkleTorques(osp.StudyTask):
                 os.path.join(self.study.config['results_path'], 
                     f'perturbed_{label}', subject, 
                     'ankle_perturbation_curve_right.sto'))
-            self.alphas.append(torque / study.max_torque_percent)
+            self.alphas.append(torque / study.torques[-1])
 
         # Model 
         self.model = os.path.join(self.study.config['results_path'], 
@@ -2414,18 +2409,18 @@ class TaskPlotAnkleTorques(osp.StudyTask):
             torque = torqueTable.getDependentColumn(
                 '/forceset/perturbation_ankle_angle_r').to_numpy()
 
-            ax_l.plot(pgc, torque / mass, color=self.color, 
+            ax_l.plot(pgc, -torque, color=self.color, 
                 alpha=alpha, linewidth=lw, clip_on=False,
                 solid_capstyle='round')
             ax_l.set_ylabel('perturbation torque (N-m/kg)')
-            ax_l.set_ylim([0.0, 1.0])
-            ax_l.set_yticks([0.0, 0.25, 0.50, 0.75, 1.0])
+            ax_l.set_ylim([0.0, 0.25])
+            ax_l.set_yticks([0.0, 0.25])
             ax_l.set_xlim(0, 100)
             util.publication_spines(ax_l, True)
             ax_l.set_xlabel('time (% gait cycle)')
-            onset_time = self.time - 25
+            onset_time = self.time - 10
             peak_time = self.time
-            offset_time = self.time + 10
+            offset_time = self.time + 5
             ax_l.fill_betweenx([-5, 5], onset_time, offset_time, alpha=0.1, 
                 color='gray', edgecolor=None, zorder=0, lw=None)
             ax_l.axvline(x=peak_time, color=self.color, linestyle='--',
@@ -2492,7 +2487,7 @@ class TaskPlotCenterOfMass(osp.StudyTask):
                 os.path.join(
                     self.study.config['results_path'], 
                     'unperturbed', subject,
-                    'tracking_unperturbed_center_of_mass.sto'))
+                    'center_of_mass_unperturbed.sto'))
 
             # Perturbed solutions
             for torque in self.torques:
@@ -2502,12 +2497,12 @@ class TaskPlotCenterOfMass(osp.StudyTask):
                     os.path.join(
                         self.study.config['results_path'], 
                         label, subject,
-                        f'tracking_{label}_center_of_mass.sto')
+                        f'center_of_mass_{label}.sto')
                     )
 
                 if not isubj:
                     self.labels.append(f'{torque}%')
-                    self.alphas.append(torque / study.max_torque_percent)
+                    self.alphas.append(torque / study.torques[-1])
                     self.colors.append(self.color)
                     self.linewidths.append(2)
 
@@ -2606,8 +2601,11 @@ class TaskPlotCenterOfMass(osp.StudyTask):
             ticks = np.linspace(lims[0], lims[1], N)
             return ticks
 
-        def plot_com_kinematics(pgc, color, lw, axp, axv, axa, 
-                                pos, vel, acc, pos_int, vel_int, acc_int,
+        def plot_com_kinematics(pgc, color, lw, 
+                                axp, axv, axa, 
+                                pos, vel, acc,
+                                pos_std, vel_std, acc_std, 
+                                pos_int, vel_int, acc_int,
                                 plim, vlim, alim, all_bottoms=False,
                                 pos_box=None, vel_box=None, acc_box=None,
                                 draw_box=False):
@@ -2615,6 +2613,9 @@ class TaskPlotCenterOfMass(osp.StudyTask):
             axp.plot(pgc, pos, color=color, linewidth=lw, 
                      solid_capstyle='round', clip_on=True, 
                      alpha=alpha)
+            axp.fill_between(pgc, pos-pos_std, pos+pos_std, 
+                     color=color, alpha=0.2*alpha, 
+                     edgecolor=None, lw=None)
             axp.set_xlim(pgc[0], pgc[-1])
             axp.set_ylabel(r'position ($m$)')
             plim, pticks = get_lims_ticks(pos, pos_int, lims=plim)
@@ -2647,7 +2648,10 @@ class TaskPlotCenterOfMass(osp.StudyTask):
                     axp.set_xlabel('time (% gait cycle)')
 
             axv.plot(pgc, vel, color=color, linewidth=lw,
-                     solid_capstyle='round', clip_on=True, alpha=alpha)
+                    solid_capstyle='round', clip_on=True, alpha=alpha)
+            axv.fill_between(pgc, vel-vel_std, vel+vel_std, 
+                    color=color, alpha=0.2*alpha, 
+                    edgecolor=None, lw=None)
             axv.set_xlim(pgc[0], pgc[-1])
             axv.set_ylabel(r'velocity ($m/s$)')
             vlim, vticks = get_lims_ticks(vel, vel_int, lims=vlim)
@@ -2680,8 +2684,11 @@ class TaskPlotCenterOfMass(osp.StudyTask):
                     axv.set_xlabel('time (% gait cycle)')
 
             axa.plot(pgc, acc, color=color, linewidth=lw,
-                     solid_capstyle='round', clip_on=True, 
-                     alpha=alpha)
+                    solid_capstyle='round', clip_on=True, 
+                    alpha=alpha)
+            axa.fill_between(pgc, acc-acc_std, acc+acc_std, 
+                    color=color, alpha=0.2*alpha, 
+                    edgecolor=None, lw=None)
             axa.set_ylabel(r'acceleration ($m/s^2$)')
             axa.set_xlabel('time (% gait cycle)')
             axa.set_xlim(pgc[0], pgc[-1])
@@ -2749,19 +2756,6 @@ class TaskPlotCenterOfMass(osp.StudyTask):
                 pos_z = table.getDependentColumn(
                     '/|com_position_z').to_numpy()
 
-                # g = 9.81
-                # v_max = np.sqrt(g*pos_y[0])
-
-                # table_np[:, 0] = (pos_x - pos_x[0]) / pos_y[0]
-                # table_np[:, 1] = (pos_y - pos_y[0]) / pos_y[0]
-                # table_np[:, 2] = (pos_z - pos_z[0]) / pos_y[0]
-                # table_np[:, 3] = table.getDependentColumn(
-                #     '/|com_velocity_x').to_numpy() / v_max
-                # table_np[:, 4] = table.getDependentColumn(
-                #     '/|com_velocity_y').to_numpy() / v_max
-                # table_np[:, 5] = table.getDependentColumn(
-                #     '/|com_velocity_z').to_numpy() / v_max
-
                 table_np[:, 0] = pos_x - pos_x[0]
                 table_np[:, 1] = pos_y - pos_y[0]
                 table_np[:, 2] = pos_z - pos_z[0]
@@ -2810,6 +2804,16 @@ class TaskPlotCenterOfMass(osp.StudyTask):
             acc_y = np.mean(com_kin_dict[label]['acc_y'], axis=1)
             acc_z = np.mean(com_kin_dict[label]['acc_z'], axis=1)
 
+            pos_x_std = np.std(com_kin_dict[label]['pos_x'], axis=1)
+            pos_y_std = np.std(com_kin_dict[label]['pos_y'], axis=1)
+            pos_z_std = np.std(com_kin_dict[label]['pos_z'], axis=1)
+            vel_x_std = np.std(com_kin_dict[label]['vel_x'], axis=1)
+            vel_y_std = np.std(com_kin_dict[label]['vel_y'], axis=1)
+            vel_z_std = np.std(com_kin_dict[label]['vel_z'], axis=1)
+            acc_x_std = np.std(com_kin_dict[label]['acc_x'], axis=1)
+            acc_y_std = np.std(com_kin_dict[label]['acc_y'], axis=1)
+            acc_z_std = np.std(com_kin_dict[label]['acc_z'], axis=1)
+
             # Position: anterior-posterior vs medio-lateral
             s = 35
             if not i:
@@ -2853,7 +2857,10 @@ class TaskPlotCenterOfMass(osp.StudyTask):
                     ax_ML[0], ax_ML[1], ax_ML[2], 
                     pos_z[start_index:end_index+1], 
                     vel_z[start_index:end_index+1], 
-                    acc_z[start_index:end_index+1], 
+                    acc_z[start_index:end_index+1],
+                    pos_z_std[start_index:end_index+1], 
+                    vel_z_std[start_index:end_index+1], 
+                    acc_z_std[start_index:end_index+1], 
                     0.01, 0.05, 0.5,
                     plim_ML, vlim_ML, alim_ML)
             plim_ML, vlim_ML, alim_ML, \
@@ -2862,7 +2869,10 @@ class TaskPlotCenterOfMass(osp.StudyTask):
                     axes_l[0], axes_l[1], axes_l[2], 
                     pos_z[start_index:end_index+1], 
                     vel_z[start_index:end_index+1], 
-                    acc_z[start_index:end_index+1], 
+                    acc_z[start_index:end_index+1],
+                    pos_z_std[start_index:end_index+1], 
+                    vel_z_std[start_index:end_index+1], 
+                    acc_z_std[start_index:end_index+1],  
                     0.01, 0.05, 0.5,
                     plim_ML, vlim_ML, alim_ML, all_bottoms=True,
                     pos_box=self.MLbox[0], vel_box=self.MLbox[1],
@@ -2872,7 +2882,10 @@ class TaskPlotCenterOfMass(osp.StudyTask):
                     axes_r[0], axes_r[1], axes_r[2], 
                     pos_z[start_index:end_index+1], 
                     vel_z[start_index:end_index+1], 
-                    acc_z[start_index:end_index+1], 
+                    acc_z[start_index:end_index+1],
+                    pos_z_std[start_index:end_index+1], 
+                    vel_z_std[start_index:end_index+1], 
+                    acc_z_std[start_index:end_index+1], 
                     0.01, 0.05, 0.1,
                     plim_ML, vlim_ML, alim_ML, all_bottoms=True,
                     pos_box=self.MLbox[0], vel_box=self.MLbox[1],
@@ -2885,7 +2898,10 @@ class TaskPlotCenterOfMass(osp.StudyTask):
                     ax_AP[0], ax_AP[1], ax_AP[2], 
                     pos_x[start_index:end_index+1], 
                     vel_x[start_index:end_index+1], 
-                    acc_x[start_index:end_index+1], 
+                    acc_x[start_index:end_index+1],
+                    pos_x_std[start_index:end_index+1], 
+                    vel_x_std[start_index:end_index+1], 
+                    acc_x_std[start_index:end_index+1], 
                     0.25, 0.05, 0.5,
                     plim_AP, vlim_AP, alim_AP)
 
@@ -2895,7 +2911,10 @@ class TaskPlotCenterOfMass(osp.StudyTask):
                     axes_l[3], axes_l[4], axes_l[5], 
                     pos_x[start_index:end_index+1], 
                     vel_x[start_index:end_index+1], 
-                    acc_x[start_index:end_index+1], 
+                    acc_x[start_index:end_index+1],
+                    pos_x_std[start_index:end_index+1], 
+                    vel_x_std[start_index:end_index+1], 
+                    acc_x_std[start_index:end_index+1],  
                     0.25, 0.05, 0.5,
                     plim_AP, vlim_AP, alim_AP, all_bottoms=True,
                     pos_box=self.APbox[0], vel_box=self.APbox[1],
@@ -2905,7 +2924,10 @@ class TaskPlotCenterOfMass(osp.StudyTask):
                     axes_r[3], axes_r[4], axes_r[5], 
                     pos_x[start_index:end_index+1], 
                     vel_x[start_index:end_index+1], 
-                    acc_x[start_index:end_index+1], 
+                    acc_x[start_index:end_index+1],
+                    pos_x_std[start_index:end_index+1], 
+                    vel_x_std[start_index:end_index+1], 
+                    acc_x_std[start_index:end_index+1],  
                     0.01, 0.05, 0.25,
                     plim_AP, vlim_AP, alim_AP, all_bottoms=True,
                     pos_box=self.APbox[0], vel_box=self.APbox[1],
@@ -2918,7 +2940,10 @@ class TaskPlotCenterOfMass(osp.StudyTask):
                     ax_SI[0], ax_SI[1], ax_SI[2], 
                     pos_y[start_index:end_index+1], 
                     vel_y[start_index:end_index+1], 
-                    acc_y[start_index:end_index+1], 
+                    acc_y[start_index:end_index+1],
+                    pos_y_std[start_index:end_index+1], 
+                    vel_y_std[start_index:end_index+1], 
+                    acc_y_std[start_index:end_index+1],  
                     0.01, 0.05, 1.0,
                     plim_SI, vlim_SI, alim_SI)
             plim_SI, vlim_SI, alim_SI, \
@@ -2927,7 +2952,10 @@ class TaskPlotCenterOfMass(osp.StudyTask):
                     axes_l[6], axes_l[7], axes_l[8], 
                     pos_y[start_index:end_index+1], 
                     vel_y[start_index:end_index+1], 
-                    acc_y[start_index:end_index+1], 
+                    acc_y[start_index:end_index+1],
+                    pos_y_std[start_index:end_index+1], 
+                    vel_y_std[start_index:end_index+1], 
+                    acc_y_std[start_index:end_index+1], 
                     0.01, 0.05, 1.0,
                     plim_SI, vlim_SI, alim_SI, all_bottoms=True,
                     pos_box=self.SIbox[0], vel_box=self.SIbox[1],
@@ -2938,6 +2966,9 @@ class TaskPlotCenterOfMass(osp.StudyTask):
                     pos_y[start_index:end_index+1], 
                     vel_y[start_index:end_index+1], 
                     acc_y[start_index:end_index+1], 
+                    pos_y_std[start_index:end_index+1], 
+                    vel_y_std[start_index:end_index+1], 
+                    acc_y_std[start_index:end_index+1],
                     0.01, 0.05, 1.0,
                     plim_SI, vlim_SI, alim_SI, all_bottoms=True,
                     pos_box=self.SIbox[0], vel_box=self.SIbox[1],
@@ -2969,7 +3000,7 @@ class TaskPlotCenterOfMass(osp.StudyTask):
         fig1.savefig(target[1], dpi=600)
         plt.close()
 
-        axes = ax_ML + ax_AP + ax_SI + axes_l
+        axes = ax_ML + ax_AP + ax_SI + axes_l + axes_r
         for ax in axes:
             onset_time = self.time - self.rise
             peak_time = self.time
@@ -3080,7 +3111,7 @@ class TaskPlotInstantaneousCenterOfMass(osp.StudyTask):
         axes = list()
         for kin in ['pos', 'vel', 'acc']:
             for direc in ['AP', 'SI', 'ML']:
-                fig = plt.figure(figsize=(4, 4))
+                fig = plt.figure(figsize=(4, 3))
                 ax = fig.add_subplot(1, 1, 1)
                 figs.append(fig)
                 axes.append(ax)
@@ -3142,103 +3173,182 @@ class TaskPlotInstantaneousCenterOfMass(osp.StudyTask):
 
         # Plotting
         # --------
-        label = 'unperturbed'
-        pos_x_unp = np.mean(com_kin_dict[label]['pos_x'], axis=1)
-        pos_y_unp = np.mean(com_kin_dict[label]['pos_y'], axis=1)
-        pos_z_unp = np.mean(com_kin_dict[label]['pos_z'], axis=1)
-        vel_x_unp = np.mean(com_kin_dict[label]['vel_x'], axis=1)
-        vel_y_unp = np.mean(com_kin_dict[label]['vel_y'], axis=1)
-        vel_z_unp = np.mean(com_kin_dict[label]['vel_z'], axis=1)
-        acc_x_unp = np.mean(com_kin_dict[label]['acc_x'], axis=1)
-        acc_y_unp = np.mean(com_kin_dict[label]['acc_y'], axis=1)
-        acc_z_unp = np.mean(com_kin_dict[label]['acc_z'], axis=1)
+        pos_x_unp = com_kin_dict['unperturbed']['pos_x']
+        pos_y_unp = com_kin_dict['unperturbed']['pos_y']
+        pos_z_unp = com_kin_dict['unperturbed']['pos_z']
+        vel_x_unp = com_kin_dict['unperturbed']['vel_x']
+        vel_y_unp = com_kin_dict['unperturbed']['vel_y']
+        vel_z_unp = com_kin_dict['unperturbed']['vel_z']
+        acc_x_unp = com_kin_dict['unperturbed']['acc_x']
+        acc_y_unp = com_kin_dict['unperturbed']['acc_y']
+        acc_z_unp = com_kin_dict['unperturbed']['acc_z']
         for torque in self.torques:
             for itime, time in enumerate(self.times): 
 
                 label = f'torque{torque}_time{time}_rise{self.rise}_fall{self.fall}'
-                alpha = torque / self.study.max_torque_percent
-                pos_x = np.mean(com_kin_dict[label]['pos_x'], axis=1)
-                pos_y = np.mean(com_kin_dict[label]['pos_y'], axis=1)
-                pos_z = np.mean(com_kin_dict[label]['pos_z'], axis=1)
-                vel_x = np.mean(com_kin_dict[label]['vel_x'], axis=1)
-                vel_y = np.mean(com_kin_dict[label]['vel_y'], axis=1)
-                vel_z = np.mean(com_kin_dict[label]['vel_z'], axis=1)
-                acc_x = np.mean(com_kin_dict[label]['acc_x'], axis=1)
-                acc_y = np.mean(com_kin_dict[label]['acc_y'], axis=1)
-                acc_z = np.mean(com_kin_dict[label]['acc_z'], axis=1)
+                alpha = torque / self.study.torques[-1]
+                N = time + self.fall + 11
 
-                s = 75
-                ifinal = time + self.fall
+                pos_x_diff = com_kin_dict[label]['pos_x'] - pos_x_unp[0:N, :]
+                pos_y_diff = com_kin_dict[label]['pos_y'] - pos_y_unp[0:N, :]
+                pos_z_diff = com_kin_dict[label]['pos_z'] - pos_z_unp[0:N, :]
+                vel_x_diff = com_kin_dict[label]['vel_x'] - vel_x_unp[0:N, :]
+                vel_y_diff = com_kin_dict[label]['vel_y'] - vel_y_unp[0:N, :]
+                vel_z_diff = com_kin_dict[label]['vel_z'] - vel_z_unp[0:N, :]
+                acc_x_diff = com_kin_dict[label]['acc_x'] - acc_x_unp[0:N, :]
+                acc_y_diff = com_kin_dict[label]['acc_y'] - acc_y_unp[0:N, :]
+                acc_z_diff = com_kin_dict[label]['acc_z'] - acc_z_unp[0:N, :]
 
-                pos_xf = pos_x[ifinal] - pos_x_unp[ifinal]
-                pos_yf = pos_y[ifinal] - pos_y_unp[ifinal]
-                pos_zf = pos_z[ifinal] - pos_z_unp[ifinal]
-                axes[0].scatter(itime, pos_xf, color=self.colors[itime], 
-                    alpha=alpha, linewidth=0.0, s=s)
-                axes[0].set_ylabel(r'$\Delta$' + ' AP position')
-                # axes[0].set_ylim(-0.02, 0.1)
+                pos_x_diff_mean = np.mean(pos_x_diff, axis=1)
+                pos_y_diff_mean = np.mean(pos_y_diff, axis=1)
+                pos_z_diff_mean = np.mean(pos_z_diff, axis=1)
+                vel_x_diff_mean = np.mean(vel_x_diff, axis=1)
+                vel_y_diff_mean = np.mean(vel_y_diff, axis=1)
+                vel_z_diff_mean = np.mean(vel_z_diff, axis=1)
+                acc_x_diff_mean = np.mean(acc_x_diff, axis=1)
+                acc_y_diff_mean = np.mean(acc_y_diff, axis=1)
+                acc_z_diff_mean = np.mean(acc_z_diff, axis=1)
 
-                axes[1].scatter(itime, pos_yf, color=self.colors[itime], 
-                    alpha=alpha, linewidth=0.0, s=s)
-                axes[1].set_ylabel(r'$\Delta$' + ' SI position')
-                # axes[1].set_ylim(-0.01, 0.02)
+                pos_x_diff_std = np.std(pos_x_diff, axis=1)
+                pos_y_diff_std = np.std(pos_y_diff, axis=1)
+                pos_z_diff_std = np.std(pos_z_diff, axis=1)
+                vel_x_diff_std = np.std(vel_x_diff, axis=1)
+                vel_y_diff_std = np.std(vel_y_diff, axis=1)
+                vel_z_diff_std = np.std(vel_z_diff, axis=1)
+                acc_x_diff_std = np.std(acc_x_diff, axis=1)
+                acc_y_diff_std = np.std(acc_y_diff, axis=1)
+                acc_z_diff_std = np.std(acc_z_diff, axis=1)
 
-                axes[2].scatter(itime, pos_zf, color=self.colors[itime], 
-                    alpha=alpha, linewidth=0.0, s=s)
-                axes[2].set_ylabel(r'$\Delta$' + ' ML position')
-                # axes[2].set_ylim(-0.015, 0.01)
+                lw = 0.75
+                markersize = 40
 
-                ifinal = time
-                vel_xf = vel_x[ifinal] - vel_x_unp[ifinal] 
-                vel_yf = vel_y[ifinal] - vel_y_unp[ifinal] 
-                vel_zf = vel_z[ifinal] - vel_z_unp[ifinal] 
-                axes[3].scatter(itime, vel_xf, color=self.colors[itime], 
-                    alpha=alpha, linewidth=0.0, s=s)
-                axes[3].set_ylabel(r'$\Delta$' + ' AP velocity')
-                # axes[3].set_ylim(-0.02, 0.1)
+                # Instantaneous positions
+                # -----------------------
+                pos_index = time + self.fall
+                plotline, caplines, barlinecols = axes[0].errorbar(
+                    itime, pos_x_diff_mean[pos_index], 
+                    yerr=pos_x_diff_std[pos_index], color=self.colors[itime], 
+                    alpha=alpha, fmt='none', ecolor='black', 
+                    capsize=0, solid_capstyle='projecting', lw=lw, 
+                    zorder=0, clip_on=False)
+                axes[0].scatter(itime, pos_x_diff_mean[pos_index], 
+                    color=self.colors[itime], 
+                    alpha=alpha, s=markersize, clip_on=False)
+                axes[0].set_ylabel(r'$\Delta$' + ' fore-aft position ($m$)')
+                axes[0].set_ylim(-0.02, 0.02)
+                axes[0].set_yticks([-0.02, -0.01, 0, 0.01, 0.02])
 
-                axes[4].scatter(itime, vel_yf, color=self.colors[itime], 
-                    alpha=alpha, linewidth=0.0, s=s)
-                axes[4].set_ylabel(r'$\Delta$' + ' SI velocity')
-                # axes[4].set_ylim(-0.04, 0.03)
+                plotline, caplines, barlinecols = axes[1].errorbar(
+                    itime, pos_y_diff_mean[pos_index], 
+                    yerr=pos_y_diff_std[pos_index], color=self.colors[itime], 
+                    alpha=alpha, fmt='none', ecolor='black', 
+                    capsize=0, solid_capstyle='projecting', lw=lw, 
+                    zorder=0, clip_on=False)
+                axes[1].scatter(itime, pos_y_diff_mean[pos_index], 
+                    color=self.colors[itime], 
+                    alpha=alpha, s=markersize, clip_on=False)
+                axes[1].set_ylabel(r'$\Delta$' + ' vertical position ($m$)')
+                axes[1].set_ylim(0, 0.03)
+                axes[1].set_yticks([0, 0.01, 0.02, 0.03])
 
-                axes[5].scatter(itime, vel_zf, color=self.colors[itime], 
-                    alpha=alpha, linewidth=0.0, s=s)
-                axes[5].set_ylabel(r'$\Delta$' + ' ML velocity')
-                # axes[5].set_ylim(-0.02, 0.01)
+                plotline, caplines, barlinecols = axes[2].errorbar(
+                    itime, pos_z_diff_mean[pos_index],
+                    yerr=pos_z_diff_std[pos_index], color=self.colors[itime], 
+                    alpha=alpha, fmt='none', ecolor='black', 
+                    capsize=0, solid_capstyle='projecting', lw=lw, 
+                    zorder=0, clip_on=False)
+                axes[2].scatter(itime, pos_z_diff_mean[pos_index], 
+                    color=self.colors[itime], 
+                    alpha=alpha, s=markersize, clip_on=False)
+                axes[2].set_ylabel(r'$\Delta$' + ' medio-lateral position ($m$)')
+                axes[2].set_ylim(-0.01, 0.01)
+                axes[2].set_yticks([-0.01, 0, 0.01])
 
+                # Instantaneous velocities
+                # ------------------------
+                vel_index = time
+                plotline, caplines, barlinecols = axes[3].errorbar(
+                    itime, vel_x_diff_mean[vel_index], 
+                    yerr=vel_x_diff_std[vel_index], color=self.colors[itime], 
+                    alpha=alpha, fmt='none', ecolor='black', 
+                    capsize=0, solid_capstyle='projecting', lw=lw, 
+                    zorder=0, clip_on=False)
+                axes[3].scatter(itime, vel_x_diff_mean[vel_index], 
+                    color=self.colors[itime], 
+                    alpha=alpha, s=markersize, clip_on=False)
+                axes[3].set_ylabel(r'$\Delta$' + ' fore-aft velocity ($m/s$)')
+                axes[3].set_ylim(-0.04, 0.04)
+                axes[3].set_yticks([-0.04, -0.02, 0, 0.02, 0.04])
 
-                istart = time - self.rise
-                iend = time + self.fall
-                acc_x_avg = np.mean(acc_x[istart:iend] - \
-                                    acc_x_unp[istart:iend])
-                acc_y_avg = np.mean(acc_y[istart:iend] - \
-                                    acc_y_unp[istart:iend])
-                acc_z_avg = np.mean(acc_z[istart:iend] - \
-                                    acc_z_unp[istart:iend])
-                axes[6].scatter(itime, acc_x_avg, color=self.colors[itime], 
-                    alpha=alpha, linewidth=0.0, s=s)
-                axes[6].set_ylabel(r'$\Delta$' + ' AP acceleration')
-                # axes[6].set_ylim(-0.1, 0.7)
+                plotline, caplines, barlinecols = axes[4].errorbar(
+                    itime, vel_y_diff_mean[vel_index], 
+                    yerr=vel_y_diff_std[vel_index], color=self.colors[itime], 
+                    alpha=alpha, fmt='none', ecolor='black', 
+                    capsize=0, solid_capstyle='projecting', lw=lw, 
+                    zorder=0, clip_on=False)
+                axes[4].scatter(itime, vel_y_diff_mean[vel_index], 
+                    color=self.colors[itime], 
+                    alpha=alpha, s=markersize, clip_on=False)
+                axes[4].set_ylabel(r'$\Delta$' + ' vertical velocity ($m/s$)')
+                axes[4].set_ylim(0, 0.1)
+                axes[4].set_yticks([0, 0.02, 0.04, 0.06, 0.08, 0.1])
 
-                axes[7].scatter(itime, acc_y_avg, color=self.colors[itime], 
-                    alpha=alpha, linewidth=0.0, s=s)
-                axes[7].set_ylabel(r'$\Delta$' + ' SI acceleration')
-                # axes[7].set_ylim(-0.25, 0.2)
+                plotline, caplines, barlinecols = axes[5].errorbar(
+                    itime, vel_z_diff_mean[vel_index], 
+                    yerr=vel_z_diff_std[vel_index], color=self.colors[itime], 
+                    alpha=alpha, fmt='none', ecolor='black', 
+                    capsize=0, solid_capstyle='projecting', lw=lw, 
+                    zorder=0, clip_on=False)
+                axes[5].scatter(itime, vel_z_diff_mean[vel_index], 
+                    color=self.colors[itime], 
+                    alpha=alpha, s=markersize, clip_on=False)
+                axes[5].set_ylabel(r'$\Delta$' + ' medio-lateral velocity ($m/s$)')
+                axes[5].set_ylim(-0.02, 0.02)
+                axes[5].set_yticks([-0.02, -0.01, 0, 0.01, 0.02])
 
-                axes[8].scatter(itime, acc_z_avg, color=self.colors[itime], 
-                    alpha=alpha, linewidth=0.0, s=s)
-                axes[8].set_ylabel(r'$\Delta$' + ' ML acceleration')
-                # axes[8].set_ylim(-0.15, 0.1)
+                # Instantaneous accelerations
+                # ---------------------------
+                acc_index = time
+                plotline, caplines, barlinecols = axes[6].errorbar(
+                    itime, acc_x_diff_mean[acc_index], yerr=acc_x_diff_std[acc_index], 
+                    color=self.colors[itime], alpha=alpha, fmt='none', 
+                    ecolor='black', capsize=0, solid_capstyle='projecting', 
+                    lw=lw, zorder=0, clip_on=False)
+                axes[6].scatter(itime, acc_x_diff_mean[acc_index], 
+                    color=self.colors[itime], alpha=alpha, s=markersize, clip_on=False)
+                axes[6].set_ylabel(r'$\Delta$' + ' fore-aft acceleration ($m/s^2$)')
+                axes[6].set_ylim(-0.8, 0.8)
+
+                plotline, caplines, barlinecols = axes[7].errorbar(
+                    itime, acc_y_diff_mean[acc_index], yerr=acc_y_diff_std[acc_index], 
+                    color=self.colors[itime], alpha=alpha, fmt='none', 
+                    ecolor='black', capsize=0, solid_capstyle='projecting', 
+                    lw=lw, zorder=0, clip_on=False)
+                axes[7].scatter(itime, acc_y_diff_mean[acc_index], 
+                    color=self.colors[itime], alpha=alpha, s=markersize, clip_on=False)
+                axes[7].set_ylabel(r'$\Delta$' + ' vertical acceleration ($m/s^2$)')
+                axes[7].set_ylim(0, 2.0)
+                axes[7].set_yticks([0, 0.5, 1, 1.5, 2.0])
+
+                plotline, caplines, barlinecols = axes[8].errorbar(
+                    itime, acc_z_diff_mean[acc_index], yerr=acc_z_diff_std[acc_index],
+                    color=self.colors[itime], alpha=alpha, fmt='none',
+                    ecolor='black', capsize=0, solid_capstyle='projecting', 
+                    lw=lw, zorder=0, clip_on=False)
+                axes[8].scatter(itime, acc_z_diff_mean[acc_index], 
+                    color=self.colors[itime], alpha=alpha, s=markersize, clip_on=False)
+                axes[8].set_ylabel(r'$\Delta$' + ' medio-lateral acceleration ($m/s^2$)')
+                axes[8].set_ylim(-0.3, 0.3)
+                axes[8].set_yticks([-0.3, -0.2, -0.1, 0, 0.1, 0.2, 0.3])
 
         for ax in axes:
-            ax.axhline(y=0, color='black', linestyle='--',
-                    linewidth=0.75, alpha=0.7, zorder=0)
+            ax.axhline(y=0, color='darkgray', linestyle='--',
+                    linewidth=0.75, alpha=0.75, zorder=-1)
             ax.spines['bottom'].set_position(('outward', 10))
             ax.spines['left'].set_position(('outward', 10))
-            ax.set_xlim(-0.2, len(self.times)-0.8)
+            ax.margins(0)
             ax.set_xticks(np.arange(len(self.times)))
-            ax.set_xticklabels([f'{time}%' for time in self.times])
+            ax.set_xticklabels([f'{time}' for time in self.times])
             ax.set_xlabel('peak perturbation time\n(% gait cycle)')
             util.publication_spines(ax)
 
@@ -3305,7 +3415,7 @@ class TaskPlotGroundReactions(osp.StudyTask):
                 if not isubj:
                     self.labels.append(label)
                     self.colors.append(color)
-                    self.alphas.append(torque / study.max_torque_percent) 
+                    self.alphas.append(torque / study.torques[-1]) 
 
 
         self.add_action(deps, 
@@ -3436,9 +3546,13 @@ class TaskPlotGroundReactions(osp.StudyTask):
             start_index = 0
             end_index = self.time + self.fall + 10
 
+            pgc = pgc[start_index:end_index+1]
             rgrfx = np.mean(grf_dict[label]['grfx'], axis=1)[start_index:end_index+1]
             rgrfy = np.mean(grf_dict[label]['grfy'], axis=1)[start_index:end_index+1]
             rgrfz = np.mean(grf_dict[label]['grfz'], axis=1)[start_index:end_index+1]
+            rgrfx_std = np.std(grf_dict[label]['grfx'], axis=1)[start_index:end_index+1]
+            rgrfy_std = np.std(grf_dict[label]['grfy'], axis=1)[start_index:end_index+1]
+            rgrfz_std = np.std(grf_dict[label]['grfz'], axis=1)[start_index:end_index+1]
 
             if 'unperturbed' in label:
                 lw = 3
@@ -3457,11 +3571,13 @@ class TaskPlotGroundReactions(osp.StudyTask):
             rgrfz_ticks = get_ticks_from_lims(rgrfz_lim, 0.025)
             ytext_rgrfz = get_ytext_from_lims(rgrfz_lim, text_shift)
             for iax, ax in enumerate([ax_f21, ax_f22, rgrfx_ax]): 
-                ax.plot(pgc[start_index:end_index+1], 
-                    rgrfx[start_index:end_index+1], 
+                ax.plot(pgc, rgrfx, 
                     label=label, color=color, 
                     alpha=alpha, linewidth=lw)
-                ax.set_ylabel('anterior-posterior force (BW)')
+                ax.fill_between(pgc, rgrfx-rgrfx_std, rgrfx+rgrfx_std, 
+                     color=color, alpha=0.2*alpha, 
+                     edgecolor=None, lw=None)
+                ax.set_ylabel('fore-aft ground reaction (BW)')
                 ax.set_ylim(rgrfx_lim)
                 ax.set_yticks(rgrfx_ticks)
                 ax.set_xlim(pgc[0], pgc[-1])
@@ -3470,7 +3586,7 @@ class TaskPlotGroundReactions(osp.StudyTask):
                 if iax == 0:
                     ax.spines['bottom'].set_position(('outward', 10))
                     ax.set_xlabel('time (% gait cycle)')
-                    ax.text(self.time - 15, ytext_rgrfx, text, 
+                    ax.text(self.time - 7, ytext_rgrfx, text, 
                         fontstyle='italic', color='gray', alpha=0.8,
                         fontsize=6, fontfamily='serif')
                     width = self.APbox[1] - self.APbox[0]
@@ -3490,16 +3606,18 @@ class TaskPlotGroundReactions(osp.StudyTask):
                     ax.spines['bottom'].set_visible(False)
                     ax.tick_params(axis='x', which='both', bottom=False, 
                                    top=False, labelbottom=False)
-                    ax.text(self.time - 15, ytext_rgrfx, text, 
+                    ax.text(self.time - 7, ytext_rgrfx, text, 
                         fontstyle='italic', color='gray', alpha=0.8,
                         fontsize=6, fontfamily='serif')
                       
             for iax, ax in enumerate([ax_f31, ax_f32, rgrfy_ax]):
-                ax.plot(pgc[start_index:end_index+1], 
-                        rgrfy[start_index:end_index+1], 
+                ax.plot(pgc, rgrfy, 
                         label=label, color=color, 
                         alpha=alpha, linewidth=lw)
-                ax.set_ylabel('vertical force (BW)')
+                ax.fill_between(pgc, rgrfy-rgrfy_std, rgrfy+rgrfy_std, 
+                     color=color, alpha=0.2*alpha, 
+                     edgecolor=None, lw=None)
+                ax.set_ylabel('vertical ground reaction (BW)')
                 ax.set_ylim(rgrfy_lim)
                 ax.set_yticks(rgrfy_ticks)
                 ax.set_xlim(pgc[0], pgc[-1])
@@ -3508,7 +3626,7 @@ class TaskPlotGroundReactions(osp.StudyTask):
                 if iax == 0:
                     ax.spines['bottom'].set_position(('outward', 10))
                     ax.set_xlabel('time (% gait cycle)')
-                    ax.text(self.time - 15, ytext_rgrfy, text, 
+                    ax.text(self.time - 7, ytext_rgrfy, text, 
                         fontstyle='italic', color='gray', alpha=0.8,
                         fontsize=6, fontfamily='serif') 
                     width = self.SIbox[1] - self.SIbox[0]
@@ -3530,12 +3648,14 @@ class TaskPlotGroundReactions(osp.StudyTask):
                                    top=False, labelbottom=False)
 
             for iax, ax in enumerate([ax_f41, ax_f42, rgrfz_ax]):
-                ax.plot(pgc[start_index:end_index+1], 
-                        rgrfz[start_index:end_index+1], 
+                ax.plot(pgc, rgrfz, 
                         label=label, color=color, 
                         alpha=alpha, linewidth=lw)
+                ax.fill_between(pgc, rgrfz-rgrfz_std, rgrfz+rgrfz_std, 
+                     color=color, alpha=0.2*alpha, 
+                     edgecolor=None, lw=None)
                 ax.set_xlabel('time (% gait cycle)')
-                ax.set_ylabel('medio-lateral force (BW)')
+                ax.set_ylabel('medio-lateral ground reaction (BW)')
                 ax.set_ylim(rgrfz_lim)
                 ax.set_yticks(rgrfz_ticks)
                 ax.set_xlim(pgc[0], pgc[-1])
@@ -3550,13 +3670,13 @@ class TaskPlotGroundReactions(osp.StudyTask):
                         linewidth=0.4, edgecolor='k', facecolor='none',
                         zorder=99, alpha=0.5)
                     ax.add_patch(rect)
-                    ax.text(self.time - 15, ytext_rgrfz, text, 
+                    ax.text(self.time - 7, ytext_rgrfz, text, 
                         fontstyle='italic', color='gray', alpha=0.8,
                         fontsize=6, fontfamily='serif')
                 elif iax == 1:
                     ax.set_xlim(self.MLbox[0:2])
                     ax.set_ylim(self.MLbox[2:4])
-                    ax.set_yticks(get_ticks_from_lims(self.MLbox[2:4], 0.02))
+                    ax.set_yticks(get_ticks_from_lims(self.MLbox[2:4], 0.01))
 
         for ax in [rgrfx_ax, rgrfy_ax, rgrfz_ax, ax_f21, ax_f31, ax_f41,
                    ax_f22, ax_f32, ax_f42]:
@@ -3638,8 +3758,6 @@ class TaskPlotInstantaneousGroundReactions(osp.StudyTask):
                         self.labels.append(label)
                         self.times_list.append(time)
 
-
-
         targets = list()
         for direc in ['AP', 'SI', 'ML']:
             targets += [os.path.join(self.analysis_path, 
@@ -3655,7 +3773,7 @@ class TaskPlotInstantaneousGroundReactions(osp.StudyTask):
         figs = list()
         axes = list()
         for direc in ['AP', 'SI', 'ML']:
-            fig = plt.figure(figsize=(4, 4))
+            fig = plt.figure(figsize=(4, 3))
             ax = fig.add_subplot(1, 1, 1)
             figs.append(fig)
             axes.append(ax)
@@ -3665,7 +3783,6 @@ class TaskPlotInstantaneousGroundReactions(osp.StudyTask):
         numSubjects = len(self.subjects)
         numLabels = len(self.labels)
         grfs = ['grfx', 'grfy', 'grfz']
-        N = 100
 
         import collections
         grf_dict = collections.defaultdict(dict)
@@ -3675,8 +3792,7 @@ class TaskPlotInstantaneousGroundReactions(osp.StudyTask):
                     N = 101
                 else:
                     N = time + self.fall + 11
-                grf_dict[label][grf] = \
-                    np.zeros((N, numSubjects))
+                grf_dict[label][grf] = np.zeros((N, numSubjects))
 
         for isubj, subject in enumerate(self.subjects):
             model = osim.Model(self.models[isubj])
@@ -3695,65 +3811,87 @@ class TaskPlotInstantaneousGroundReactions(osp.StudyTask):
                 rgrfx = table.getDependentColumn('ground_force_r_vx').to_numpy() / BW
                 rgrfy = table.getDependentColumn('ground_force_r_vy').to_numpy() / BW
                 rgrfz = table.getDependentColumn('ground_force_r_vz').to_numpy() / BW
+                lgrfx = table.getDependentColumn('ground_force_l_vx').to_numpy() / BW
+                lgrfy = table.getDependentColumn('ground_force_l_vy').to_numpy() / BW
+                lgrfz = table.getDependentColumn('ground_force_l_vz').to_numpy() / BW
+
+                grfx = rgrfx + lgrfx
+                grfy = rgrfy + lgrfy
+                grfz = rgrfz + lgrfz
 
                 grf_dict[label]['grfx'][:, isubj] = np.interp(
-                            time_interp, timeVec, rgrfx)
+                            time_interp, timeVec, grfx)
                 grf_dict[label]['grfy'][:, isubj] = np.interp(
-                            time_interp, timeVec, rgrfy)
+                            time_interp, timeVec, grfy)
                 grf_dict[label]['grfz'][:, isubj] = np.interp(
-                            time_interp, timeVec, rgrfz)
+                            time_interp, timeVec, grfz)
 
         # Plotting
         # --------
-        label = 'unperturbed'
-        grf_x_unp = np.mean(grf_dict[label]['grfx'], axis=1)
-        grf_y_unp = np.mean(grf_dict[label]['grfy'], axis=1)
-        grf_z_unp = np.mean(grf_dict[label]['grfz'], axis=1)
+        grf_x_unp = grf_dict['unperturbed']['grfx']
+        grf_y_unp = grf_dict['unperturbed']['grfy']
+        grf_z_unp = grf_dict['unperturbed']['grfz']
         for torque in self.torques:
             for itime, time in enumerate(self.times): 
 
-                label = (f'torque{torque}_time{time}'
-                         f'_rise{self.rise}_fall{self.fall}')
-                alpha = torque / self.study.max_torque_percent
-                grf_x = np.mean(grf_dict[label]['grfx'], axis=1)
-                grf_y = np.mean(grf_dict[label]['grfy'], axis=1)
-                grf_z = np.mean(grf_dict[label]['grfz'], axis=1)
+                label = (f'torque{torque}_time{time}_rise{self.rise}_fall{self.fall}')
+                alpha = torque / self.study.torques[-1]
+                N = time + self.fall + 11
+                grf_x_diff = grf_dict[label]['grfx'] - grf_x_unp[0:N, :]
+                grf_y_diff = grf_dict[label]['grfy'] - grf_y_unp[0:N, :]
+                grf_z_diff = grf_dict[label]['grfz'] - grf_z_unp[0:N, :]
 
-                s = 75
-                istart = time - self.rise
-                iend = time + self.fall
-                grf_x_avg = np.mean(grf_x[istart:iend] - \
-                                    grf_x_unp[istart:iend])
-                grf_y_avg = np.mean(grf_y[istart:iend] - \
-                                    grf_y_unp[istart:iend])
-                grf_z_avg = np.mean(grf_z[istart:iend] - \
-                                    grf_z_unp[istart:iend])
-                axes[0].scatter(itime, grf_x_avg, color=self.colors[itime], 
-                    alpha=alpha, linewidth=0.0, s=s)
-                axes[0].set_ylabel(r'average $\Delta$ AP ground reaction (BW)')
-                # axes[0].set_ylim(-0.015, 0.025)
+                grf_x_diff_mean = np.mean(grf_x_diff, axis=1)
+                grf_y_diff_mean = np.mean(grf_y_diff, axis=1)
+                grf_z_diff_mean = np.mean(grf_z_diff, axis=1)
 
-                axes[1].scatter(itime, grf_y_avg, color=self.colors[itime], 
-                    alpha=alpha, linewidth=0.0, s=s)
-                axes[1].set_ylabel(r'average $\Delta$ SI ground reaction (BW)')
-                # axes[1].set_ylim(0, 0.2)
-                # axes[1].set_yticks([0, 0.05, 0.1, 0.15, 0.2])
+                grf_x_diff_std = np.std(grf_x_diff, axis=1)
+                grf_y_diff_std = np.std(grf_y_diff, axis=1)
+                grf_z_diff_std = np.std(grf_z_diff, axis=1)
 
-                axes[2].scatter(itime, grf_z_avg, color=self.colors[itime], 
-                    alpha=alpha, linewidth=0.0, s=s)
-                axes[2].set_ylabel(r'average $\Delta$ ML ground reaction (BW)')
-                # axes[2].set_ylim(-0.01, 0.01)
-                # axes[2].set_yticks([-0.01, -0.005, 0, 0.005, 0.01])
+                grf_index = time
+                lw = 0.75
+                markersize = 40
+
+                plotline, caplines, barlinecols = axes[0].errorbar(
+                    itime, grf_x_diff_mean[grf_index], yerr=grf_x_diff_std[grf_index], 
+                    color=self.colors[itime], alpha=alpha, fmt='none', ecolor='black',
+                    capsize=0, solid_capstyle='projecting', lw=lw, zorder=0, clip_on=False)
+                axes[0].scatter(itime, grf_x_diff_mean[grf_index], color=self.colors[itime], 
+                    alpha=alpha, s=markersize, clip_on=False)
+                axes[0].set_ylabel(r'$\Delta$ fore-aft ground reaction (BW)')
+                axes[0].set_ylim(-0.06, 0.08)
+                axes[0].set_yticks([-0.06, -0.04, -0.02, 0, 0.02, 0.04, 0.06, 0.08])
 
 
+                plotline, caplines, barlinecols = axes[1].errorbar(
+                    itime, grf_y_diff_mean[grf_index], yerr=grf_y_diff_std[grf_index], 
+                    color=self.colors[itime], alpha=alpha, fmt='none', ecolor='black',
+                    capsize=0, solid_capstyle='projecting', lw=lw, zorder=0, clip_on=False)
+                axes[1].scatter(itime, grf_y_diff_mean[grf_index], color=self.colors[itime], 
+                    alpha=alpha, s=markersize, clip_on=False)
+                axes[1].set_ylabel(r'$\Delta$ vertical ground reaction (BW)')
+                axes[1].set_ylim(0, 0.2)
+                axes[1].set_yticks([0, 0.05, 0.1, 0.15, 0.2])
+
+                plotline, caplines, barlinecols = axes[2].errorbar(
+                    itime, grf_z_diff_mean[grf_index], yerr=grf_z_diff_std[grf_index],
+                    color=self.colors[itime], alpha=alpha, fmt='none', ecolor='black',
+                    capsize=0, solid_capstyle='projecting', lw=lw, zorder=0, clip_on=False)
+                axes[2].scatter(itime, grf_z_diff_mean[grf_index], color=self.colors[itime], 
+                    alpha=alpha, s=markersize, clip_on=False)
+                axes[2].set_ylabel(r'$\Delta$ medio-lateral ground reaction (BW)')
+                axes[2].set_ylim(-0.02, 0.02)
+                axes[2].set_yticks([-0.02, -0.01, 0, 0.01, 0.02])
+                
         for ax in axes:
             ax.axhline(y=0, color='black', linestyle='--',
-                    linewidth=0.7, alpha=0.7, zorder=0)
+                    linewidth=0.5, alpha=0.5, zorder=0)
             ax.spines['bottom'].set_position(('outward', 10))
             ax.spines['left'].set_position(('outward', 10))
-            ax.set_xlim(-0.2, len(self.times)-0.8)
+            ax.margins(0)
             ax.set_xticks(np.arange(len(self.times)))
-            ax.set_xticklabels([f'{time}%' for time in self.times])
+            ax.set_xticklabels([f'{time}' for time in self.times])
             ax.set_xlabel('peak perturbation time\n(% gait cycle)')
             util.publication_spines(ax)
 

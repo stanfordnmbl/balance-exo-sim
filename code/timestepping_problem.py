@@ -7,6 +7,9 @@ from result import Result
 
 import utilities as util
 
+from scipy.ndimage import gaussian_filter1d
+import copy
+
 forceNamesRightFoot = ['forceset/contactHeel_r',
                        'forceset/contactLateralRearfoot_r',
                        'forceset/contactLateralMidfoot_r',
@@ -75,11 +78,11 @@ class TimeSteppingProblem(Result):
 
     def create_model_processor(self, config):
 
-        osim.Logger.setLevelString('warn')
 
-        # Load model
-        # ----------
-        model = osim.Model(self.model_fpath)
+        osim.Logger.setLevelString('error')
+
+        modelProcessor = self.create_model_processor_base(config)
+        model = modelProcessor.process()
         state = model.initSystem()
         mass = model.getTotalMass(state)
 
@@ -87,7 +90,7 @@ class TimeSteppingProblem(Result):
         # -------------------------
         if config.ankle_torque_perturbation:       
 
-            def get_ankle_torque_curve(initial_time, duration, parameters):
+            def get_torque_curve(initial_time, duration, parameters):
                 from scipy.interpolate import CubicSpline
                 peak_torque = parameters[0]
                 peak_time = parameters[1] * duration + initial_time
@@ -122,7 +125,6 @@ class TimeSteppingProblem(Result):
             rightTime = osim.StdVectorDouble()
             leftPerturbTorque = osim.StdVectorDouble()
             rightPerturbTorque = osim.StdVectorDouble()
-
             if (not len(self.right_strikes) == 
                     len(config.ankle_torque_right_parameters)):
                 raise Exception(f'Expected number of right heel-strikes to '
@@ -173,7 +175,7 @@ class TimeSteppingProblem(Result):
                     continue
                 initial_time = self.right_strikes[ir]
                 parameters = config.ankle_torque_right_parameters[ir]
-                xr, yr = get_ankle_torque_curve(
+                xr, yr = get_torque_curve(
                     initial_time, duration, parameters)
                 for x, y in zip(xr, yr):
                     rightTime.push_back(x)
@@ -184,7 +186,7 @@ class TimeSteppingProblem(Result):
                     continue
                 initial_time = self.left_strikes[il]
                 parameters = config.ankle_torque_left_parameters[il]
-                xl, yl = get_ankle_torque_curve(
+                xl, yl = get_torque_curve(
                     initial_time, duration, parameters)
                 for x, y in zip(xl, yl):
                     leftTime.push_back(x)
@@ -193,24 +195,17 @@ class TimeSteppingProblem(Result):
             anklePerturbTableLeft = osim.TimeSeriesTable(leftTime)
             anklePerturbTableRight = osim.TimeSeriesTable(rightTime)
             perturbTorqueAnkleLeft = osim.Vector(leftTime.size(), 0.0)
-            perturbTorqueKneeLeft = osim.Vector(leftTime.size(), 0.0)
             perturbTorqueAnkleRight = osim.Vector(rightTime.size(), 0.0)
-            perturbTorqueKneeRight = osim.Vector(rightTime.size(), 0.0)
+
             for i in np.arange(leftTime.size()):
                 perturbTorqueAnkleLeft.set(int(i), -leftPerturbTorque[int(i)])
-                perturbTorqueKneeLeft.set(int(i), leftPerturbTorque[int(i)])
             for i in np.arange(rightTime.size()):
                 perturbTorqueAnkleRight.set(int(i), -rightPerturbTorque[int(i)])
-                perturbTorqueKneeRight.set(int(i), rightPerturbTorque[int(i)])
 
             anklePerturbTableLeft.appendColumn(
                 '/forceset/perturbation_ankle_angle_l', perturbTorqueAnkleLeft)
             anklePerturbTableRight.appendColumn(
                 '/forceset/perturbation_ankle_angle_r', perturbTorqueAnkleRight)
-            # anklePerturbTableLeft.appendColumn(
-            #     '/forceset/perturbation_knee_angle_l', perturbTorqueKneeLeft)
-            # anklePerturbTableRight.appendColumn(
-            #     '/forceset/perturbation_knee_angle_r', perturbTorqueKneeRight)
 
             sto = osim.STOFileAdapter()
             sto.write(anklePerturbTableLeft, self.get_perturbation_torque_path('left'))
@@ -224,61 +219,25 @@ class TimeSteppingProblem(Result):
             actu.setMaxControl(0)
             model.addForce(actu)
 
-            # actu = osim.CoordinateActuator()
-            # actu.setName('perturbation_knee_angle_r')
-            # actu.set_coordinate('knee_angle_r')
-            # actu.setOptimalForce(0.2*mass)
-            # actu.setMinControl(0)
-            # actu.setMaxControl(1.0)
-            # model.addForce(actu)
-
-            stiffness = 0.05 * mass
-            clf = osim.CoordinateLimitForce(
-                'knee_angle_r',
-                120, # upper limit
-                stiffness, # upper stiffness
-                10, # lower limit
-                stiffness, # lower stiffness
-                0.001, # damping
-                1.0  # transition
-                )
+            stiffness = 0.1 * mass
+            lower_limit = 10
+            upper_limit = 120
+            damping = 1
+            transition = 25
+            clf = osim.CoordinateLimitForce('knee_angle_r', 
+                upper_limit, stiffness, 
+                lower_limit, stiffness, 
+                damping, transition)
             model.addForce(clf)
 
-            # muscles = ['semimem', 'semiten', 'bflh', 'bfsh']
-            # gains = [0.1, 0.1, 0.1, 1]
-            # muscles = ['gasmed', 'gaslat', 'bfsh']
-            # gains = [0.01, 0.01, 0.1]
-            # actuators = model.getActuators()
-            # for muscle, gain in zip(muscles, gains):
-            #     for side in ['l', 'r']:
-            #         actuator = actuators.get(f'{muscle}_{side}')
-
-            #         reflex = osim.ToyReflexController()
-            #         reflex.setName(f'reflex_{muscle}_{side}')
-            #         reflex.addActuator(actuator)
-            #         reflex.set_gain(gain)
-            #         model.addController(reflex)
+            clf = osim.CoordinateLimitForce('knee_angle_l', 
+                upper_limit, stiffness, 
+                lower_limit, stiffness, 
+                damping, transition)
+            model.addForce(clf)
 
             model.finalizeConnections()
 
-        modelProcessor = osim.ModelProcessor(model)
-        modelProcessor.append(osim.ModOpReplaceJointsWithWelds(list()))
-        modelProcessor.append(osim.ModOpReplaceMusclesWithDeGrooteFregly2016())
-        modelProcessor.append(osim.ModOpIgnoreTendonCompliance())
-        modelProcessor.append(osim.ModOpFiberDampingDGF(0.01))
-
-        # Enable tendon compliance for the ankle plantarflexors.
-        # ------------------------------------------------------
-        model = modelProcessor.process()
-        model.initSystem()
-        muscles = model.updMuscles()
-        for imusc in np.arange(muscles.getSize()):
-            muscle = muscles.get(int(imusc))
-            muscName = muscle.getName()
-            if ('gas' in muscName) or ('soleus' in muscName):
-                muscle.set_ignore_tendon_compliance(False)
-        model.finalizeConnections()
-        
         modelProcessor = osim.ModelProcessor(model)
         osim.Logger.setLevelString('info')
 
@@ -309,17 +268,20 @@ class TimeSteppingProblem(Result):
             'GCVSpline')
 
         # Add states reporter to the model.
+        # ---------------------------------
         statesRep = osim.StatesTrajectoryReporter()
         statesRep.setName('states_reporter')
-        statesRep.set_report_time_interval(1e-2)
+        statesRep.set_report_time_interval(5e-3)
         model.addComponent(statesRep)
 
         # Simulate!
+        # ---------
         time = trajectory.getTime()
         model.initSystem()
         manager = osim.Manager(model)
 
         # Set the initial state.
+        # ----------------------
         statesTraj = trajectory.exportToStatesTrajectory(model)
         manager.setIntegratorAccuracy(1e-6)
         manager.setIntegratorMinimumStepSize(1e-6)
@@ -327,7 +289,8 @@ class TimeSteppingProblem(Result):
         manager.initialize(statesTraj.get(0))
         state = manager.integrate(time[time.size() - 1])
 
-        # Export results from states reporter to a TimeSeriesTable
+        # Export results from states reporter to a table.
+        # -----------------------------------------------
         statesTrajRep = osim.StatesTrajectoryReporter().safeDownCast(
             model.getComponent('/states_reporter')) 
         states = statesTrajRep.getStates().exportToTable(model)
@@ -399,6 +362,7 @@ class TimeSteppingProblem(Result):
 
         for irow in np.arange(len(solutionTime)):
             solutionRow = solutionTable.getRowAtIndex(int(irow))
+            solutionTime = solutionTable.getIndependentColumn()
             rowToAppend = osim.RowVector(
                 int(guessTable.getNumColumns()), 0.0)
 
