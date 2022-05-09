@@ -7,9 +7,6 @@ from result import Result
 
 import utilities as util
 
-from scipy.ndimage import gaussian_filter1d
-import copy
-
 forceNamesRightFoot = ['forceset/contactHeel_r',
                        'forceset/contactLateralRearfoot_r',
                        'forceset/contactLateralMidfoot_r',
@@ -26,12 +23,14 @@ forceNamesLeftFoot = ['forceset/contactHeel_l',
 class TimeSteppingConfig:
     def __init__(self, name, legend_entry, color, weights, 
                  unperturbed_fpath=None, 
-                 # Ankle torque perturbation
                  ankle_torque_perturbation=False,
                  ankle_torque_left_parameters=None,
                  ankle_torque_right_parameters=None,
                  ankle_torque_side='both',
-                 ankle_torque_first_cycle_only=True):
+                 ankle_torque_first_cycle_only=True,
+                 subtalar_torque_perturbation=False,
+                 subtalar_peak_torque=0,
+                 weld_lumbar_joint=False):
 
         # Base arguments
         self.name = name
@@ -47,7 +46,11 @@ class TimeSteppingConfig:
         self.ankle_torque_first_cycle_only = ankle_torque_first_cycle_only
         self.ankle_torque_perturbation_start = 0.0
         self.ankle_torque_perturbation_end = 0.0
+        self.subtalar_torque_perturbation = subtalar_torque_perturbation
+        self.subtalar_peak_torque = subtalar_peak_torque
 
+        # Welded lumbar joint
+        self.weld_lumbar_joint = weld_lumbar_joint
 
 class TimeSteppingProblem(Result):
     def __init__(self, root_dir, result_fpath, model_fpath, coordinates_fpath, 
@@ -77,7 +80,6 @@ class TimeSteppingProblem(Result):
                     f'ankle_perturbation_curve_{side}.sto')
 
     def create_model_processor(self, config):
-
 
         osim.Logger.setLevelString('error')
 
@@ -123,8 +125,10 @@ class TimeSteppingProblem(Result):
 
             leftTime = osim.StdVectorDouble()
             rightTime = osim.StdVectorDouble()
-            leftPerturbTorque = osim.StdVectorDouble()
-            rightPerturbTorque = osim.StdVectorDouble()
+            leftAnklePerturbTorque = osim.StdVectorDouble()
+            rightAnklePerturbTorque = osim.StdVectorDouble()
+            leftSubtalarPerturbTorque = osim.StdVectorDouble()
+            rightSubtalarPerturbTorque = osim.StdVectorDouble()
             if (not len(self.right_strikes) == 
                     len(config.ankle_torque_right_parameters)):
                 raise Exception(f'Expected number of right heel-strikes to '
@@ -179,7 +183,9 @@ class TimeSteppingProblem(Result):
                     initial_time, duration, parameters)
                 for x, y in zip(xr, yr):
                     rightTime.push_back(x)
-                    rightPerturbTorque.push_back(y)
+                    rightAnklePerturbTorque.push_back(y)
+                    ysub = (y * config.subtalar_peak_torque) / parameters[0]
+                    rightSubtalarPerturbTorque.push_back(ysub)
 
             for il in np.arange(len(self.left_strikes)):
                 if il and config.ankle_torque_first_cycle_only: 
@@ -190,22 +196,33 @@ class TimeSteppingProblem(Result):
                     initial_time, duration, parameters)
                 for x, y in zip(xl, yl):
                     leftTime.push_back(x)
-                    leftPerturbTorque.push_back(y)
+                    leftAnklePerturbTorque.push_back(y)
+                    ysub = (y * config.subtalar_peak_torque) / parameters[0]
+                    leftSubtalarPerturbTorque.push_back(ysub)
 
             anklePerturbTableLeft = osim.TimeSeriesTable(leftTime)
             anklePerturbTableRight = osim.TimeSeriesTable(rightTime)
             perturbTorqueAnkleLeft = osim.Vector(leftTime.size(), 0.0)
+            perturbTorqueSubtalarLeft = osim.Vector(leftTime.size(), 0.0)
             perturbTorqueAnkleRight = osim.Vector(rightTime.size(), 0.0)
+            perturbTorqueSubtalarRight = osim.Vector(rightTime.size(), 0.0)
 
             for i in np.arange(leftTime.size()):
-                perturbTorqueAnkleLeft.set(int(i), -leftPerturbTorque[int(i)])
+                perturbTorqueAnkleLeft.set(int(i), -leftAnklePerturbTorque[int(i)])
+                perturbTorqueSubtalarLeft.set(int(i), leftSubtalarPerturbTorque[int(i)])
             for i in np.arange(rightTime.size()):
-                perturbTorqueAnkleRight.set(int(i), -rightPerturbTorque[int(i)])
+                perturbTorqueAnkleRight.set(int(i), -rightAnklePerturbTorque[int(i)])
+                perturbTorqueSubtalarRight.set(int(i), rightSubtalarPerturbTorque[int(i)])
 
             anklePerturbTableLeft.appendColumn(
                 '/forceset/perturbation_ankle_angle_l', perturbTorqueAnkleLeft)
             anklePerturbTableRight.appendColumn(
                 '/forceset/perturbation_ankle_angle_r', perturbTorqueAnkleRight)
+            if config.subtalar_torque_perturbation:
+                anklePerturbTableLeft.appendColumn(
+                    '/forceset/perturbation_subtalar_angle_l', perturbTorqueSubtalarLeft)
+                anklePerturbTableRight.appendColumn(
+                    '/forceset/perturbation_subtalar_angle_r', perturbTorqueSubtalarRight)
 
             sto = osim.STOFileAdapter()
             sto.write(anklePerturbTableLeft, self.get_perturbation_torque_path('left'))
@@ -219,20 +236,30 @@ class TimeSteppingProblem(Result):
             actu.setMaxControl(0)
             model.addForce(actu)
 
-            stiffness = 0.1 * mass
-            lower_limit = 10
+            if config.subtalar_torque_perturbation:
+                actu = osim.CoordinateActuator()
+                actu.setName('perturbation_subtalar_angle_r')
+                actu.set_coordinate('subtalar_angle_r')
+                actu.setOptimalForce(mass)
+                actu.setMinControl(-1.0)
+                actu.setMaxControl(1.0)
+                model.addForce(actu)
+
+            upper_stiffness = 0.10 * mass 
+            lower_stiffness = 0.25 * mass
+            lower_limit = 5
             upper_limit = 120
-            damping = 1
-            transition = 25
+            damping = 0.25
+            transition = 10
             clf = osim.CoordinateLimitForce('knee_angle_r', 
-                upper_limit, stiffness, 
-                lower_limit, stiffness, 
+                upper_limit, upper_stiffness, 
+                lower_limit, lower_stiffness, 
                 damping, transition)
             model.addForce(clf)
 
             clf = osim.CoordinateLimitForce('knee_angle_l', 
-                upper_limit, stiffness, 
-                lower_limit, stiffness, 
+                upper_limit, upper_stiffness, 
+                lower_limit, lower_stiffness, 
                 damping, transition)
             model.addForce(clf)
 

@@ -57,24 +57,24 @@ error_markers.append('CLAV')
 error_markers.append('C7')
 study.error_markers = error_markers
 
-scale = 1.0
+scale = 0.01
 study.weights = {
     'state_tracking_weight':   1e1 * scale,
-    'control_weight':          1e2 * scale,
-    'grf_tracking_weight':     1e0 * scale,
+    'control_weight':          1e3 * scale,
+    'grf_tracking_weight':     1e5 * scale,
     'upright_torso_weight':    1e2 * scale,
     'control_tracking_weight': 0 * scale, 
     'aux_deriv_weight':        1e5 * scale,
     'metabolics_weight':       0 * scale,
-    'accel_weight':            0 * scale,
     'regularization_weight':   0 * scale,
     }
 
 # Maximum perturbation torque
 study.torques = [10]
-study.times = [20, 25, 30, 35, 40, 45, 50, 55, 60]
-study.rise = 5
-study.fall = 2
+study.times = [20, 25, 30, 35, 40, 45, 50, 55, 60, 65]
+study.rise = 10
+study.fall = 5
+study.subtalar_peak_torque = 5
 
 # Add subject tasks
 # -----------------
@@ -104,25 +104,25 @@ cmap = plt.get_cmap(colormap)
 indices = np.linspace(0.2, 0.8, len(study.times)) 
 colors = [cmap(idx) for idx in indices]
 
-subjects = ['subject01', 
+subjects = ['subject01' 
             'subject02', 
             'subject04', 
             'subject18', 
             'subject19'
             ]
-masses = [72.85, 76.48, 80.30, 64.09, 68.5]
+masses = [study.get_subject(1).mass
+          study.get_subject(2).mass,
+          study.get_subject(4).mass,
+          study.get_subject(18).mass,
+          study.get_subject(19).mass
+          ]
 # study.add_task(TaskPlotSensitivityResults, subjects)
 study.add_task(TaskPlotUnperturbedResults, subjects, masses,
     study.times, colors)
 
 # Analysis
 # -------=
-masses = [study.get_subject(1).mass,
-          study.get_subject(2).mass,
-          study.get_subject(4).mass,
-          study.get_subject(18).mass,
-          study.get_subject(19).mass
-          ]
+
 
 study.add_task(TaskPlotCenterOfMass, subjects, 50, 
     study.torques, study.rise, study.fall, colors[6], 
@@ -196,7 +196,7 @@ study.add_task(TaskCreatePerturbedVisualization, subjects, 60,
 #     MLbox=[25, 50, -0.06, -0.02])
 
 study.add_task(TaskPlotInstantaneousCenterOfMass, subjects, 
-    study.times, study.torques, study.rise, study.fall, colors)
+    study.times, study.torques, study.rise, study.fall)
 study.add_task(TaskPlotInstantaneousGroundReactions, subjects, 
     study.times, study.torques, study.rise, study.fall, colors)
 

@@ -80,10 +80,56 @@ class Result(ABC):
         # Load model
         # ----------
         model = osim.Model(self.model_fpath)
+        state = model.initSystem()
+        mass = model.getTotalMass(state)
+
+        if not config.weld_lumbar_joint:
+            coordNames = ['lumbar_extension', 'lumbar_bending', 'lumbar_rotation']
+            for coordName in coordNames:
+                actu = osim.ActivationCoordinateActuator()
+                actu.set_coordinate(coordName)
+                actu.setName(f'torque_{coordName}')
+                actu.setOptimalForce(mass)
+                actu.setMinControl(-1.0)
+                actu.setMaxControl(1.0)
+                model.addForce(actu)
+
+            stiffnesses = [1.0, 1.5, 0.5] # N-m/rad*kg
+            for coordName, stiffness in zip(coordNames, stiffnesses):
+                sgf = osim.SpringGeneralizedForce(coordName)
+                sgf.setName(f'passive_stiffness_{coordName}')
+                sgf.setStiffness(stiffness * mass)
+                sgf.setViscosity(2.0)
+                model.addForce(sgf)
+
+            model.finalizeConnections()
+
+        else:
+            coordNames = ['pelvis_tx', 'pelvis_ty', 'pelvis_tz']
+            for coordName in coordNames:
+                actu = osim.ActivationCoordinateActuator()
+                actu.set_coordinate(coordName)
+                actu.setName(f'torque_{coordName}')
+                actu.setOptimalForce(1000)
+                actu.setMinControl(-1.0)
+                actu.setMaxControl(1.0)
+                model.addForce(actu)
+
+            coordNames = ['pelvis_tilt', 'pelvis_list', 'pelvis_rotation']
+            for coordName in coordNames:
+                actu = osim.ActivationCoordinateActuator()
+                actu.set_coordinate(coordName)
+                actu.setName(f'torque_{coordName}')
+                actu.setOptimalForce(100)
+                actu.setMinControl(-1.0)
+                actu.setMaxControl(1.0)
+                model.addForce(actu)
 
         modelProcessor = osim.ModelProcessor(model)
-
-        modelProcessor.append(osim.ModOpReplaceJointsWithWelds(list()))
+        jointsToWeld = list()
+        if config.weld_lumbar_joint:
+            jointsToWeld.append('back')
+        modelProcessor.append(osim.ModOpReplaceJointsWithWelds(jointsToWeld))
         modelProcessor.append(osim.ModOpReplaceMusclesWithDeGrooteFregly2016())
         modelProcessor.append(osim.ModOpIgnoreTendonCompliance())
         modelProcessor.append(osim.ModOpFiberDampingDGF(0.01))
@@ -104,6 +150,9 @@ class Result(ABC):
 
         model.finalizeConnections()
         modelProcessor = osim.ModelProcessor(model)
+        if config.weld_lumbar_joint:
+            modelProcessor.append(
+                osim.ModOpUseImplicitTendonComplianceDynamicsDGF())
 
         osim.Logger.setLevelString('info')
 

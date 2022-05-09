@@ -26,7 +26,8 @@ class TrackingConfig:
                  periodic_coordinates_to_include=None, 
                  periodic_actuators=True,
                  periodic_values=True, 
-                 periodic_speeds=True):
+                 periodic_speeds=True,
+                 weld_lumbar_joint=False):
 
         # Base arguments
         self.name = name
@@ -43,7 +44,6 @@ class TrackingConfig:
         self.grf_tracking_weight = weights['grf_tracking_weight'] 
         self.upright_torso_weight = weights['upright_torso_weight']        
         self.control_tracking_weight = weights['control_tracking_weight']
-        self.accel_weight = weights['accel_weight'] 
         self.aux_deriv_weight = weights['aux_deriv_weight'] 
 
         # Periodicity arguments
@@ -52,6 +52,9 @@ class TrackingConfig:
         self.periodic_actuators = periodic_actuators
         self.periodic_values = periodic_values
         self.periodic_speeds = periodic_speeds
+
+        # Welded lumbar joint
+        self.weld_lumbar_joint = weld_lumbar_joint
 
 class TrackingProblem(Result):
     def __init__(self, root_dir, result_fpath, model_fpath, coordinates_fpath, 
@@ -132,10 +135,16 @@ class TrackingProblem(Result):
             '/jointset/subtalar_r/subtalar_angle_r/value': ([-20*pi/180, 20*pi/180], []),
             '/jointset/mtp_l/mtp_angle_l/value': ([-30*pi/180, 30*pi/180], []),
             '/jointset/mtp_r/mtp_angle_r/value': ([-30*pi/180, 30*pi/180], []),
-            '/jointset/back/lumbar_extension/value': ([-30*pi/180, 30*pi/180], []),
-            '/jointset/back/lumbar_bending/value': ([-30*pi/180, 30*pi/180], []),
-            '/jointset/back/lumbar_rotation/value': ([-30*pi/180, 30*pi/180], []),
         }
+
+        if not config.weld_lumbar_joint:
+            lumbarStateBounds = {
+                '/jointset/back/lumbar_extension/value': ([-30*pi/180, 30*pi/180], []),
+                '/jointset/back/lumbar_bending/value': ([-30*pi/180, 30*pi/180], []),
+                '/jointset/back/lumbar_rotation/value': ([-30*pi/180, 30*pi/180], []),
+            }
+            stateBounds.update(lumbarStateBounds)
+
         return stateBounds
 
     def create_model_processor(self, config):
@@ -171,6 +180,11 @@ class TrackingProblem(Result):
         coordinatesTable.setDependentColumnAtIndex(
             int(coordinatesTable.getColumnIndex('pelvis_tx')), 
             pelvis_tx_new)
+
+        if config.weld_lumbar_joint:
+            coordinatesTable.removeColumn('lumbar_bending')
+            coordinatesTable.removeColumn('lumbar_extension')
+            coordinatesTable.removeColumn('lumbar_rotation')
 
         tableProcessor = osim.TableProcessor(coordinatesTable)
         tableProcessor.append(osim.TabOpLowPassFilter(6))
@@ -270,12 +284,15 @@ class TrackingProblem(Result):
             finalBounds = stateBounds[path][2] if len(stateBounds[path]) > 2 else []
             problem.setStateInfo(path, bounds, initBounds, finalBounds) 
 
+        # The muscle activations for the plantarflexors can't be zero, since we 
+        # are going to use the solution for a forward integration for the 
+        # perturbed simulations.
         for musc in ['soleus', 'gasmed', 'gaslat']:
             for side in ['l', 'r']:
                 problem.setControlInfo(
-                    f'/forceset/{musc}_{side}', [0.02, 1.0], [], [])
+                    f'/forceset/{musc}_{side}', [0.001, 1.0], [], [])
                 problem.setStateInfo(
-                    f'/forceset/{musc}_{side}/activation', [0.02, 1.0], [], [])
+                    f'/forceset/{musc}_{side}/activation', [0.001, 1.0], [], [])
 
         # Modify the tracking goal
         # ------------------------
@@ -301,7 +318,7 @@ class TrackingProblem(Result):
 
         # Upright torso goal
         # ------------------
-        if config.upright_torso_weight:
+        if config.upright_torso_weight and not config.weld_lumbar_joint:
             torsoTable = osim.TableProcessor(
                 os.path.join(self.root_dir, 'torso_zero_reference.sto'))
 
@@ -417,24 +434,13 @@ class TrackingProblem(Result):
         solver.set_optim_convergence_tolerance(1e-2)
         solver.set_num_mesh_intervals(
             int(np.round((self.final_time - self.initial_time) / self.mesh_interval)))
-        if config.accel_weight:
-            solver.set_multibody_dynamics_mode('implicit')
-            solver.set_minimize_implicit_multibody_accelerations(
-                config.effort_enabled)
-            solver.set_implicit_multibody_accelerations_weight(
-                config.accel_weight / model.getNumCoordinates())
-            solver.set_implicit_multibody_acceleration_bounds(
-                osim.MocoBounds(-500.0, 500.0))
-        else:
-            solver.set_multibody_dynamics_mode('explicit')
+        solver.set_multibody_dynamics_mode('explicit')
         solver.set_minimize_implicit_auxiliary_derivatives(
             config.effort_enabled)
         solver.set_implicit_auxiliary_derivatives_weight(
             config.aux_deriv_weight / 6.0)
         solver.set_implicit_auxiliary_derivative_bounds(
             osim.MocoBounds(-100.0, 100.0))
-        solver.set_implicit_auxiliary_derivative_initial_bounds(
-            osim.MocoBounds(0.0))
         solver.set_parallel(28)
         solver.set_parameters_require_initsystem(False)
         solver.set_optim_max_iterations(10000)
@@ -443,6 +449,38 @@ class TrackingProblem(Result):
         # Set the guess
         # -------------
         if config.guess: 
+            # if config.weld_lumbar_joint:
+            #     prevSol = osim.MocoTrajectory(config.guess)
+
+            #     statesTable = prevSol.exportToStatesTable()
+            #     stateLabels = statesTable.getColumnLabels()
+            #     for label in stateLabels:
+            #         if 'lumbar' in label:
+            #             statesTable.removeColumn(label)
+
+            #     controlsTable = prevSol.exportToControlsTable()
+            #     controlLabels = controlsTable.getColumnLabels()
+            #     for label in controlLabels:
+            #         if 'lumbar' in label:
+            #             controlsTable.removeColumn(label)
+
+            #     guess = solver.createGuess()
+            #     guess.insertStatesTrajectory(statesTable)
+            #     guess.insertControlsTrajectory(controlsTable)
+
+            #     for imult in np.arange(len(prevSol.getMultiplierNames())):
+            #         prevName = prevSol.getMultiplierNames()[imult]
+            #         guessName = guess.getMultiplierNames()[imult]
+            #         prevMultiplier = prevSol.getMultiplierMat(prevName)
+            #         multiplier = osim.Vector(len(prevMultiplier), 0.0)
+            #         for i in np.arange(len(prevMultiplier)):
+            #             multiplier[int(i)] = prevMultiplier[i]
+
+            #         guess.setMultiplier(guessName, multiplier)
+
+            #     solver.setGuess(guess)
+
+            # else:
             guess = osim.MocoTrajectory(config.guess)
             solver.setGuess(guess)
         else:

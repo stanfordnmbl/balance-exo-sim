@@ -192,10 +192,17 @@
 # doit forget subject19_moco_unperturbed_guess_mesh20_scale1_periodic
 # doit forget subject19_moco_unperturbed
 
-doit forget subject01_moco_unperturbed
-doit forget subject02_moco_unperturbed
-doit forget subject04_moco_unperturbed
-doit forget subject18_moco_unperturbed
-doit forget subject19_moco_unperturbed
-doit forget plot_unperturbed_results
+doit forget subject01_moco_unperturbed_lumbar_welded
+doit forget subject02_moco_unperturbed_lumbar_welded
+doit forget subject04_moco_unperturbed_lumbar_welded
+doit forget subject18_moco_unperturbed_lumbar_welded
+doit forget subject19_moco_unperturbed_lumbar_welded
+doit forget plot_unperturbed_results_lumbar_welded
+
+# doit forget subject01_moco_unperturbed
+# doit forget subject02_moco_unperturbed
+# doit forget subject04_moco_unperturbed
+# doit forget subject18_moco_unperturbed
+# doit forget subject19_moco_unperturbed
+# doit forget plot_unperturbed_results
 

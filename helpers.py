@@ -157,6 +157,19 @@ def generate_unperturbed_tasks(study, subject, trial,
         guess_fpath=unperturbed_guess_fpath,
         periodic=True)
 
+    unperturbed_lumbar_welded_guess_fpath = os.path.join(
+        study.config['results_path'],
+        'unperturbed_lumbar_welded', subject.name, 
+        'unperturbed_lumbar_welded.sto')
+    trial.add_task(
+        tasks.TaskMocoUnperturbedWalking,
+        initial_time, final_time, 
+        mesh_interval=0.01, 
+        walking_speed=study.walking_speed,
+        guess_fpath=unperturbed_lumbar_welded_guess_fpath,
+        periodic=True,
+        weld_lumbar_joint=True)
+
 def generate_sensitivity_tasks(study, subject, trial,
         initial_time, final_time):
 
@@ -209,17 +222,20 @@ def generate_perturbed_tasks(study, subject, trial,
 
     for time in study.times:
         for torque in study.torques:
-            torque_parameters = [torque / 100.0, 
-                                 time / 100.0, 
-                                 study.rise / 100.0, 
-                                 study.fall / 100.0]
-            trial.add_task(
-                tasks.TaskMocoPerturbedWalking,
-                initial_time, final_time, right_strikes, left_strikes,
-                unperturbed_fpath=unperturbed_fpath,
-                torque_parameters=torque_parameters,
-                walking_speed=study.walking_speed,
-                side='right')
-            trial.add_task(
-                tasks.TaskMocoPerturbedWalkingPost,
-                trial.tasks[-1])
+            for subtalar in [-1.0, 0, 1.0]:
+                torque_parameters = [torque / 100.0, 
+                                     time / 100.0, 
+                                     study.rise / 100.0, 
+                                     study.fall / 100.0]
+                trial.add_task(
+                    tasks.TaskMocoPerturbedWalking,
+                    initial_time, final_time, right_strikes, left_strikes,
+                    unperturbed_fpath=unperturbed_fpath,
+                    torque_parameters=torque_parameters,
+                    walking_speed=study.walking_speed,
+                    side='right',
+                    subtalar_torque_perturbation=subtalar,
+                    subtalar_peak_torque=subtalar * (study.subtalar_peak_torque / 100.0))
+                trial.add_task(
+                    tasks.TaskMocoPerturbedWalkingPost,
+                    trial.tasks[-1])
