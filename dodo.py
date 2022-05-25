@@ -60,8 +60,8 @@ study.error_markers = error_markers
 scale = 0.01
 study.weights = {
     'state_tracking_weight':   1e1 * scale,
-    'control_weight':          1e3 * scale,
-    'grf_tracking_weight':     1e5 * scale,
+    'control_weight':          5e2 * scale,
+    'grf_tracking_weight':     2e5 * scale,
     'upright_torso_weight':    1e2 * scale,
     'control_tracking_weight': 0 * scale, 
     'aux_deriv_weight':        1e5 * scale,
@@ -70,11 +70,22 @@ study.weights = {
     }
 
 # Maximum perturbation torque
-study.torques = [10]
-study.times = [20, 25, 30, 35, 40, 45, 50, 55, 60, 65]
+study.torques = [-20, -10, 0, 10, 20]
+study.times = [20, 25, 30, 35, 40, 45, 50, 55, 60]
 study.rise = 10
 study.fall = 5
-study.subtalar_peak_torque = 5
+study.subtalar_peak_torques = [-20, -10, 0, 10, 20]
+study.subtalar_suffixes = list()
+for peak_torque in study.subtalar_peak_torques:
+    if peak_torque:
+        study.subtalar_suffixes.append(f'_subtalar{peak_torque}')
+    else:
+        study.subtalar_suffixes.append('')
+
+colormap = 'plasma'
+cmap = plt.get_cmap(colormap)
+indices = np.linspace(0, 1.0, len(study.subtalar_suffixes)) 
+study.subtalar_colors = [cmap(idx) for idx in indices]
 
 # Add subject tasks
 # -----------------
@@ -99,18 +110,13 @@ study.add_task(TaskCopyMotionCaptureData, walk125=(2, '_newCOP3'))
 
 # Validate
 # --------
-colormap = 'plasma'
-cmap = plt.get_cmap(colormap)
-indices = np.linspace(0.2, 0.8, len(study.times)) 
-colors = [cmap(idx) for idx in indices]
-
-subjects = ['subject01' 
+subjects = ['subject01', 
             'subject02', 
             'subject04', 
             'subject18', 
             'subject19'
             ]
-masses = [study.get_subject(1).mass
+masses = [study.get_subject(1).mass,
           study.get_subject(2).mass,
           study.get_subject(4).mass,
           study.get_subject(18).mass,
@@ -121,82 +127,27 @@ study.add_task(TaskPlotUnperturbedResults, subjects, masses,
     study.times, colors)
 
 # Analysis
-# -------=
-
-
-study.add_task(TaskPlotCenterOfMass, subjects, 50, 
-    study.torques, study.rise, study.fall, colors[6], 
-    posAPbox=[60, 70, 0.9, 1.1],
-    velAPbox=[30, 50, 0.38, 0.42],
-    accAPbox=[30, 50, -0.75, 0.75],
-    posSIbox=[50, 65, 0.0, 0.04],
-    velSIbox=[40, 60, -0.2, 0.2],
-    accSIbox=[40, 55, -1.0, 5.0],
-    posMLbox=[60, 70, -0.01, 0.01],
-    velMLbox=[40, 60, -0.04, -0.01],
-    accMLbox=[25, 50, -0.75, -0.25])
-study.add_task(TaskPlotGroundReactions, subjects, 50, 
-    study.torques, study.rise, study.fall, colors[6], 
-    APbox=[40, 60, 0, 0.2],
-    SIbox=[40, 55, 0.75, 1.25],
-    MLbox=[25, 50, -0.06, -0.02])
-study.add_task(TaskPlotAnkleTorques, subjects[0], 50, 
-    study.torques, study.rise, study.fall, colors[6])
-study.add_task(TaskCreatePerturbedVisualization, subjects, 50,
+# --------
+study.add_task(TaskPlotCenterOfMass, subjects, [20, 30, 40, 50, 60], 
     study.torques, study.rise, study.fall)
-
-study.add_task(TaskPlotCenterOfMass, subjects, 55, 
-    study.torques, study.rise, study.fall, colors[7], 
-    posAPbox=[60, 70, 0.9, 1.1],
-    velAPbox=[30, 50, 0.38, 0.42],
-    accAPbox=[30, 50, -0.75, 0.75],
-    posSIbox=[50, 65, 0.0, 0.04],
-    velSIbox=[40, 60, -0.2, 0.2],
-    accSIbox=[40, 55, -1.0, 5.0],
-    posMLbox=[60, 70, -0.01, 0.01],
-    velMLbox=[40, 60, -0.04, -0.01],
-    accMLbox=[50, 60, -0.60, -0.40])
-study.add_task(TaskPlotGroundReactions, subjects, 55, 
-    study.torques, study.rise, study.fall, colors[7], 
-    APbox=[45, 60, 0.05, 0.2],
-    SIbox=[35, 55, 0.7, 1.3],
-    MLbox=[50, 60, -0.05, 0])
-study.add_task(TaskPlotAnkleTorques, subjects[0], 55, 
-    study.torques, study.rise, study.fall, colors[7])
-study.add_task(TaskCreatePerturbedVisualization, subjects, 55,
+study.add_task(TaskPlotCenterOfMass, subjects, [20], 
+    study.torques, study.rise, study.fall)
+study.add_task(TaskPlotCenterOfMass, subjects, [30], 
+    study.torques, study.rise, study.fall)
+study.add_task(TaskPlotCenterOfMass, subjects, [40], 
+    study.torques, study.rise, study.fall)
+study.add_task(TaskPlotCenterOfMass, subjects, [50], 
+    study.torques, study.rise, study.fall)
+study.add_task(TaskPlotCenterOfMass, subjects, [60], 
     study.torques, study.rise, study.fall)
 
 
-study.add_task(TaskPlotCenterOfMass, subjects, 60, 
-    study.torques, study.rise, study.fall, colors[8],
-    posAPbox=[70, 80, 0.95, 1.05],
-    velAPbox=[55, 70, 1.30, 1.40],
-    accAPbox=[40, 65, 0.25, 2.25],
-    posSIbox=[60, 70, -0.01, 0.05],
-    velSIbox=[55, 70, 0.0, 0.4],
-    accSIbox=[45, 65, 0.0, 5.0],
-    posMLbox=[80, 100, -0.04, 0.0],
-    velMLbox=[50, 70, -0.05, -0.01],
-    accMLbox=[40, 65, -1.20, -0.4])
-study.add_task(TaskPlotGroundReactions, subjects, 60, 
-    study.torques, study.rise, study.fall, colors[8],
-    APbox=[50, 65, 0.0, 0.22],
-    SIbox=[45, 60, 0.9, 1.2],
-    MLbox=[40, 60, -0.05, 0.01])
-study.add_task(TaskPlotAnkleTorques, subjects[0], 60, 
-    study.torques, study.rise, study.fall, colors[8])
-study.add_task(TaskCreatePerturbedVisualization, subjects, 60,
-    study.torques, study.rise, study.fall)
+for itorque, torque in enumerate(study.torques):
+    study.add_task(TaskPlotInstantaneousCenterOfMass, subjects, 
+        study.times, study.torques[itorque], study.rise, study.fall)
+    study.add_task(TaskPlotInstantaneousGroundReactions, subjects, 
+        study.times, study.torques[itorque], study.rise, study.fall)
+    study.add_task(TaskPlotCenterOfMassVector, subjects, 
+        study.times, study.torques[itorque], study.rise, study.fall)
 
-
-# study.add_task(TaskPlotGroundReactionBreakdown, [subjects[0]], 50, 
-#     25, study.rise, study.fall, 
-#     APbox=[45, 60, 0.05, 0.2],
-#     SIbox=[35, 55, 0.7, 1.3],
-#     MLbox=[25, 50, -0.06, -0.02])
-
-study.add_task(TaskPlotInstantaneousCenterOfMass, subjects, 
-    study.times, study.torques, study.rise, study.fall)
-study.add_task(TaskPlotInstantaneousGroundReactions, subjects, 
-    study.times, study.torques, study.rise, study.fall, colors)
 

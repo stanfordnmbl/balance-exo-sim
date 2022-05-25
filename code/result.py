@@ -83,52 +83,48 @@ class Result(ABC):
         state = model.initSystem()
         mass = model.getTotalMass(state)
 
-        if not config.weld_lumbar_joint:
-            coordNames = ['lumbar_extension', 'lumbar_bending', 'lumbar_rotation']
-            for coordName in coordNames:
-                actu = osim.ActivationCoordinateActuator()
-                actu.set_coordinate(coordName)
-                actu.setName(f'torque_{coordName}')
-                actu.setOptimalForce(mass)
-                actu.setMinControl(-1.0)
-                actu.setMaxControl(1.0)
-                model.addForce(actu)
+        coordNames = ['lumbar_extension', 'lumbar_bending', 'lumbar_rotation']
+        for coordName in coordNames:
+            actu = osim.ActivationCoordinateActuator()
+            actu.set_coordinate(coordName)
+            actu.setName(f'torque_{coordName}')
+            actu.setOptimalForce(mass)
+            actu.setMinControl(-1.0)
+            actu.setMaxControl(1.0)
+            model.addForce(actu)
 
-            stiffnesses = [1.0, 1.5, 0.5] # N-m/rad*kg
-            for coordName, stiffness in zip(coordNames, stiffnesses):
-                sgf = osim.SpringGeneralizedForce(coordName)
-                sgf.setName(f'passive_stiffness_{coordName}')
-                sgf.setStiffness(stiffness * mass)
-                sgf.setViscosity(2.0)
-                model.addForce(sgf)
+        stiffnesses = [1.0, 1.5, 0.5] # N-m/rad*kg
+        for coordName, stiffness in zip(coordNames, stiffnesses):
+            sgf = osim.SpringGeneralizedForce(coordName)
+            sgf.setName(f'passive_stiffness_{coordName}')
+            sgf.setStiffness(config.lumbar_stiffness * stiffness * mass)
+            sgf.setViscosity(2.0)
+            model.addForce(sgf)
 
-            model.finalizeConnections()
+        model.finalizeConnections()
 
-        else:
-            coordNames = ['pelvis_tx', 'pelvis_ty', 'pelvis_tz']
-            for coordName in coordNames:
-                actu = osim.ActivationCoordinateActuator()
-                actu.set_coordinate(coordName)
-                actu.setName(f'torque_{coordName}')
-                actu.setOptimalForce(1000)
-                actu.setMinControl(-1.0)
-                actu.setMaxControl(1.0)
-                model.addForce(actu)
+        # upper_stiffness = 0.10 * mass 
+        # lower_stiffness = 0.10 * mass
+        # lower_limit = 5
+        # upper_limit = 120
+        # damping = 0.25
+        # transition = 10
+        # clf = osim.CoordinateLimitForce('knee_angle_r', 
+        #     upper_limit, upper_stiffness, 
+        #     lower_limit, lower_stiffness, 
+        #     damping, transition)
+        # model.addForce(clf)
 
-            coordNames = ['pelvis_tilt', 'pelvis_list', 'pelvis_rotation']
-            for coordName in coordNames:
-                actu = osim.ActivationCoordinateActuator()
-                actu.set_coordinate(coordName)
-                actu.setName(f'torque_{coordName}')
-                actu.setOptimalForce(100)
-                actu.setMinControl(-1.0)
-                actu.setMaxControl(1.0)
-                model.addForce(actu)
+        # clf = osim.CoordinateLimitForce('knee_angle_l', 
+        #     upper_limit, upper_stiffness, 
+        #     lower_limit, lower_stiffness, 
+        #     damping, transition)
+        # model.addForce(clf)
+
+        # model.finalizeConnections()
 
         modelProcessor = osim.ModelProcessor(model)
         jointsToWeld = list()
-        if config.weld_lumbar_joint:
-            jointsToWeld.append('back')
         modelProcessor.append(osim.ModOpReplaceJointsWithWelds(jointsToWeld))
         modelProcessor.append(osim.ModOpReplaceMusclesWithDeGrooteFregly2016())
         modelProcessor.append(osim.ModOpIgnoreTendonCompliance())
@@ -150,10 +146,6 @@ class Result(ABC):
 
         model.finalizeConnections()
         modelProcessor = osim.ModelProcessor(model)
-        if config.weld_lumbar_joint:
-            modelProcessor.append(
-                osim.ModOpUseImplicitTendonComplianceDynamicsDGF())
-
         osim.Logger.setLevelString('info')
 
         return modelProcessor

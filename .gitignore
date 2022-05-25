@@ -235,6 +235,8 @@ upper*.sto
 lower*.sto
 controls*.sto
 
+/results
+
 # Archived results
 /results/**/archive
 

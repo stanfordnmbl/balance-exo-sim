@@ -27,7 +27,7 @@ class TrackingConfig:
                  periodic_actuators=True,
                  periodic_values=True, 
                  periodic_speeds=True,
-                 weld_lumbar_joint=False):
+                 lumbar_stiffness=1.0):
 
         # Base arguments
         self.name = name
@@ -53,8 +53,8 @@ class TrackingConfig:
         self.periodic_values = periodic_values
         self.periodic_speeds = periodic_speeds
 
-        # Welded lumbar joint
-        self.weld_lumbar_joint = weld_lumbar_joint
+        # lumbar stiffness scaling
+        self.lumbar_stiffness = lumbar_stiffness
 
 class TrackingProblem(Result):
     def __init__(self, root_dir, result_fpath, model_fpath, coordinates_fpath, 
@@ -137,14 +137,6 @@ class TrackingProblem(Result):
             '/jointset/mtp_r/mtp_angle_r/value': ([-30*pi/180, 30*pi/180], []),
         }
 
-        if not config.weld_lumbar_joint:
-            lumbarStateBounds = {
-                '/jointset/back/lumbar_extension/value': ([-30*pi/180, 30*pi/180], []),
-                '/jointset/back/lumbar_bending/value': ([-30*pi/180, 30*pi/180], []),
-                '/jointset/back/lumbar_rotation/value': ([-30*pi/180, 30*pi/180], []),
-            }
-            stateBounds.update(lumbarStateBounds)
-
         return stateBounds
 
     def create_model_processor(self, config):
@@ -180,11 +172,6 @@ class TrackingProblem(Result):
         coordinatesTable.setDependentColumnAtIndex(
             int(coordinatesTable.getColumnIndex('pelvis_tx')), 
             pelvis_tx_new)
-
-        if config.weld_lumbar_joint:
-            coordinatesTable.removeColumn('lumbar_bending')
-            coordinatesTable.removeColumn('lumbar_extension')
-            coordinatesTable.removeColumn('lumbar_rotation')
 
         tableProcessor = osim.TableProcessor(coordinatesTable)
         tableProcessor.append(osim.TabOpLowPassFilter(6))
@@ -269,9 +256,9 @@ class TrackingProblem(Result):
         # Set state bounds. 
         # -----------------
         speedBounds = [-20.0, 20.0]
-        muscBounds = [0.0, 1.0]
+        muscBounds = [0.001, 1.0]
         torqueBounds = [-1.0, 1.0]
-        tendonBounds = [0, 1.8]
+        tendonBounds = [0.001, 1.8]
         problem.setStateInfoPattern('/jointset/.*/speed', speedBounds, [], [])
         problem.setControlInfoPattern('/forceset/.*', muscBounds, [], [])
         problem.setControlInfoPattern('/forceset/torque.*', torqueBounds, [], [])
@@ -283,16 +270,6 @@ class TrackingProblem(Result):
             initBounds = stateBounds[path][1] if len(stateBounds[path]) > 1 else []
             finalBounds = stateBounds[path][2] if len(stateBounds[path]) > 2 else []
             problem.setStateInfo(path, bounds, initBounds, finalBounds) 
-
-        # The muscle activations for the plantarflexors can't be zero, since we 
-        # are going to use the solution for a forward integration for the 
-        # perturbed simulations.
-        for musc in ['soleus', 'gasmed', 'gaslat']:
-            for side in ['l', 'r']:
-                problem.setControlInfo(
-                    f'/forceset/{musc}_{side}', [0.001, 1.0], [], [])
-                problem.setStateInfo(
-                    f'/forceset/{musc}_{side}/activation', [0.001, 1.0], [], [])
 
         # Modify the tracking goal
         # ------------------------
@@ -318,7 +295,7 @@ class TrackingProblem(Result):
 
         # Upright torso goal
         # ------------------
-        if config.upright_torso_weight and not config.weld_lumbar_joint:
+        if config.upright_torso_weight:
             torsoTable = osim.TableProcessor(
                 os.path.join(self.root_dir, 'torso_zero_reference.sto'))
 

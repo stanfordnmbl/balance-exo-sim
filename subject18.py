@@ -184,6 +184,7 @@ def add_to_study(study):
 
     initial_time = 2.44
     final_time = 3.51
+    duration = 1.07
     right_strikes = [2.44, 3.51]
     left_strikes = [2.97]
     walk2_trial.add_task(
@@ -206,5 +207,5 @@ def add_to_study(study):
 
     # perturbed walking tasks
     # -----------------------
-    # helpers.generate_perturbed_tasks(study, subject, walk2_trial, 
-    #     initial_time, final_time, right_strikes, left_strikes)
+    helpers.generate_perturbed_tasks(study, subject, walk2_trial, 
+        initial_time, final_time, right_strikes, left_strikes)

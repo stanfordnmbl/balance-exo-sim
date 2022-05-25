@@ -129,28 +129,24 @@
 # doit subject19_moco_unperturbed
 
 # doit subject01_moco_unperturbed
-# doit subject01_moco_unperturbed_lumbar_welded
+doit subject01_moco_unperturbed_lumbar*
+
 # doit subject02_moco_unperturbed
-# doit subject02_moco_unperturbed_lumbar_welded
 # doit subject04_moco_unperturbed
-# doit subject04_moco_unperturbed_lumbar_welded
 # doit subject18_moco_unperturbed
-# doit subject18_moco_unperturbed_lumbar_welded
 # doit subject19_moco_unperturbed
-# doit subject19_moco_unperturbed_lumbar_welded
+
 # doit plot_unperturbed_results
-# doit plot_unperturbed_lumbar_welded_results
 
 # Perturbed walking
 # -----------------
-doit subject*_moco_perturbed_torque*_time20_rise*_fall*
-doit subject*_moco_perturbed_torque*_time25_rise*_fall*
-doit subject*_moco_perturbed_torque*_time30_rise*_fall*
-doit subject*_moco_perturbed_torque*_time35_rise*_fall*
-doit subject*_moco_perturbed_torque*_time40_rise*_fall*
-doit subject*_moco_perturbed_torque*_time45_rise*_fall*
-doit subject*_moco_perturbed_torque*_time50_rise*_fall*
-doit subject*_moco_perturbed_torque*_time55_rise*_fall*
-doit subject*_moco_perturbed_torque*_time60_rise*_fall*
-doit subject*_moco_perturbed_torque*_time65_rise*_fall*
+# doit subject*_moco_perturbed_torque*_time20_rise*_fall*
+# doit subject*_moco_perturbed_torque*_time25_rise*_fall*
+# doit subject*_moco_perturbed_torque*_time30_rise*_fall*
+# doit subject*_moco_perturbed_torque*_time35_rise*_fall*
+# doit subject*_moco_perturbed_torque*_time40_rise*_fall*
+# doit subject*_moco_perturbed_torque*_time45_rise*_fall*
+# doit subject*_moco_perturbed_torque*_time50_rise*_fall*
+# doit subject*_moco_perturbed_torque*_time55_rise*_fall*
+# doit subject*_moco_perturbed_torque*_time60_rise*_fall*post
 

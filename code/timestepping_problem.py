@@ -4,6 +4,7 @@ import matplotlib.pyplot as plt
 
 import opensim as osim
 from result import Result
+import copy
 
 import utilities as util
 
@@ -24,13 +25,10 @@ class TimeSteppingConfig:
     def __init__(self, name, legend_entry, color, weights, 
                  unperturbed_fpath=None, 
                  ankle_torque_perturbation=False,
-                 ankle_torque_left_parameters=None,
-                 ankle_torque_right_parameters=None,
-                 ankle_torque_side='both',
-                 ankle_torque_first_cycle_only=True,
+                 ankle_torque_parameters=None,
                  subtalar_torque_perturbation=False,
                  subtalar_peak_torque=0,
-                 weld_lumbar_joint=False):
+                 lumbar_stiffness=1.0):
 
         # Base arguments
         self.name = name
@@ -40,17 +38,14 @@ class TimeSteppingConfig:
 
         # Ankle torque perturbation
         self.ankle_torque_perturbation = ankle_torque_perturbation
-        self.ankle_torque_left_parameters = ankle_torque_left_parameters
-        self.ankle_torque_right_parameters = ankle_torque_right_parameters
-        self.ankle_torque_side = ankle_torque_side
-        self.ankle_torque_first_cycle_only = ankle_torque_first_cycle_only
+        self.ankle_torque_parameters = ankle_torque_parameters
         self.ankle_torque_perturbation_start = 0.0
         self.ankle_torque_perturbation_end = 0.0
         self.subtalar_torque_perturbation = subtalar_torque_perturbation
         self.subtalar_peak_torque = subtalar_peak_torque
 
-        # Welded lumbar joint
-        self.weld_lumbar_joint = weld_lumbar_joint
+        # Lumbar stiffness scaling
+        self.lumbar_stiffness = lumbar_stiffness
 
 class TimeSteppingProblem(Result):
     def __init__(self, root_dir, result_fpath, model_fpath, coordinates_fpath, 
@@ -75,9 +70,9 @@ class TimeSteppingProblem(Result):
         self.emg_fpath = emg_fpath
         self.configs = configs
 
-    def get_perturbation_torque_path(self, side):
+    def get_perturbation_torque_path(self):
         return os.path.join(self.result_fpath,
-                    f'ankle_perturbation_curve_{side}.sto')
+                    f'ankle_perturbation_curve.sto')
 
     def create_model_processor(self, config):
 
@@ -123,117 +118,56 @@ class TimeSteppingProblem(Result):
 
                 return xs, ys
 
-            leftTime = osim.StdVectorDouble()
-            rightTime = osim.StdVectorDouble()
-            leftAnklePerturbTorque = osim.StdVectorDouble()
-            rightAnklePerturbTorque = osim.StdVectorDouble()
-            leftSubtalarPerturbTorque = osim.StdVectorDouble()
-            rightSubtalarPerturbTorque = osim.StdVectorDouble()
-            if (not len(self.right_strikes) == 
-                    len(config.ankle_torque_right_parameters)):
-                raise Exception(f'Expected number of right heel-strikes to '
-                                f'match the number of ankle torque parameter '
-                                f'sets provided, but found '
-                                f'{len(self.right_strikes)} and '
-                                f'{len(config.ankle_torque_right_parameters)}'
-                                f', respectively.')
+            time = osim.StdVectorDouble()
+            anklePerturbTorque = osim.StdVectorDouble()
+            subtalarPerturbTorque = osim.StdVectorDouble()
 
-            if (not len(self.left_strikes) == 
-                    len(config.ankle_torque_left_parameters)):
-                raise Exception(f'Expected number of left heel-strikes to '
-                                f'match the number of ankle torque parameter '
-                                f'sets provided, but found '
-                                f'{len(self.left_strikes)} and '
-                                f'{len(config.ankle_torque_left_parameters)}'
-                                f', respectively.')  
-
-            numRightCycles = len(self.right_strikes)-1
-            numLeftCycles = len(self.left_strikes)-1
             duration = 0.0
-            if not numRightCycles and not numLeftCycles:
-                raise Exception('Heel strike data for perturbation torques '
-                                'insufficient.')
-            elif numRightCycles > numLeftCycles:
-                right_parameters = config.ankle_torque_right_parameters[0]
-                duration = self.right_strikes[1] - self.right_strikes[0]
-                initial_time = self.right_strikes[0]
-                peak_time = right_parameters[1] * duration + initial_time
-                rise_time = right_parameters[2] * duration
-                fall_time = right_parameters[3] * duration
-                pgc10 = 0.1 * duration
-                config.ankle_torque_perturbation_start = peak_time - rise_time
-                config.ankle_torque_perturbation_end = peak_time + fall_time + pgc10
-            else:
-                left_parameters = config.ankle_torque_left_parameters[0]
-                duration = self.left_strikes[1] - self.left_strikes[0]
-                initial_time = self.left_strikes[0]
-                peak_time = left_parameters[1] * duration + initial_time
-                rise_time = left_parameters[2] * duration
-                fall_time = left_parameters[3] * duration
-                pgc10 = 0.1 * duration
-                config.ankle_torque_perturbation_start = peak_time - rise_time
-                config.ankle_torque_perturbation_end = peak_time + fall_time + pgc10
+ 
+            parameters = config.ankle_torque_parameters
+            duration = self.right_strikes[1] - self.right_strikes[0]
+            initial_time = self.right_strikes[0]
+            peak_time = parameters[1] * duration + initial_time
+            rise_time = parameters[2] * duration
+            fall_time = parameters[3] * duration
+            pgc10 = 0.1 * duration
+            config.ankle_torque_perturbation_start = peak_time - rise_time
+            config.ankle_torque_perturbation_end = peak_time + fall_time
 
-            for ir in np.arange(len(self.right_strikes)):
-                if ir and config.ankle_torque_first_cycle_only: 
-                    continue
-                initial_time = self.right_strikes[ir]
-                parameters = config.ankle_torque_right_parameters[ir]
-                xr, yr = get_torque_curve(
-                    initial_time, duration, parameters)
-                for x, y in zip(xr, yr):
-                    rightTime.push_back(x)
-                    rightAnklePerturbTorque.push_back(y)
-                    ysub = (y * config.subtalar_peak_torque) / parameters[0]
-                    rightSubtalarPerturbTorque.push_back(ysub)
+            xr, yr = get_torque_curve(initial_time, duration, parameters)
+            for x, y in zip(xr, yr):
+                time.push_back(x)
+                anklePerturbTorque.push_back(y)
 
-            for il in np.arange(len(self.left_strikes)):
-                if il and config.ankle_torque_first_cycle_only: 
-                    continue
-                initial_time = self.left_strikes[il]
-                parameters = config.ankle_torque_left_parameters[il]
-                xl, yl = get_torque_curve(
-                    initial_time, duration, parameters)
-                for x, y in zip(xl, yl):
-                    leftTime.push_back(x)
-                    leftAnklePerturbTorque.push_back(y)
-                    ysub = (y * config.subtalar_peak_torque) / parameters[0]
-                    leftSubtalarPerturbTorque.push_back(ysub)
+            subtalar_parameters = copy.deepcopy(config.ankle_torque_parameters)
+            subtalar_parameters[0] = config.subtalar_peak_torque
+            xr, yr = get_torque_curve(initial_time, duration, subtalar_parameters)
+            for x, y in zip(xr, yr):
+                subtalarPerturbTorque.push_back(y)
 
-            anklePerturbTableLeft = osim.TimeSeriesTable(leftTime)
-            anklePerturbTableRight = osim.TimeSeriesTable(rightTime)
-            perturbTorqueAnkleLeft = osim.Vector(leftTime.size(), 0.0)
-            perturbTorqueSubtalarLeft = osim.Vector(leftTime.size(), 0.0)
-            perturbTorqueAnkleRight = osim.Vector(rightTime.size(), 0.0)
-            perturbTorqueSubtalarRight = osim.Vector(rightTime.size(), 0.0)
+            anklePerturbTable = osim.TimeSeriesTable(time)
+            perturbTorqueAnkle = osim.Vector(time.size(), 0.0)
+            perturbTorqueSubtalar = osim.Vector(time.size(), 0.0)
+            for i in np.arange(time.size()):
+                # Flip the sign on the ankle curve to match model convention
+                perturbTorqueAnkle.set(int(i), -anklePerturbTorque[int(i)])
+                perturbTorqueSubtalar.set(int(i), subtalarPerturbTorque[int(i)])
 
-            for i in np.arange(leftTime.size()):
-                perturbTorqueAnkleLeft.set(int(i), -leftAnklePerturbTorque[int(i)])
-                perturbTorqueSubtalarLeft.set(int(i), leftSubtalarPerturbTorque[int(i)])
-            for i in np.arange(rightTime.size()):
-                perturbTorqueAnkleRight.set(int(i), -rightAnklePerturbTorque[int(i)])
-                perturbTorqueSubtalarRight.set(int(i), rightSubtalarPerturbTorque[int(i)])
-
-            anklePerturbTableLeft.appendColumn(
-                '/forceset/perturbation_ankle_angle_l', perturbTorqueAnkleLeft)
-            anklePerturbTableRight.appendColumn(
-                '/forceset/perturbation_ankle_angle_r', perturbTorqueAnkleRight)
+            anklePerturbTable.appendColumn(
+                '/forceset/perturbation_ankle_angle_r', perturbTorqueAnkle)
             if config.subtalar_torque_perturbation:
-                anklePerturbTableLeft.appendColumn(
-                    '/forceset/perturbation_subtalar_angle_l', perturbTorqueSubtalarLeft)
-                anklePerturbTableRight.appendColumn(
-                    '/forceset/perturbation_subtalar_angle_r', perturbTorqueSubtalarRight)
+                anklePerturbTable.appendColumn(
+                    '/forceset/perturbation_subtalar_angle_r', perturbTorqueSubtalar)
 
             sto = osim.STOFileAdapter()
-            sto.write(anklePerturbTableLeft, self.get_perturbation_torque_path('left'))
-            sto.write(anklePerturbTableRight, self.get_perturbation_torque_path('right'))
+            sto.write(anklePerturbTable, self.get_perturbation_torque_path())
 
             actu = osim.CoordinateActuator()
             actu.setName('perturbation_ankle_angle_r')
             actu.set_coordinate('ankle_angle_r')
             actu.setOptimalForce(mass)
             actu.setMinControl(-1.0)
-            actu.setMaxControl(0)
+            actu.setMaxControl(1.0)
             model.addForce(actu)
 
             if config.subtalar_torque_perturbation:
@@ -244,24 +178,6 @@ class TimeSteppingProblem(Result):
                 actu.setMinControl(-1.0)
                 actu.setMaxControl(1.0)
                 model.addForce(actu)
-
-            upper_stiffness = 0.10 * mass 
-            lower_stiffness = 0.25 * mass
-            lower_limit = 5
-            upper_limit = 120
-            damping = 0.25
-            transition = 10
-            clf = osim.CoordinateLimitForce('knee_angle_r', 
-                upper_limit, upper_stiffness, 
-                lower_limit, lower_stiffness, 
-                damping, transition)
-            model.addForce(clf)
-
-            clf = osim.CoordinateLimitForce('knee_angle_l', 
-                upper_limit, upper_stiffness, 
-                lower_limit, lower_stiffness, 
-                damping, transition)
-            model.addForce(clf)
 
             model.finalizeConnections()
 
@@ -287,8 +203,7 @@ class TimeSteppingProblem(Result):
         trajectory = osim.MocoTrajectory(config.unperturbed_fpath)
         trajectory.trim(int(initial_index), int(final_index))
 
-        perturbTable = osim.TimeSeriesTable(
-            self.get_perturbation_torque_path('right'))
+        perturbTable = osim.TimeSeriesTable(self.get_perturbation_torque_path())
         trajectory.insertControlsTrajectory(perturbTable)
 
         osim.prescribeControlsToModel(trajectory, model, 
