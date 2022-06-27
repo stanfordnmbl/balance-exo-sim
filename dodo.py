@@ -60,27 +60,31 @@ study.error_markers = error_markers
 scale = 0.01
 study.weights = {
     'state_tracking_weight':   1e1 * scale,
-    'control_weight':          5e2 * scale,
-    'grf_tracking_weight':     2e5 * scale,
+    'control_weight':          1e3 * scale,
+    'grf_tracking_weight':     1e5 * scale,
     'upright_torso_weight':    1e2 * scale,
     'control_tracking_weight': 0 * scale, 
     'aux_deriv_weight':        1e5 * scale,
     'metabolics_weight':       0 * scale,
     'regularization_weight':   0 * scale,
     }
+study.constraint_tolerance = 1e-4
+study.convergence_tolerance = 1e-2
 
 # Maximum perturbation torque
-study.torques = [-20, -10, 0, 10, 20]
+study.torques = [0, 10]
 study.times = [20, 25, 30, 35, 40, 45, 50, 55, 60]
 study.rise = 10
 study.fall = 5
-study.subtalar_peak_torques = [-20, -10, 0, 10, 20]
+study.subtalar_peak_torques = [-10, 0, 10]
 study.subtalar_suffixes = list()
 for peak_torque in study.subtalar_peak_torques:
     if peak_torque:
         study.subtalar_suffixes.append(f'_subtalar{peak_torque}')
     else:
         study.subtalar_suffixes.append('')
+
+study.lumbar_stiffnesses = [0.1, 1.0, 10.0]
 
 colormap = 'plasma'
 cmap = plt.get_cmap(colormap)
@@ -110,19 +114,21 @@ study.add_task(TaskCopyMotionCaptureData, walk125=(2, '_newCOP3'))
 
 # Validate
 # --------
-subjects = ['subject01', 
+subjects = [
+            'subject01', 
             'subject02', 
             'subject04', 
-            'subject18', 
-            'subject19'
+            # 'subject18', 
+            # 'subject19'
             ]
-masses = [study.get_subject(1).mass,
+masses = [
+          study.get_subject(1).mass,
           study.get_subject(2).mass,
           study.get_subject(4).mass,
-          study.get_subject(18).mass,
-          study.get_subject(19).mass
+          # study.get_subject(18).mass,
+          # study.get_subject(19).mass
           ]
-# study.add_task(TaskPlotSensitivityResults, subjects)
+# study.add_task(TaskPlotSensitivityResults, subjects[:1])
 study.add_task(TaskPlotUnperturbedResults, subjects, masses,
     study.times, colors)
 
@@ -141,13 +147,34 @@ study.add_task(TaskPlotCenterOfMass, subjects, [50],
 study.add_task(TaskPlotCenterOfMass, subjects, [60], 
     study.torques, study.rise, study.fall)
 
+study.add_task(TaskPlotInstantaneousCenterOfMass, subjects, 
+    study.times, study.rise, study.fall)
 
-for itorque, torque in enumerate(study.torques):
-    study.add_task(TaskPlotInstantaneousCenterOfMass, subjects, 
-        study.times, study.torques[itorque], study.rise, study.fall)
-    study.add_task(TaskPlotInstantaneousGroundReactions, subjects, 
-        study.times, study.torques[itorque], study.rise, study.fall)
-    study.add_task(TaskPlotCenterOfMassVector, subjects, 
-        study.times, study.torques[itorque], study.rise, study.fall)
+study.add_task(TaskPlotInstantaneousGroundReactions, subjects, 
+    study.times, study.rise, study.fall)
 
+study.add_task(TaskPlotCenterOfMassVector, subjects, 
+    study.times, study.rise, study.fall)
 
+study.add_task(TaskPlotGroundReactionBreakdown, subjects, 30, 0, -10, study.rise, study.fall)
+study.add_task(TaskPlotGroundReactionBreakdown, subjects, 30, 10, 0, study.rise, study.fall)
+study.add_task(TaskPlotGroundReactionBreakdown, subjects, 30, 10, -10, study.rise, study.fall)
+study.add_task(TaskPlotGroundReactionBreakdown, subjects, 40, 0, -10, study.rise, study.fall)
+study.add_task(TaskPlotGroundReactionBreakdown, subjects, 40, 10, -10, study.rise, study.fall)
+study.add_task(TaskPlotGroundReactionBreakdown, subjects, 50, 0, -10, study.rise, study.fall)
+study.add_task(TaskPlotGroundReactionBreakdown, subjects, 50, 10, -10, study.rise, study.fall)
+
+for time in study.times:
+    study.add_task(TaskPlotGroundReactions, subjects, time, study.rise, study.fall)
+    study.add_task(TaskPlotBodyAccelerations, subjects, time, study.rise, study.fall)
+
+# for itorque, torque in enumerate(study.torques):
+
+#     study.add_task(TaskPlotInstantaneousCenterOfMassLumbarStiffness, subjects[:1], 
+#         study.times, study.torques[itorque], study.rise, study.fall)
+
+    # for subtalar in study.subtalar_peak_torques:
+    #     for lumbar_stiffness in study.lumbar_stiffnesses:
+    #         study.add_task(TaskPlotGroundReactionsVersusEffectiveForces, subjects, 
+    #             study.times, study.torques[itorque], study.rise, study.fall, subtalar,
+    #             lumbar_stiffness=lumbar_stiffness)

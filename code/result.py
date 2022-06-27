@@ -103,26 +103,6 @@ class Result(ABC):
 
         model.finalizeConnections()
 
-        # upper_stiffness = 0.10 * mass 
-        # lower_stiffness = 0.10 * mass
-        # lower_limit = 5
-        # upper_limit = 120
-        # damping = 0.25
-        # transition = 10
-        # clf = osim.CoordinateLimitForce('knee_angle_r', 
-        #     upper_limit, upper_stiffness, 
-        #     lower_limit, lower_stiffness, 
-        #     damping, transition)
-        # model.addForce(clf)
-
-        # clf = osim.CoordinateLimitForce('knee_angle_l', 
-        #     upper_limit, upper_stiffness, 
-        #     lower_limit, lower_stiffness, 
-        #     damping, transition)
-        # model.addForce(clf)
-
-        # model.finalizeConnections()
-
         modelProcessor = osim.ModelProcessor(model)
         jointsToWeld = list()
         modelProcessor.append(osim.ModOpReplaceJointsWithWelds(jointsToWeld))
@@ -144,8 +124,21 @@ class Result(ABC):
                 muscle.set_tendon_strain_at_one_norm_force(0.10)
                 muscle.set_passive_fiber_strain_at_one_norm_force(2.0)
 
+        # Update contact model properties
+        # -------------------------------
+        # forces = model.updForceSet()
+        # for iforce in np.arange(forces.getSize()):
+        #     if 'contact' in forces.get(int(iforce)).getName():
+        #         sshs = osim.SmoothSphereHalfSpaceForce.safeDownCast(forces.get(int(iforce)))
+        #         sshs.set_transition_velocity(0.1)
+        #         sshs.set_static_friction(0.95)
+
         model.finalizeConnections()
         modelProcessor = osim.ModelProcessor(model)
+        if self.implicit_tendon_dynamics:
+            modelProcessor.append(
+                osim.ModOpUseImplicitTendonComplianceDynamicsDGF())
+
         osim.Logger.setLevelString('info')
 
         return modelProcessor
@@ -797,9 +790,11 @@ class Result(ABC):
         expTime = experimentStates.getIndependentColumn()
         expStatesTraj = osim.StatesTrajectory().createFromStatesTable(
             models[0], experimentStates, True)
+        bodyset = models[0].getBodySet()
+        numBodies = bodyset.getSize()
         com = osim.TimeSeriesTableVec3()
         for i in np.arange(expStatesTraj.getSize()):
-            row = osim.RowVectorVec3(3, osim.Vec3(0.0))
+            row = osim.RowVectorVec3(3 + 3*numBodies, osim.Vec3(0.0))
             state = expStatesTraj.get(int(i))
             com_pos = models[0].calcMassCenterPosition(state)
             com_vel = models[0].calcMassCenterVelocity(state)
@@ -807,12 +802,28 @@ class Result(ABC):
             row[0] = com_pos
             row[1] = com_vel
             row[2] = com_acc
+            for ibody in np.arange(numBodies):
+                body = bodyset.get(int(ibody))
+                body_pos = body.getPositionInGround(state)
+                body_vel = body.getLinearVelocityInGround(state)
+                body_acc = body.getLinearAccelerationInGround(state)
+
+                row[int(3 + 3*ibody)] = body_pos
+                row[int(3 + 3*ibody + 1)] = body_vel
+                row[int(3 + 3*ibody + 2)] = body_acc
+
             com.appendRow(expTime[int(i)], row)
 
         colLabels = osim.StdVectorString()
         colLabels.append('/|com_position')
         colLabels.append('/|com_velocity')
         colLabels.append('/|com_acceleration')
+        for ibody in np.arange(numBodies):
+            body = bodyset.get(int(ibody))
+            name = body.getAbsolutePathString()
+            colLabels.append(f'{name}|position')
+            colLabels.append(f'{name}|linear_velocity')
+            colLabels.append(f'{name}|linear_acceleration')
         com.setColumnLabels(colLabels)
 
         plot_com(com, 'experiment', 'darkgray')
@@ -822,7 +833,10 @@ class Result(ABC):
                 self.get_solution_path(config.name))
             com = osim.analyzeVec3(models[i], solution.exportToStatesTable(),
                                           solution.exportToControlsTable(),
-                                        ['.*com.*'])
+                                        ['.*com.*', 
+                                         '/bodyset/.*position.*',
+                                         '/bodyset/.*linear_velocity.*',
+                                         '/bodyset/.*linear_acceleration.*'])
             plot_com(com, config.name, config.color)
 
         fig.tight_layout()

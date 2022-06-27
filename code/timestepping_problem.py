@@ -69,6 +69,7 @@ class TimeSteppingProblem(Result):
         self.walking_speed = walking_speed
         self.emg_fpath = emg_fpath
         self.configs = configs
+        self.implicit_tendon_dynamics = False
 
     def get_perturbation_torque_path(self):
         return os.path.join(self.result_fpath,
@@ -133,6 +134,7 @@ class TimeSteppingProblem(Result):
             pgc10 = 0.1 * duration
             config.ankle_torque_perturbation_start = peak_time - rise_time
             config.ankle_torque_perturbation_end = peak_time + fall_time
+            # config.ankle_torque_perturbation_end = self.right_strikes[1]
 
             xr, yr = get_torque_curve(initial_time, duration, parameters)
             for x, y in zip(xr, yr):

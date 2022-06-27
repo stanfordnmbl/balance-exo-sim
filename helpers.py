@@ -20,131 +20,39 @@ def generate_main_tasks(trial):
 def generate_unperturbed_tasks(study, subject, trial, 
         initial_time, final_time):
 
-    # trial.add_task(
-    #     tasks.TaskMocoUnperturbedWalkingGuess,
-    #     initial_time, final_time, mesh_interval=0.035, 
-    #     walking_speed=study.walking_speed,
-    #     guess_fpath=None,
-    #     costs_enabled=True,
-    #     periodic=False,
-    #     cost_scale=1e9)
+    # Initial guess creation
+    # ----------------------
+    guess_fpath = ''
+    scales             = [0.01, 0.1, 1.0]
+    mesh_intervals     = [0.05, 0.04, 0.02]
+    implicit_multibody = [True, False, False]
+    implicit_tendons   = [True, True, False]
+    periodic_flags     = [False, False, True]
+    create_and_insert  = [False, False, True]
+    zipped = zip(scales, mesh_intervals, 
+                 implicit_multibody, implicit_tendons, 
+                 periodic_flags, create_and_insert)
+    for scale, mesh, imp_multi, imp_ten, periodic, candi in zipped:
+        trial.add_task(
+            tasks.TaskMocoUnperturbedWalkingGuess,
+            initial_time, final_time, 
+            mesh_interval=mesh, 
+            walking_speed=study.walking_speed,
+            periodic=periodic,
+            cost_scale=scale,
+            implicit_multibody_dynamics=imp_multi,
+            implicit_tendon_dynamics=imp_ten,
+            guess_fpath=guess_fpath,
+            create_and_insert_guess=candi)
 
-    # unperturbed_guess_fpath = os.path.join(
-    #     study.config['results_path'], 'guess', subject.name, 
-    #     'unperturbed_guess_mesh35_scale1000000000.sto')
-    # trial.add_task(
-    #     tasks.TaskMocoUnperturbedWalkingGuess,
-    #     initial_time, final_time, mesh_interval=0.035, 
-    #     walking_speed=study.walking_speed,
-    #     guess_fpath=unperturbed_guess_fpath,
-    #     costs_enabled=True,
-    #     periodic=False,
-    #     cost_scale=1e7)
+        guess_name = f'unperturbed_guess_mesh{mesh}_scale{scale}'
+        if periodic: guess_name += '_periodic'
+        guess_fpath = os.path.join(
+            study.config['results_path'], 'guess', subject.name, 
+            f'{guess_name}.sto')
 
-    # unperturbed_guess_fpath = os.path.join(
-    #     study.config['results_path'], 'guess', subject.name, 
-    #     'unperturbed_guess_mesh35_scale10000000.sto')
-    trial.add_task(
-        tasks.TaskMocoUnperturbedWalkingGuess,
-        initial_time, final_time, mesh_interval=0.035, 
-        walking_speed=study.walking_speed,
-        guess_fpath=None,
-        costs_enabled=True,
-        periodic=False,
-        cost_scale=1e5,
-        reserve_strength=1000)
-
-    unperturbed_guess_fpath = os.path.join(
-        study.config['results_path'], 'guess', subject.name, 
-        'unperturbed_guess_mesh35_scale100000_reserve1000.sto')
-    trial.add_task(
-        tasks.TaskMocoUnperturbedWalkingGuess,
-        initial_time, final_time, mesh_interval=0.035, 
-        walking_speed=study.walking_speed,
-        guess_fpath=unperturbed_guess_fpath,
-        costs_enabled=True,
-        periodic=False,
-        cost_scale=1e3,
-        reserve_strength=1000)
-
-    unperturbed_guess_fpath = os.path.join(
-        study.config['results_path'], 'guess', subject.name, 
-        'unperturbed_guess_mesh35_scale1000_reserve1000.sto')
-    trial.add_task(
-        tasks.TaskMocoUnperturbedWalkingGuess,
-        initial_time, final_time, mesh_interval=0.035, 
-        walking_speed=study.walking_speed,
-        guess_fpath=unperturbed_guess_fpath,
-        costs_enabled=True,
-        periodic=False,
-        cost_scale=1e2,
-        reserve_strength=100)
-
-    unperturbed_guess_fpath = os.path.join(
-        study.config['results_path'], 'guess', subject.name, 
-        'unperturbed_guess_mesh35_scale100_reserve100.sto')
-    trial.add_task(
-        tasks.TaskMocoUnperturbedWalkingGuess,
-        initial_time, final_time, mesh_interval=0.035, 
-        walking_speed=study.walking_speed,
-        guess_fpath=unperturbed_guess_fpath,
-        costs_enabled=True,
-        periodic=False,
-        reserve_strength=100)
-
-    unperturbed_guess_fpath = os.path.join(
-        study.config['results_path'],
-        'guess', subject.name, 
-        'unperturbed_guess_mesh35_scale1_reserve100.sto')
-    trial.add_task(
-        tasks.TaskMocoUnperturbedWalkingGuess,
-        initial_time, final_time, mesh_interval=0.035, 
-        walking_speed=study.walking_speed,
-        guess_fpath=unperturbed_guess_fpath,
-        costs_enabled=True,
-        periodic=False,
-        reserve_strength=10)
-
-    unperturbed_guess_fpath = os.path.join(
-        study.config['results_path'],
-        'guess', subject.name, 
-        'unperturbed_guess_mesh35_scale1_reserve10.sto')
-    trial.add_task(
-        tasks.TaskMocoUnperturbedWalkingGuess,
-        initial_time, final_time, mesh_interval=0.035, 
-        walking_speed=study.walking_speed,
-        guess_fpath=unperturbed_guess_fpath,
-        costs_enabled=True,
-        periodic=False)
-
-    unperturbed_guess_fpath = os.path.join(
-        study.config['results_path'],
-        'guess', subject.name, 
-        'unperturbed_guess_mesh35_scale1.sto')
-    trial.add_task(
-        tasks.TaskMocoUnperturbedWalkingGuess,
-        initial_time, final_time, mesh_interval=0.035, 
-        walking_speed=study.walking_speed,
-        guess_fpath=unperturbed_guess_fpath,
-        costs_enabled=True,
-        periodic=True)
-
-    unperturbed_guess_fpath = os.path.join(
-        study.config['results_path'],
-        'guess', subject.name, 
-        'unperturbed_guess_mesh35_scale1_periodic.sto')
-    trial.add_task(
-        tasks.TaskMocoUnperturbedWalkingGuess,
-        initial_time, final_time, mesh_interval=0.020, 
-        walking_speed=study.walking_speed,
-        guess_fpath=unperturbed_guess_fpath,
-        costs_enabled=True,
-        periodic=True)
-
-    # unperturbed_guess_fpath = os.path.join(
-    #     study.config['results_path'],
-    #     'guess', subject.name, 
-    #     'unperturbed_guess_mesh20_scale1_periodic.sto')
+    # Unperturbed walking
+    # -------------------
     unperturbed_guess_fpath = os.path.join(
         study.config['results_path'],
         'unperturbed', subject.name, 
@@ -154,62 +62,64 @@ def generate_unperturbed_tasks(study, subject, trial,
         initial_time, final_time, 
         mesh_interval=0.01, 
         walking_speed=study.walking_speed,
-        guess_fpath=unperturbed_guess_fpath,
+        guess_fpath=guess_fpath,
         periodic=True)
 
-
-    trial.add_task(
-        tasks.TaskMocoUnperturbedWalking,
-        initial_time, final_time, 
-        mesh_interval=0.01, 
-        walking_speed=study.walking_speed,
-        guess_fpath=unperturbed_guess_fpath,
-        periodic=True,
-        lumbar_stiffness=0.1)
-    trial.add_task(
-        tasks.TaskMocoUnperturbedWalking,
-        initial_time, final_time, 
-        mesh_interval=0.01, 
-        walking_speed=study.walking_speed,
-        guess_fpath=unperturbed_guess_fpath,
-        periodic=True,
-        lumbar_stiffness=10.0)
-    trial.add_task(
-        tasks.TaskMocoUnperturbedWalking,
-        initial_time, final_time, 
-        mesh_interval=0.01, 
-        walking_speed=study.walking_speed,
-        guess_fpath=unperturbed_guess_fpath,
-        periodic=True,
-        lumbar_stiffness=100.0)
+    # Unperturbed walking w/ different lumbar stiffnesses
+    # ---------------------------------------------------
+    if subject.name == 'subject01':
+        for lumbar_stiffness in study.lumbar_stiffnesses:
+            if lumbar_stiffness == 1.0: continue
+            trial.add_task(
+                tasks.TaskMocoUnperturbedWalking,
+                initial_time, final_time, 
+                mesh_interval=0.01, 
+                walking_speed=study.walking_speed,
+                guess_fpath=unperturbed_guess_fpath,
+                periodic=True,
+                lumbar_stiffness=lumbar_stiffness)
 
 def generate_sensitivity_tasks(study, subject, trial,
         initial_time, final_time):
 
-    initial_guess_fpath = os.path.join(
+    # Create "randomized" guess
+    # -------------------------
+    guess_fpath = os.path.join(
         study.config['results_path'],
         'unperturbed', subject.name, 
         'unperturbed.sto')
-
-    guess_fpath = initial_guess_fpath
-    for mesh in [0.05, 0.04, 0.03, 0.02, 0.01]:
-        trial.add_task(
+    trial.add_task(
             tasks.TaskMocoSensitivityAnalysis,
             initial_time, final_time,
             guess_fpath=guess_fpath, 
-            mesh_interval=mesh,
-            tolerance=1e-1, 
+            mesh_interval=0.04,
+            tolerance=1e3, 
             walking_speed=study.walking_speed,
-            mesh_or_tol_analysis='mesh')
-        suffix = f'mesh{int(1000*mesh)}_tol1000'
-        label = f'unperturbed_sensitivity_{suffix}_mesh'
-        guess_fpath = os.path.join(
+            implicit_tendon_dynamics=True,
+            randomize_guess=True)
+
+    guess_fpath = os.path.join(
             study.config['results_path'], 'sensitivity',
-            subject.name, suffix, 
-            f'{label}.sto')
-       
-    guess_fpath = initial_guess_fpath
-    for tol in [1e1, 1e0, 1e-1, 1e-2, 1e-3]:
+            subject.name, 'tol1000.0', 
+            f'sensitivity_tol1000.0.sto')
+    trial.add_task(
+            tasks.TaskMocoSensitivityAnalysis,
+            initial_time, final_time,
+            guess_fpath=guess_fpath, 
+            mesh_interval=0.01,
+            tolerance=1e2, 
+            walking_speed=study.walking_speed,
+            implicit_tendon_dynamics=True,
+            randomize_guess=True)
+
+    # Sensitivity analysis
+    # --------------------
+    guess_fpath = os.path.join(
+            study.config['results_path'], 'sensitivity',
+            subject.name, 'tol100.0', 
+            f'sensitivity_tol100.0.sto')
+    for tol in [1e1, 1e0, 1e-1, 1e-2, 1e-3, 1e-4]:
+        randomize_guess = True if tol == 1e1 else False
         trial.add_task(
             tasks.TaskMocoSensitivityAnalysis,
             initial_time, final_time,
@@ -217,21 +127,14 @@ def generate_sensitivity_tasks(study, subject, trial,
             mesh_interval=0.01,
             tolerance=tol, 
             walking_speed=study.walking_speed,
-            mesh_or_tol_analysis='tol')
-        suffix = f'mesh10_tol{int(1e4*tol)}'
-        label = f'unperturbed_sensitivity_{suffix}_tol'
+            randomize_guess=randomize_guess)
         guess_fpath = os.path.join(
             study.config['results_path'], 'sensitivity',
-            subject.name, suffix, 
-            f'{label}.sto')
+            subject.name, f'tol{tol}', f'sensitivity_tol{tol}.sto')
 
 def generate_perturbed_tasks(study, subject, trial, 
         initial_time, final_time, right_strikes, 
         left_strikes):
-
-    unperturbed_fpath = os.path.join(
-            study.config['results_path'], 'unperturbed', 
-            subject.name, 'unperturbed.sto')
 
     for time in study.times:
         for torque in study.torques:
@@ -241,15 +144,30 @@ def generate_perturbed_tasks(study, subject, trial,
                                      study.rise / 100.0, 
                                      study.fall / 100.0]
                 subtalar_peak_torque = subtalar / 100.0
+                # for lumbar_stiffness in study.lumbar_stiffnesses:
+                #     if (not lumbar_stiffness == 1.0) and (not subject.name == 'subject01'): continue
+                #     trial.add_task(
+                #         tasks.TaskMocoPerturbedWalking,
+                #         initial_time, final_time, right_strikes, left_strikes,
+                #         torque_parameters=torque_parameters,
+                #         walking_speed=study.walking_speed,
+                #         side='right',
+                #         subtalar_torque_perturbation=bool(subtalar),
+                #         subtalar_peak_torque=subtalar_peak_torque,
+                #         lumbar_stiffness=lumbar_stiffness)
+                #     trial.add_task(
+                #         tasks.TaskMocoPerturbedWalkingPost,
+                #         trial.tasks[-1])
+
                 trial.add_task(
-                    tasks.TaskMocoPerturbedWalking,
-                    initial_time, final_time, right_strikes, left_strikes,
-                    unperturbed_fpath=unperturbed_fpath,
-                    torque_parameters=torque_parameters,
-                    walking_speed=study.walking_speed,
-                    side='right',
-                    subtalar_torque_perturbation=bool(subtalar),
-                    subtalar_peak_torque=subtalar_peak_torque)
-                # trial.add_task(
-                #     tasks.TaskMocoPerturbedWalkingPost,
-                #     trial.tasks[-1])
+                        tasks.TaskMocoPerturbedWalking,
+                        initial_time, final_time, right_strikes, left_strikes,
+                        torque_parameters=torque_parameters,
+                        walking_speed=study.walking_speed,
+                        side='right',
+                        subtalar_torque_perturbation=bool(subtalar),
+                        subtalar_peak_torque=subtalar_peak_torque,
+                        lumbar_stiffness=1.0)
+                trial.add_task(
+                        tasks.TaskMocoPerturbedWalkingPost,
+                        trial.tasks[-1])

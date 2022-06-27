@@ -27,7 +27,9 @@ class TrackingConfig:
                  periodic_actuators=True,
                  periodic_values=True, 
                  periodic_speeds=True,
-                 lumbar_stiffness=1.0):
+                 lumbar_stiffness=1.0,
+                 randomize_guess=False,
+                 create_and_insert_guess=False):
 
         # Base arguments
         self.name = name
@@ -56,11 +58,23 @@ class TrackingConfig:
         # lumbar stiffness scaling
         self.lumbar_stiffness = lumbar_stiffness
 
+        # Randomize guess
+        self.randomize_guess = randomize_guess
+
+        # Enable this flag if the provided guess doesn't
+        # exactly match the current MocoProblem, but you 
+        # would like to use information that does match
+        # anyway.
+        self.create_and_insert_guess = create_and_insert_guess
+
 class TrackingProblem(Result):
     def __init__(self, root_dir, result_fpath, model_fpath, coordinates_fpath, 
             coordinates_std_fpath, extloads_fpath, grf_fpath, emg_fpath, 
             initial_time, final_time, cycles, right_strikes, left_strikes, 
-            mesh_interval, walking_speed, configs):
+            mesh_interval, convergence_tolerance, constraint_tolerance, 
+            walking_speed, configs,
+            implicit_multibody_dynamics=False,
+            implicit_tendon_dynamics=False):
         super(TrackingProblem, self).__init__()
         self.root_dir = root_dir
         self.result_fpath = result_fpath
@@ -75,9 +89,13 @@ class TrackingProblem(Result):
         self.right_strikes = right_strikes
         self.left_strikes = left_strikes
         self.mesh_interval = mesh_interval
+        self.convergence_tolerance = convergence_tolerance
+        self.constraint_tolerance = constraint_tolerance
         self.walking_speed = walking_speed
         self.emg_fpath = emg_fpath
         self.configs = configs
+        self.implicit_multibody_dynamics = implicit_multibody_dynamics
+        self.implicit_tendon_dynamics = implicit_tendon_dynamics
 
     def create_torso_tracking_reference(self, config):
         modelProcessor = self.create_model_processor(config)
@@ -256,9 +274,9 @@ class TrackingProblem(Result):
         # Set state bounds. 
         # -----------------
         speedBounds = [-20.0, 20.0]
-        muscBounds = [0.001, 1.0]
+        muscBounds = [0.01, 1.0]
         torqueBounds = [-1.0, 1.0]
-        tendonBounds = [0.001, 1.8]
+        tendonBounds = [0.01, 1.8]
         problem.setStateInfoPattern('/jointset/.*/speed', speedBounds, [], [])
         problem.setControlInfoPattern('/forceset/.*', muscBounds, [], [])
         problem.setControlInfoPattern('/forceset/torque.*', torqueBounds, [], [])
@@ -407,11 +425,16 @@ class TrackingProblem(Result):
         # --------------------
         solver = osim.MocoCasADiSolver.safeDownCast(study.updSolver())
         solver.resetProblem(problem)
-        solver.set_optim_constraint_tolerance(1e-4)
-        solver.set_optim_convergence_tolerance(1e-2)
+        solver.set_optim_constraint_tolerance(self.constraint_tolerance)
+        solver.set_optim_convergence_tolerance(self.convergence_tolerance)
         solver.set_num_mesh_intervals(
             int(np.round((self.final_time - self.initial_time) / self.mesh_interval)))
-        solver.set_multibody_dynamics_mode('explicit')
+        if self.implicit_multibody_dynamics:
+            solver.set_multibody_dynamics_mode('implicit')
+            solver.set_minimize_implicit_multibody_accelerations(True)
+            solver.set_implicit_multibody_accelerations_weight(1e6)
+        else:
+            solver.set_multibody_dynamics_mode('explicit')
         solver.set_minimize_implicit_auxiliary_derivatives(
             config.effort_enabled)
         solver.set_implicit_auxiliary_derivatives_weight(
@@ -426,39 +449,34 @@ class TrackingProblem(Result):
         # Set the guess
         # -------------
         if config.guess: 
-            # if config.weld_lumbar_joint:
-            #     prevSol = osim.MocoTrajectory(config.guess)
 
-            #     statesTable = prevSol.exportToStatesTable()
-            #     stateLabels = statesTable.getColumnLabels()
-            #     for label in stateLabels:
-            #         if 'lumbar' in label:
-            #             statesTable.removeColumn(label)
+            if config.create_and_insert_guess:
+                prevSol = osim.MocoTrajectory(config.guess)
+                guess = solver.createGuess()
 
-            #     controlsTable = prevSol.exportToControlsTable()
-            #     controlLabels = controlsTable.getColumnLabels()
-            #     for label in controlLabels:
-            #         if 'lumbar' in label:
-            #             controlsTable.removeColumn(label)
+                statesTable = prevSol.exportToStatesTable()
+                controlsTable = prevSol.exportToControlsTable()
 
-            #     guess = solver.createGuess()
-            #     guess.insertStatesTrajectory(statesTable)
-            #     guess.insertControlsTrajectory(controlsTable)
+                guess.insertStatesTrajectory(statesTable, True)
+                guess.insertControlsTrajectory(controlsTable, True)
 
-            #     for imult in np.arange(len(prevSol.getMultiplierNames())):
-            #         prevName = prevSol.getMultiplierNames()[imult]
-            #         guessName = guess.getMultiplierNames()[imult]
-            #         prevMultiplier = prevSol.getMultiplierMat(prevName)
-            #         multiplier = osim.Vector(len(prevMultiplier), 0.0)
-            #         for i in np.arange(len(prevMultiplier)):
-            #             multiplier[int(i)] = prevMultiplier[i]
+                for imult in np.arange(len(prevSol.getMultiplierNames())):
+                    prevName = prevSol.getMultiplierNames()[imult]
+                    guessName = guess.getMultiplierNames()[imult]
+                    prevMultiplier = prevSol.getMultiplierMat(prevName)
+                    multiplier = osim.Vector(len(prevMultiplier), 0.0)
+                    for i in np.arange(len(prevMultiplier)):
+                        multiplier[int(i)] = prevMultiplier[i]
 
-            #         guess.setMultiplier(guessName, multiplier)
+                    guess.setMultiplier(guessName, multiplier)
 
-            #     solver.setGuess(guess)
+            else:
+                guess = osim.MocoTrajectory(config.guess)
 
-            # else:
-            guess = osim.MocoTrajectory(config.guess)
+            if config.randomize_guess:
+                guess.randomizeAdd()
+
+
             solver.setGuess(guess)
         else:
             # If no guess provided, use the experimental states 
