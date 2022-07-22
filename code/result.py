@@ -101,6 +101,23 @@ class Result(ABC):
             sgf.setViscosity(2.0)
             model.addForce(sgf)
 
+        if self.reserve_strength:
+            coordNames = ['pelvis_tx', 'pelvis_ty', 'pelvis_tz',
+                           'pelvis_list', 'pelvis_tilt', 'pelvis_rotation',
+                           'hip_adduction_r', 'hip_rotation_r', 'hip_flexion_r',
+                           'hip_adduction_l', 'hip_rotation_l', 'hip_flexion_l',
+                           'knee_angle_r', 'ankle_angle_r', 'subtalar_angle_r',
+                           'knee_angle_l', 'ankle_angle_l', 'subtalar_angle_l',
+                           'mtp_angle_r', 'mtp_angle_l']
+            for coordName in coordNames:
+                actu = osim.ActivationCoordinateActuator()
+                actu.set_coordinate(coordName)
+                actu.setName(f'reserve_{coordName}')
+                actu.setOptimalForce(self.reserve_strength)
+                actu.setMinControl(-1.0)
+                actu.setMaxControl(1.0)
+                model.addForce(actu)
+
         model.finalizeConnections()
 
         modelProcessor = osim.ModelProcessor(model)
@@ -842,6 +859,7 @@ class Result(ABC):
         fig.tight_layout()
         fig.savefig(os.path.join(self.result_fpath, 
             'center_of_mass.png'), dpi=600)
+        plt.close()
 
 
     def create_pdf_report(self, models, configs):

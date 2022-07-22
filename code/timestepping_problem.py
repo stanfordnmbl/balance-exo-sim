@@ -28,7 +28,8 @@ class TimeSteppingConfig:
                  ankle_torque_parameters=None,
                  subtalar_torque_perturbation=False,
                  subtalar_peak_torque=0,
-                 lumbar_stiffness=1.0):
+                 lumbar_stiffness=1.0,
+                 use_coordinate_actuators=False):
 
         # Base arguments
         self.name = name
@@ -47,11 +48,14 @@ class TimeSteppingConfig:
         # Lumbar stiffness scaling
         self.lumbar_stiffness = lumbar_stiffness
 
+        # Replace muscles with path actuators
+        self.use_coordinate_actuators = use_coordinate_actuators
+
 class TimeSteppingProblem(Result):
     def __init__(self, root_dir, result_fpath, model_fpath, coordinates_fpath, 
-            coordinates_std_fpath, extloads_fpath, grf_fpath, emg_fpath, 
-            initial_time, final_time, cycles, right_strikes, left_strikes, 
-            mesh_interval, walking_speed, configs):
+            coordinates_std_fpath, extloads_fpath, grf_fpath, emg_fpath,
+            muscle_mechanics_fpath, initial_time, final_time, cycles, 
+            right_strikes, left_strikes, mesh_interval, walking_speed, configs):
         super(TimeSteppingProblem, self).__init__()
         self.root_dir = root_dir
         self.result_fpath = result_fpath
@@ -68,12 +72,56 @@ class TimeSteppingProblem(Result):
         self.mesh_interval = mesh_interval
         self.walking_speed = walking_speed
         self.emg_fpath = emg_fpath
+        self.muscle_mechanics_fpath = muscle_mechanics_fpath
         self.configs = configs
+        self.reserve_strength = 0
+        self.implicit_multibody_dynamics = False
         self.implicit_tendon_dynamics = False
 
     def get_perturbation_torque_path(self):
         return os.path.join(self.result_fpath,
                     f'ankle_perturbation_curve.sto')
+
+    def create_trajectory_from_tables(self, states, controls):
+
+        # Assemble the states matrix
+        statesMatrix = osim.Matrix(states.getNumRows(), states.getNumColumns())
+        for irow in np.arange(states.getNumRows()):
+            rowVec = states.getRowAtIndex(int(irow))
+            for icol in np.arange(states.getNumColumns()):
+                statesMatrix.set(int(irow), int(icol), rowVec[int(icol)])
+
+        # Assemble the time vector
+        statesTimes = states.getIndependentColumn()
+        timeVec = osim.Vector(int(states.getNumRows()), 0.0)
+        for itime in np.arange(len(statesTimes)):
+            timeVec[int(itime)] = statesTimes[int(itime)]
+
+        # Assemble the controls matrix
+        controlSplines = osim.GCVSplineSet(controls)
+        controlsMatrix = osim.Matrix(states.getNumRows(), controls.getNumColumns())
+        time = osim.Vector(1, 0.0)
+        for icol in np.arange(controls.getNumColumns()):
+            controlName = controls.getColumnLabel(int(icol))
+            controlSpline = controlSplines.get(controlName)
+            for irow in np.arange(states.getNumRows()):
+                time[0] = timeVec[int(irow)]
+                value = controlSpline.calcValue(time)
+                controlsMatrix.set(int(irow), int(icol), value)
+
+        # Assemble the MocoTrajectory
+        trajectory = osim.MocoTrajectory(
+            timeVec,
+            states.getColumnLabels(), 
+            controls.getColumnLabels(), 
+            [], [],
+            statesMatrix,
+            controlsMatrix,
+            osim.Matrix(),
+            osim.RowVector())
+
+        return trajectory
+
 
     def create_model_processor(self, config):
 
@@ -131,10 +179,8 @@ class TimeSteppingProblem(Result):
             peak_time = parameters[1] * duration + initial_time
             rise_time = parameters[2] * duration
             fall_time = parameters[3] * duration
-            pgc10 = 0.1 * duration
             config.ankle_torque_perturbation_start = peak_time - rise_time
             config.ankle_torque_perturbation_end = peak_time + fall_time
-            # config.ankle_torque_perturbation_end = self.right_strikes[1]
 
             xr, yr = get_torque_curve(initial_time, duration, parameters)
             for x, y in zip(xr, yr):
@@ -183,33 +229,120 @@ class TimeSteppingProblem(Result):
 
             model.finalizeConnections()
 
+        if config.use_coordinate_actuators:
+            coordNames = ['hip_adduction_r', 'hip_rotation_r', 'hip_flexion_r',
+                          'hip_adduction_l', 'hip_rotation_l', 'hip_flexion_l',
+                          'knee_angle_r', 'ankle_angle_r', 'subtalar_angle_r',
+                          'knee_angle_l', 'ankle_angle_l', 'subtalar_angle_l',
+                          'mtp_angle_r', 'mtp_angle_l']
+            for coordName in coordNames:
+                actu = osim.CoordinateActuator()
+                actu.set_coordinate(coordName)
+                actu.setName(f'torque_{coordName}')
+                actu.setOptimalForce(1.0)
+                actu.setMinControl(-1000.0)
+                actu.setMaxControl(1000.0)
+                model.addForce(actu)
+
         modelProcessor = osim.ModelProcessor(model)
+        if config.use_coordinate_actuators:
+            modelProcessor.append(osim.ModOpRemoveMuscles())
+
+            # modelProcessor.append(osim.ModOpReplaceMusclesWithPathActuators())
+            # model = modelProcessor.process()
+            # model.initSystem()
+            # actuSet = model.updActuators()
+            # for iactu in range(actuSet.getSize()):
+            #     actu = actuSet.get(iactu)
+            #     actuName = actu.getName()
+            #     if not 'lumbar' in actuName and not 'perturbation' in actuName:
+            #         pathAct = osim.PathActuator.safeDownCast(actu)
+            #         pathAct.setOptimalForce(1.0)
+            #         pathAct.setMinControl(0)
+            #         pathAct.setMaxControl(10000.0)
+
+
+            # model.finalizeConnections()
+            # modelProcessor = osim.ModelProcessor(model)
+
         osim.Logger.setLevelString('info')
 
         return modelProcessor
 
     def run_timestepping_problem(self, config):
 
-        # Create the model for this tracking config
-        # -----------------------------------------
+        # Create the model
+        # ----------------
         modelProcessor = self.create_model_processor(config)        
         model = modelProcessor.process()
         model.initSystem()
 
-        guessTable = osim.TimeSeriesTable(config.unperturbed_fpath)
-        initial_index = guessTable.getNearestRowIndexForTime(
-            config.ankle_torque_perturbation_start)
-        final_index = guessTable.getNearestRowIndexForTime(
-            config.ankle_torque_perturbation_end)-1
-
+        # Load the unperturbed walking trajectory
+        # ---------------------------------------
         trajectory = osim.MocoTrajectory(config.unperturbed_fpath)
+
+        if config.use_coordinate_actuators:
+            controls = trajectory.exportToControlsTable()
+            controlLabels = controls.getColumnLabels()
+            for label in controlLabels:
+                if not '/forceset/torque_' in label:
+                    controls.removeColumn(label)
+
+            states = trajectory.exportToStatesTable()
+            stateLabels = states.getColumnLabels()
+            for label in stateLabels:
+                if '/normalized_tendon_force' in label:
+                    states.removeColumn(label)
+
+                elif ((not '/forceset/torque' in label) and 
+                      ('/activation' in label)):
+                    states.removeColumn(label)
+
+            unperturbed_dir = os.path.split(config.unperturbed_fpath)[0]
+            muscleMoments = osim.TimeSeriesTable(
+                os.path.join(unperturbed_dir, 'muscle_moments_unperturbed.sto'))
+            for label in muscleMoments.getColumnLabels():
+                    controls.appendColumn(label, 
+                        muscleMoments.getDependentColumn(label))
+
+            # unperturbed_dir = os.path.split(config.unperturbed_fpath)[0]
+            # muscleMoments = osim.TimeSeriesTable(
+            #     os.path.join(unperturbed_dir, 'muscle_mechanics_unperturbed.sto'))
+            # forceSet = model.getForceSet()
+            # for label in muscleMoments.getColumnLabels():
+            #     if '|tendon_force' in label:
+            #         # actu = osim.PathActuator.safeDownCast(
+            #         #     forceSet.get(label[10:-13]))
+            #         # optimalForce = actu.getOptimalForce()
+            #         # tendonForce = muscleMoments.getDependentColumn(label)
+            #         # control = osim.Vector(tendonForce.size(), 0.0)
+            #         # for ic in range(tendonForce.size()):
+            #         #     control[ic] = tendonForce[ic] / optimalForce
+            #         # controls.appendColumn(label[:-13], control)
+
+            #         controls.appendColumn(label[:-13], 
+            #             muscleMoments.getDependentColumn(label))
+
+            trajectory = self.create_trajectory_from_tables(states, controls)
+
+        # Trim the trajectory to the ankle perturbation window
+        # ----------------------------------------------------
+        unperturbedTable = osim.TimeSeriesTable(config.unperturbed_fpath)
+        initial_index = unperturbedTable.getNearestRowIndexForTime(
+            config.ankle_torque_perturbation_start)
+        final_index = unperturbedTable.getNearestRowIndexForTime(
+            config.ankle_torque_perturbation_end)-1
         trajectory.trim(int(initial_index), int(final_index))
 
-        perturbTable = osim.TimeSeriesTable(self.get_perturbation_torque_path())
+        # Insert the torque perturbation control to the trajectory
+        # -------------------------------------------------------
+        perturbTable = osim.TimeSeriesTable(
+            self.get_perturbation_torque_path())
         trajectory.insertControlsTrajectory(perturbTable)
 
-        osim.prescribeControlsToModel(trajectory, model, 
-            'GCVSpline')
+        # Add the PrescribedController to the model
+        # -----------------------------------------
+        osim.prescribeControlsToModel(trajectory, model, 'GCVSpline')
 
         # Add states reporter to the model.
         # ---------------------------------
@@ -231,7 +364,7 @@ class TimeSteppingProblem(Result):
         manager.setIntegratorMinimumStepSize(1e-6)
         manager.setIntegratorMaximumStepSize(1e-2)
         manager.initialize(statesTraj.get(0))
-        state = manager.integrate(time[time.size() - 1])
+        manager.integrate(time[time.size() - 1])
 
         # Export results from states reporter to a table.
         # -----------------------------------------------
@@ -240,78 +373,71 @@ class TimeSteppingProblem(Result):
         states = statesTrajRep.getStates().exportToTable(model)
         controls = trajectory.exportToControlsTable()
 
-        # Convert to MocoTrajectory
-        statesMatrix = osim.Matrix(states.getNumRows(), states.getNumColumns())
-        for irow in np.arange(states.getNumRows()):
-            rowVec = states.getRowAtIndex(int(irow))
-            for icol in np.arange(states.getNumColumns()):
-                statesMatrix.set(int(irow), int(icol), rowVec[int(icol)])
+        # Convert the time-stepping trajectory to a MocoTrajectory
+        # --------------------------------------------------------
+        solution = self.create_trajectory_from_tables(states, controls)
 
-        statesTimes = states.getIndependentColumn()
-        timeVec = osim.Vector(int(states.getNumRows()), 0.0)
-        for itime in np.arange(len(statesTimes)):
-            timeVec[int(itime)] = statesTimes[int(itime)]
-
-        controlSplines = osim.GCVSplineSet(controls)
-        controlsMatrix = osim.Matrix(states.getNumRows(), controls.getNumColumns())
-        time = osim.Vector(1, 0.0)
-        for icol in np.arange(controls.getNumColumns()):
-            controlName = controls.getColumnLabel(int(icol))
-            controlSpline = controlSplines.get(controlName)
-            for irow in np.arange(states.getNumRows()):
-                time[0] = timeVec[int(irow)]
-                value = controlSpline.calcValue(time)
-                controlsMatrix.set(int(irow), int(icol), value)
-
-        solution = osim.MocoTrajectory(
-            timeVec,
-            states.getColumnLabels(), 
-            controls.getColumnLabels(), 
-            [], [],
-            statesMatrix,
-            controlsMatrix,
-            osim.Matrix(),
-            osim.RowVector())
-
+        # Save the perturbed trajectory to a file
+        # ---------------------------------------
         solution.write(self.get_solution_path(f'{config.name}_half'))
+
+        # Add the unperturbed states to the full trajectory
+        # -------------------------------------------------
+
+        # Load the perturbed solution
         solutionTable = osim.TimeSeriesTable(
             self.get_solution_path(f'{config.name}_half'))
         solutionTime = solutionTable.getIndependentColumn()
         solutionLabels = solutionTable.getColumnLabels()
 
-        guessTable = osim.TimeSeriesTable(config.unperturbed_fpath)
-        guessTime = guessTable.getIndependentColumn() 
+        # Load the unperturbed solution
+        unperturbedTable = osim.TimeSeriesTable(config.unperturbed_fpath)
+        unperturbedTime = unperturbedTable.getIndependentColumn() 
 
+        # Add the torque perturbation to the solution trajectory
         perturbSplines = osim.GCVSplineSet(perturbTable)
         for label in perturbTable.getColumnLabels():
             perturbSpline = perturbSplines.get(label)
-            perturbCol = osim.Vector(len(guessTime), 0.0)
+            perturbCol = osim.Vector(len(unperturbedTime), 0.0)
             time = osim.Vector(1, 0.0)
-            for itime in np.arange(len(guessTime)):
-                time[0] = guessTime[itime]
+            for itime in np.arange(len(unperturbedTime)):
+                time[0] = unperturbedTime[itime]
                 perturbCol[int(itime)] = perturbSpline.calcValue(time)
+            unperturbedTable.appendColumn(label, perturbCol)
 
-            guessTable.appendColumn(label, perturbCol)
+        if config.use_coordinate_actuators:
+            for label in muscleMoments.getColumnLabels():
+                # if '|tendon_force' in label:
+                #     unperturbedTable.removeColumn(label[:-13])
+                unperturbedTable.appendColumn(label, 
+                    muscleMoments.getDependentColumn(label))
 
-        guessLabels = guessTable.getColumnLabels()
+        # If a label from the unperturbed trajectory isn't
+        # contained in the perturbed time-stepping solution,
+        # remove it
+        guessLabels = unperturbedTable.getColumnLabels()
         for label in guessLabels:
             if not label in solutionLabels:
-                guessTable.removeColumn(label)
+                unperturbedTable.removeColumn(label)
 
+        # Populate the full solution table with the unperturbed 
+        # states up until the beginning of the perturbation
         fullSolutionTable = osim.TimeSeriesTable()
         for irow in np.arange(initial_index):
             fullSolutionTable.appendRow(
-                guessTime[int(irow)],
-                guessTable.getRowAtIndex(int(irow)))
+                unperturbedTime[int(irow)],
+                unperturbedTable.getRowAtIndex(int(irow)))
 
+        # Append the perturbation solution rows to the full
+        # solution trajectory
         for irow in np.arange(len(solutionTime)):
             solutionRow = solutionTable.getRowAtIndex(int(irow))
             solutionTime = solutionTable.getIndependentColumn()
             rowToAppend = osim.RowVector(
-                int(guessTable.getNumColumns()), 0.0)
+                int(unperturbedTable.getNumColumns()), 0.0)
 
-            for iguess in np.arange(guessTable.getNumColumns()):
-                guessLabel = guessTable.getColumnLabel(int(iguess))
+            for iguess in np.arange(unperturbedTable.getNumColumns()):
+                guessLabel = unperturbedTable.getColumnLabel(int(iguess))
                 for isol in np.arange(solutionTable.getNumColumns()):
                     solutionLabel = solutionTable.getColumnLabel(int(isol))
                     if guessLabel == solutionLabel:
@@ -320,7 +446,8 @@ class TimeSteppingProblem(Result):
             fullSolutionTable.appendRow(
                 solutionTime[int(irow)], rowToAppend)
 
-        fullSolutionTable.setColumnLabels(guessTable.getColumnLabels())
+        # Update the column labels and meta data 
+        fullSolutionTable.setColumnLabels(unperturbedTable.getColumnLabels())
         keys = np.array(solutionTable.getTableMetaDataKeys())
         for key in keys:
             if 'header' in key: 
@@ -328,6 +455,8 @@ class TimeSteppingProblem(Result):
             fullSolutionTable.addTableMetaDataString(key, 
                 solutionTable.getTableMetaDataAsString(key))    
 
+        # Save the full trajectory to a file
+        # ----------------------------------
         osim.STOFileAdapter.write(fullSolutionTable, 
             self.get_solution_path(config.name))
 
@@ -370,16 +499,17 @@ class TimeSteppingProblem(Result):
         # ---------------------
         self.plot_joint_kinematics(models)
 
-    
         # Plot muscle activations
         # -----------------------
-        self.plot_muscle_activations(models)
-
+        if not self.configs[-1].use_coordinate_actuators:
+            self.plot_muscle_activations(models)
 
         # Calculate muscle outputs and plot joint moment breakdown
         # --------------------------------------------------------
         muscle_mechanics = dict()
         for i, config in enumerate(self.configs):
+            if config.use_coordinate_actuators: continue
+
             # Load solution
             solution = osim.MocoTrajectory(self.get_solution_path(config.name))
 
@@ -405,7 +535,8 @@ class TimeSteppingProblem(Result):
 
         # Plot muscle mechanics
         # ---------------------
-        self.plot_muscle_mechanics(muscle_mechanics, 'normalized_fiber_length')
+        if not self.configs[-1].use_coordinate_actuators:
+            self.plot_muscle_mechanics(muscle_mechanics, 'normalized_fiber_length')
 
         # Plot center of mass trajectories
         # --------------------------------

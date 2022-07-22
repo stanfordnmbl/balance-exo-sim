@@ -23,16 +23,17 @@ def generate_unperturbed_tasks(study, subject, trial,
     # Initial guess creation
     # ----------------------
     guess_fpath = ''
-    scales             = [0.01, 0.1, 1.0]
+    scales             = [0.001, 0.1, 1.0]
     mesh_intervals     = [0.05, 0.04, 0.02]
-    implicit_multibody = [True, False, False]
+    reserves           = [1000, 100, 0]
+    implicit_multibody = [True, True, False]
     implicit_tendons   = [True, True, False]
     periodic_flags     = [False, False, True]
     create_and_insert  = [False, False, True]
-    zipped = zip(scales, mesh_intervals, 
+    zipped = zip(scales, mesh_intervals, reserves,
                  implicit_multibody, implicit_tendons, 
                  periodic_flags, create_and_insert)
-    for scale, mesh, imp_multi, imp_ten, periodic, candi in zipped:
+    for scale, mesh, reserve, imp_multi, imp_ten, periodic, candi in zipped:
         trial.add_task(
             tasks.TaskMocoUnperturbedWalkingGuess,
             initial_time, final_time, 
@@ -40,12 +41,13 @@ def generate_unperturbed_tasks(study, subject, trial,
             walking_speed=study.walking_speed,
             periodic=periodic,
             cost_scale=scale,
+            reserve_strength=reserve,
             implicit_multibody_dynamics=imp_multi,
             implicit_tendon_dynamics=imp_ten,
             guess_fpath=guess_fpath,
             create_and_insert_guess=candi)
 
-        guess_name = f'unperturbed_guess_mesh{mesh}_scale{scale}'
+        guess_name = f'unperturbed_guess_mesh{mesh}_scale{scale}_reserve{reserve}'
         if periodic: guess_name += '_periodic'
         guess_fpath = os.path.join(
             study.config['results_path'], 'guess', subject.name, 
@@ -62,7 +64,7 @@ def generate_unperturbed_tasks(study, subject, trial,
         initial_time, final_time, 
         mesh_interval=0.01, 
         walking_speed=study.walking_speed,
-        guess_fpath=guess_fpath,
+        guess_fpath=unperturbed_guess_fpath,
         periodic=True)
 
     # Unperturbed walking w/ different lumbar stiffnesses
@@ -159,15 +161,18 @@ def generate_perturbed_tasks(study, subject, trial,
                 #         tasks.TaskMocoPerturbedWalkingPost,
                 #         trial.tasks[-1])
 
-                trial.add_task(
-                        tasks.TaskMocoPerturbedWalking,
-                        initial_time, final_time, right_strikes, left_strikes,
-                        torque_parameters=torque_parameters,
-                        walking_speed=study.walking_speed,
-                        side='right',
-                        subtalar_torque_perturbation=bool(subtalar),
-                        subtalar_peak_torque=subtalar_peak_torque,
-                        lumbar_stiffness=1.0)
-                trial.add_task(
-                        tasks.TaskMocoPerturbedWalkingPost,
-                        trial.tasks[-1])
+                for coordact in [False, True]:
+                    trial.add_task(
+                            tasks.TaskMocoPerturbedWalking,
+                            initial_time, final_time, right_strikes, left_strikes,
+                            torque_parameters=torque_parameters,
+                            walking_speed=study.walking_speed,
+                            side='right',
+                            subtalar_torque_perturbation=bool(subtalar),
+                            subtalar_peak_torque=subtalar_peak_torque,
+                            lumbar_stiffness=1.0,
+                            use_coordinate_actuators=coordact)
+                    trial.add_task(
+                            tasks.TaskMocoPerturbedWalkingPost,
+                            trial.tasks[-1])
+

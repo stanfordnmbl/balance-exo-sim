@@ -41,12 +41,12 @@ class TrackingConfig:
 
         # Cost function weights
         self.control_weight = weights['control_weight']
-        self.metabolics_weight = weights['metabolics_weight']
         self.state_tracking_weight = weights['state_tracking_weight'] 
         self.grf_tracking_weight = weights['grf_tracking_weight'] 
         self.upright_torso_weight = weights['upright_torso_weight']        
         self.control_tracking_weight = weights['control_tracking_weight']
         self.aux_deriv_weight = weights['aux_deriv_weight'] 
+        self.acceleration_weight = weights['acceleration_weight']
 
         # Periodicity arguments
         self.periodic = periodic
@@ -73,6 +73,7 @@ class TrackingProblem(Result):
             initial_time, final_time, cycles, right_strikes, left_strikes, 
             mesh_interval, convergence_tolerance, constraint_tolerance, 
             walking_speed, configs,
+            reserve_strength=0,
             implicit_multibody_dynamics=False,
             implicit_tendon_dynamics=False):
         super(TrackingProblem, self).__init__()
@@ -94,6 +95,7 @@ class TrackingProblem(Result):
         self.walking_speed = walking_speed
         self.emg_fpath = emg_fpath
         self.configs = configs
+        self.reserve_strength = reserve_strength
         self.implicit_multibody_dynamics = implicit_multibody_dynamics
         self.implicit_tendon_dynamics = implicit_tendon_dynamics
 
@@ -220,6 +222,10 @@ class TrackingProblem(Result):
                             'lumbar' in name):
                         valueWeight = 0.0
                         speedWeight = 0.0
+
+                    elif ('ankle' in name):
+                        valueWeight = 10.0 / std
+                        speedWeight = 0.1 / std
 
                     elif ('beta' in name or 
                           'mtp' in name or 
@@ -432,7 +438,7 @@ class TrackingProblem(Result):
         if self.implicit_multibody_dynamics:
             solver.set_multibody_dynamics_mode('implicit')
             solver.set_minimize_implicit_multibody_accelerations(True)
-            solver.set_implicit_multibody_accelerations_weight(1e6)
+            solver.set_implicit_multibody_accelerations_weight(config.acceleration_weight)
         else:
             solver.set_multibody_dynamics_mode('explicit')
         solver.set_minimize_implicit_auxiliary_derivatives(
@@ -445,6 +451,7 @@ class TrackingProblem(Result):
         solver.set_parameters_require_initsystem(False)
         solver.set_optim_max_iterations(10000)
         solver.set_scale_variables_using_bounds(True)
+        solver.set_optim_finite_difference_scheme('forward')
 
         # Set the guess
         # -------------
@@ -456,26 +463,38 @@ class TrackingProblem(Result):
 
                 statesTable = prevSol.exportToStatesTable()
                 controlsTable = prevSol.exportToControlsTable()
+                stateLabels = statesTable.getColumnLabels()
+                controlLabels = controlsTable.getColumnLabels()
+
+                for label in stateLabels:
+                    if 'reserve' in label:
+                        statesTable.removeColumn(label)
+
+                for label in controlLabels:
+                    if 'reserve' in label:
+                        controlsTable.removeColumn(label)
+
+                # import pdb
+                # pdb.set_trace()
 
                 guess.insertStatesTrajectory(statesTable, True)
                 guess.insertControlsTrajectory(controlsTable, True)
 
-                for imult in np.arange(len(prevSol.getMultiplierNames())):
-                    prevName = prevSol.getMultiplierNames()[imult]
-                    guessName = guess.getMultiplierNames()[imult]
-                    prevMultiplier = prevSol.getMultiplierMat(prevName)
-                    multiplier = osim.Vector(len(prevMultiplier), 0.0)
-                    for i in np.arange(len(prevMultiplier)):
-                        multiplier[int(i)] = prevMultiplier[i]
+                # for imult in np.arange(len(prevSol.getMultiplierNames())):
+                #     prevName = prevSol.getMultiplierNames()[imult]
+                #     guessName = guess.getMultiplierNames()[imult]
+                #     prevMultiplier = prevSol.getMultiplierMat(prevName)
+                #     multiplier = osim.Vector(len(prevMultiplier), 0.0)
+                #     for i in np.arange(len(prevMultiplier)):
+                #         multiplier[int(i)] = prevMultiplier[i]
 
-                    guess.setMultiplier(guessName, multiplier)
+                #     guess.setMultiplier(guessName, multiplier)
 
             else:
                 guess = osim.MocoTrajectory(config.guess)
 
             if config.randomize_guess:
                 guess.randomizeAdd()
-
 
             solver.setGuess(guess)
         else:
@@ -563,6 +582,48 @@ class TrackingProblem(Result):
                                  f'joint_moment_breakdown_{config.name}.png')
             fig.savefig(fpath, dpi=600)
             plt.close('all')
+
+            # Muscle-generated moments
+            statesTraj = solution.exportToStatesTrajectory(models[i])
+            muscle_moments = osim.TimeSeriesTable()
+
+            coordSet = models[i].getCoordinateSet()
+            muscleSet = models[i].getMuscles()
+            numCoords = coordSet.getSize()
+            numMuscles = muscleSet.getSize()
+
+            for istate in range(statesTraj.getSize()):
+                state = statesTraj.get(istate)
+                time = state.getTime()
+                rowVec = osim.RowVector(numCoords, 0.0)
+
+                for icoord in range(numCoords):
+                    coord = coordSet.get(icoord)
+
+                    for imusc in range(numMuscles):
+                        muscle = muscleSet.get(imusc)
+                        tendon_force = muscle_mechanics[config.name].getDependentColumn(
+                            f'/forceset/{muscle.getName()}|tendon_force')[istate]
+                        moment_arm = muscle.computeMomentArm(state, coord)
+
+                        rowVec[icoord] = rowVec[icoord] + tendon_force * moment_arm
+
+                muscle_moments.appendRow(time, rowVec)
+
+            labels = osim.StdVectorString()
+            for icoord in range(numCoords):
+                coord = coordSet.get(icoord)
+                labels.append(f'/forceset/torque_{coord.getName()}')
+
+            muscle_moments.setColumnLabels(labels)
+
+            for label in labels:
+                if (('pelvis' in label) or ('lumbar' in label) or ('beta' in label)):
+                    muscle_moments.removeColumn(label)
+
+            fpath = os.path.join(self.result_fpath,
+                    f'muscle_moments_{config.name}.sto')
+            osim.STOFileAdapter.write(muscle_moments, fpath)
 
         # Plot muscle mechanics
         # ---------------------

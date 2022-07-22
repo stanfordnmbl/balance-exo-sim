@@ -28,6 +28,7 @@ plt.rc('lines', markeredgewidth=1)
 plt.rc('legend', fontsize=8)
 
 import osimpipeline as osp
+from osimpipeline import postprocessing as pp
 
 # This line is necessary for registering the tasks with python-doit.
 from vital_tasks import *
@@ -65,8 +66,7 @@ study.weights = {
     'upright_torso_weight':    1e2 * scale,
     'control_tracking_weight': 0 * scale, 
     'aux_deriv_weight':        1e5 * scale,
-    'metabolics_weight':       0 * scale,
-    'regularization_weight':   0 * scale,
+    'acceleration_weight':     1e2 * scale,
     }
 study.constraint_tolerance = 1e-4
 study.convergence_tolerance = 1e-2
@@ -118,42 +118,45 @@ subjects = [
             'subject01', 
             'subject02', 
             'subject04', 
-            # 'subject18', 
-            # 'subject19'
+            'subject18', 
+            'subject19'
             ]
 masses = [
           study.get_subject(1).mass,
           study.get_subject(2).mass,
           study.get_subject(4).mass,
-          # study.get_subject(18).mass,
-          # study.get_subject(19).mass
+          study.get_subject(18).mass,
+          study.get_subject(19).mass
           ]
+
+study.plot_torques = [0, 10, 10, 10, 0]
+
+plot_subtalars = list()
+plot_subtalars.append(study.subtalar_suffixes[0]) 
+plot_subtalars.extend(study.subtalar_suffixes)
+plot_subtalars.append(study.subtalar_suffixes[-1])
+study.plot_subtalars = plot_subtalars
+
+study.plot_colors = [pp.adjust_lightness('orange', amount=1.25),
+                     pp.adjust_lightness('saddlebrown', amount=1.25),
+                     'black',
+                     pp.adjust_lightness('navy', amount=1.5),
+                     pp.adjust_lightness('blue', amount=1.5)
+                    ]
+
 # study.add_task(TaskPlotSensitivityResults, subjects[:1])
 study.add_task(TaskPlotUnperturbedResults, subjects, masses,
     study.times, colors)
 
 # Analysis
 # --------
-study.add_task(TaskPlotCenterOfMass, subjects, [20, 30, 40, 50, 60], 
-    study.torques, study.rise, study.fall)
-study.add_task(TaskPlotCenterOfMass, subjects, [20], 
-    study.torques, study.rise, study.fall)
-study.add_task(TaskPlotCenterOfMass, subjects, [30], 
-    study.torques, study.rise, study.fall)
-study.add_task(TaskPlotCenterOfMass, subjects, [40], 
-    study.torques, study.rise, study.fall)
-study.add_task(TaskPlotCenterOfMass, subjects, [50], 
-    study.torques, study.rise, study.fall)
-study.add_task(TaskPlotCenterOfMass, subjects, [60], 
-    study.torques, study.rise, study.fall)
-
 study.add_task(TaskPlotInstantaneousCenterOfMass, subjects, 
     study.times, study.rise, study.fall)
 
 study.add_task(TaskPlotInstantaneousGroundReactions, subjects, 
     study.times, study.rise, study.fall)
 
-study.add_task(TaskPlotCenterOfMassVector, subjects, 
+study.add_task(TaskPlotCenterOfMassVector, subjects,
     study.times, study.rise, study.fall)
 
 study.add_task(TaskPlotGroundReactionBreakdown, subjects, 30, 0, -10, study.rise, study.fall)
@@ -166,6 +169,7 @@ study.add_task(TaskPlotGroundReactionBreakdown, subjects, 50, 10, -10, study.ris
 
 for time in study.times:
     study.add_task(TaskPlotGroundReactions, subjects, time, study.rise, study.fall)
+    study.add_task(TaskPlotCenterOfMass, subjects, time, study.rise, study.fall)
     study.add_task(TaskPlotBodyAccelerations, subjects, time, study.rise, study.fall)
 
 # for itorque, torque in enumerate(study.torques):
