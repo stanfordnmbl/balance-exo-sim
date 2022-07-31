@@ -1,27 +1,27 @@
 # Data pre-processing
 # ---------------
 # doit ankle_perturb_sim_copy_data
-# doit ankle_perturb_sim_copy_generic_model_files                              
+# doit ankle_perturb_sim_copy_generic_model_files
+# doit ankle_perturb_sim_apply_markerset_to_generic_model                              
 
 # Model scaling
 # -------------
-# doit subject*_scale_setup
-# doit subject*_scale
-# doit subject*_scale_max_force
+# doit subject01_scale_setup
+# doit subject01_scale
+doit subject*_scale_max_force
 
 # Inverse kinematics and inverse dynamics
 # --------------------------------------- 
-# doit subject*_adjust_scaled_model
-# doit subject*_walk2_update_ground_reaction_labels
-# doit subject*_walk2_filter_ground_reactions      
-# doit subject*_walk2_gait_landmarks 
-# doit subject*_walk2_ik_setup           
-# doit subject*_walk2_ik                                  
-# doit subject*_walk2_ik_post
-# doit subject*_walk2_id_setup    
-# doit subject*_walk2_id                                 
-# doit subject*_walk2_joint_angle_standard_deviations
-# doit subject*_walk2_trim_tracking_data
+doit subject*_walk2_update_ground_reaction_labels
+doit subject*_walk2_filter_ground_reactions      
+doit subject*_walk2_gait_landmarks 
+doit subject*_walk2_ik_setup           
+doit subject*_walk2_ik                                  
+doit subject*_walk2_ik_post
+doit subject*_walk2_id_setup    
+doit subject*_walk2_id                                 
+doit subject*_walk2_joint_angle_standard_deviations
+doit subject*_walk2_trim_tracking_data
 
 # Sensitivity analysis
 # --------------------

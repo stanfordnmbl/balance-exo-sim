@@ -1,13 +1,13 @@
 # Data pre-processing
 # ---------------
 # doit forget ankle_perturb_sim_copy_data
-# doit forget ankle_perturb_sim_copy_generic_model_files     
+doit forget ankle_perturb_sim_copy_generic_model_files     
 
 # Model scaling
 # -------------
-# doit forget subject01_scale_setup
-# doit forget subject01_scale
-# doit forget subject01_scale_max_force   
+doit forget subject01_scale_setup
+doit forget subject01_scale
+doit forget subject01_scale_max_force   
 
 # doit forget subject02_scale_setup
 # doit forget subject02_scale
@@ -27,17 +27,17 @@
 
 # Inverse kinematics and inverse dynamics
 # --------------------------------------- 
-# doit forget subject01_adjust_scaled_model
-# doit forget subject01_walk2_update_ground_reaction_labels
-# doit forget subject01_walk2_filter_ground_reactions      
-# doit forget subject01_walk2_gait_landmarks 
-# doit forget subject01_walk2_ik_setup           
-# doit forget subject01_walk2_ik                                  
-# doit forget subject01_walk2_ik_post
-# doit forget subject01_walk2_id_setup    
-# doit forget subject01_walk2_id                                 
-# doit forget subject01_walk2_joint_angle_standard_deviations
-# doit forget subject01_walk2_trim_tracking_data
+doit forget subject01_adjust_scaled_model
+doit forget subject01_walk2_update_ground_reaction_labels
+doit forget subject01_walk2_filter_ground_reactions      
+doit forget subject01_walk2_gait_landmarks 
+doit forget subject01_walk2_ik_setup           
+doit forget subject01_walk2_ik                                  
+doit forget subject01_walk2_ik_post
+doit forget subject01_walk2_id_setup    
+doit forget subject01_walk2_id                                 
+doit forget subject01_walk2_joint_angle_standard_deviations
+doit forget subject01_walk2_trim_tracking_data
 
 # doit forget subject02_adjust_scaled_model
 # doit forget subject02_walk2_update_ground_reaction_labels
@@ -89,11 +89,11 @@
 
 # Unperturbed walking
 # -------------------
-doit forget subject01_moco_unperturbed
-doit forget subject02_moco_unperturbed
-doit forget subject04_moco_unperturbed
-doit forget subject18_moco_unperturbed
-doit forget subject19_moco_unperturbed
+# doit forget subject01_moco_unperturbed
+# doit forget subject02_moco_unperturbed
+# doit forget subject04_moco_unperturbed
+# doit forget subject18_moco_unperturbed
+# doit forget subject19_moco_unperturbed
 # doit forget subject01_moco_unperturbed_lumbar0.1
 # doit forget subject01_moco_unperturbed_lumbar10.0
 # doit forget subject02_moco_unperturbed_lumbar0.1

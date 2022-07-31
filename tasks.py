@@ -44,6 +44,53 @@ class working_directory():
         os.chdir(self.original_working_dir)
 
 
+class TaskApplyMarkerSetToGenericModel(osp.StudyTask):
+    REGISTRY = []
+    def __init__(self, study):
+        super(TaskApplyMarkerSetToGenericModel, self).__init__(study)
+        self.name = f'{study.name}_apply_markerset_to_generic_model'
+        self.model_fpath = os.path.join(study.config['results_path'],
+            'generic_model.osim')
+        self.markerset_fpath = os.path.join(study.config['doit_path'],
+            'templates', 'scale', 'prescale_markerset.xml')
+        self.fixed_markers = list()
+        bilateral_markers = ['ASI', 'PSI', 'HJC', 'ASH', 'PSH', 'ACR', 'LEL', 
+                             'MEL', 'FAradius', 'FAulna', 'LFC', 'MFC', 'KJC', 
+                             'LMAL', 'MMAL', 'AJC', 'CAL', 'MT5', 'TOE']
+
+        for marker in bilateral_markers:
+            for side in ['L', 'R']:
+                self.fixed_markers.append(f'{side}{marker}')
+
+        self.fixed_markers.append('C7')
+        self.fixed_markers.append('CLAV')
+
+        self.output_model_fpath = os.path.join(study.config['results_path'],
+            'generic_model_prescale_markers.osim')
+
+        self.add_action([self.model_fpath,
+                         self.markerset_fpath], 
+                        [self.output_model_fpath],
+                        self.apply_markerset_to_model)
+
+    def apply_markerset_to_model(self, file_dep, target):
+        model = osim.Model(file_dep[0])
+        markerSet = osim.MarkerSet(file_dep[1])
+
+        for fixed_marker in self.fixed_markers:
+            marker = markerSet.get(fixed_marker)
+            marker.set_fixed(True)
+
+        model.initSystem()
+        currMarkerSet = model.updMarkerSet()
+        currMarkerSet.clearAndDestroy()
+
+        model.updateMarkerSet(markerSet)
+
+        model.finalizeConnections()
+        model.printToXML(target[0])
+
+
 class TaskCopyMotionCaptureData(osp.TaskCopyMotionCaptureData):
     REGISTRY = []
     def __init__(self, study, walk125=None):
@@ -278,10 +325,10 @@ class TaskScaleMuscleMaxIsometricForce(osp.SubjectTask):
         self.doc = 'Scale subject muscle Fmax parameters from Handsfield2014'
         self.generic_model_fpath = self.study.source_generic_model_fpath
         self.subject_model_fpath = os.path.join(self.subject.results_exp_path, 
-            '%s.osim' % self.subject.name)
+            '%s_addbio.osim' % self.subject.name)
         self.scaled_param_model_fpath = os.path.join(
             self.subject.results_exp_path, 
-            '%s_scaled_Fmax.osim' % self.subject.name)
+            '%s_final.osim' % self.subject.name)
         self.generic_mass = generic_mass
         self.generic_height = generic_height
 
@@ -353,73 +400,6 @@ class TaskScaleMuscleMaxIsometricForce(osp.SubjectTask):
             subj_muscle.setMaxIsometricForce(scaled_force)
 
         subj_model.printToXML(target[0])
-
-
-class TaskAdjustScaledModel(osp.SubjectTask):
-    REGISTRY = []
-    def __init__(self, subject, marker_adjustments, treadmill=False):
-        super(TaskAdjustScaledModel, self).__init__(subject)
-        self.subject = subject
-        self.study = subject.study
-        self.mass = subject.mass
-        self.name = '%s_adjust_scaled_model' % self.subject.name
-        self.doc = 'Make adjustments to model marker post-scale'
-        self.scaled_model_fpath = os.path.join(
-            self.subject.results_exp_path, 
-            '%s_scaled_Fmax.osim' % self.subject.name)
-        if treadmill:
-            self.final_model_fpath = os.path.join(
-                self.subject.results_exp_path, 
-                '%s_scaled_Fmax_markers.osim' % self.subject.name)
-        else:
-            self.final_model_fpath = os.path.join(
-                self.subject.results_exp_path, 
-                '%s_final.osim' % self.subject.name)
-        self.marker_adjustments = marker_adjustments
-
-        self.add_action([self.scaled_model_fpath],
-                        [self.final_model_fpath],
-                        self.adjust_model_markers)
-
-    def adjust_model_markers(self, file_dep, target):
-        print('Adjusting scaled model marker locations... ')
-        import opensim as osm
-        model = osm.Model(file_dep[0])
-        markerSet = model.updMarkerSet()
-        for name, adj in self.marker_adjustments.items():
-            marker = markerSet.get(name)
-            loc = marker.get_location()
-            loc.set(adj[0], adj[1])
-            marker.set_location(loc)
-
-        # print('Adding mtp passive stiffness and damping...')
-        # for coordName in ['mtp_angle_r', 'mtp_angle_l']:
-        #     sgf = osim.SpringGeneralizedForce(coordName)
-        #     sgf.setName(f'passive_stiffness_{coordName}')
-        #     sgf.setStiffness(0.4 * self.mass)
-        #     sgf.setViscosity(2.0)
-        #     model.addForce(sgf)
-
-        # upper_stiffness = 0.10 * mass 
-        # lower_stiffness = 0.25 * mass
-        # lower_limit = 5
-        # upper_limit = 120
-        # damping = 0.25
-        # transition = 10
-        # clf = osim.CoordinateLimitForce('knee_angle_r', 
-        #     upper_limit, upper_stiffness, 
-        #     lower_limit, lower_stiffness, 
-        #     damping, transition)
-        # model.addForce(clf)
-
-        # clf = osim.CoordinateLimitForce('knee_angle_l', 
-        #     upper_limit, upper_stiffness, 
-        #     lower_limit, lower_stiffness, 
-        #     damping, transition)
-        # model.addForce(clf)
-
-        model.finalizeConnections()
-        model.printToXML(target[0])
 
 
 # Tracking data
@@ -1312,7 +1292,8 @@ class TaskMocoUnperturbedWalking(osp.TrialTask):
     REGISTRY = []
     def __init__(self, trial, initial_time, final_time, mesh_interval=0.02,
                  walking_speed=1.25, guess_fpath=None, periodic=True,
-                 lumbar_stiffness=1.0, **kwargs):
+                 lumbar_stiffness=1.0, create_and_insert_guess=False, 
+                 **kwargs):
         super(TaskMocoUnperturbedWalking, self).__init__(trial)
         self.lumbar_subpath = ''
         suffix = ''
@@ -1331,6 +1312,7 @@ class TaskMocoUnperturbedWalking(osp.TrialTask):
         self.root_dir = trial.study.config['doit_path']
         self.periodic = periodic
         self.lumbar_stiffness = lumbar_stiffness
+        self.create_and_insert_guess = create_and_insert_guess
         self.weights = trial.study.weights
 
         expdata_dir = os.path.join(
@@ -1382,7 +1364,8 @@ class TaskMocoUnperturbedWalking(osp.TrialTask):
             periodic_speeds=True,
             periodic_actuators=True,
             lumbar_stiffness=self.lumbar_stiffness,
-            guess=self.guess_fpath
+            guess=self.guess_fpath,
+            create_and_insert_guess=self.create_and_insert_guess,
             )
 
         cycles = list()

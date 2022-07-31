@@ -14265,193 +14265,53 @@
 						<!--All properties of this object have their default values.-->
 					</TendonForceLengthCurve>
 				</Millard2012EquilibriumMuscle>
-				<CoordinateActuator name="lumbar_ext">
-					<!--Minimum allowed value for control signal. Used primarily when solving for control values.-->
-					<min_control>-Inf</min_control>
-					<!--Maximum allowed value for control signal. Used primarily when solving for control values.-->
-					<max_control>Inf</max_control>
-					<!--Name of the generalized coordinate to which the actuator applies.-->
-					<coordinate>lumbar_extension</coordinate>
-					<!--The maximum generalized force produced by this actuator.-->
-					<optimal_force>10</optimal_force>
-				</CoordinateActuator>
-				<CoordinateActuator name="lumbar_bend">
-					<!--Minimum allowed value for control signal. Used primarily when solving for control values.-->
-					<min_control>-Inf</min_control>
-					<!--Maximum allowed value for control signal. Used primarily when solving for control values.-->
-					<max_control>Inf</max_control>
-					<!--Name of the generalized coordinate to which the actuator applies.-->
-					<coordinate>lumbar_bending</coordinate>
-					<!--The maximum generalized force produced by this actuator.-->
-					<optimal_force>10</optimal_force>
-				</CoordinateActuator>
-				<CoordinateActuator name="lumbar_rot">
-					<!--Minimum allowed value for control signal. Used primarily when solving for control values.-->
-					<min_control>-Inf</min_control>
-					<!--Maximum allowed value for control signal. Used primarily when solving for control values.-->
-					<max_control>Inf</max_control>
-					<!--Name of the generalized coordinate to which the actuator applies.-->
-					<coordinate>lumbar_rotation</coordinate>
-					<!--The maximum generalized force produced by this actuator.-->
-					<optimal_force>10</optimal_force>
-				</CoordinateActuator>
-				<CoordinateActuator name="shoulder_flex_r">
-					<!--Minimum allowed value for control signal. Used primarily when solving for control values.-->
-					<min_control>-Inf</min_control>
-					<!--Maximum allowed value for control signal. Used primarily when solving for control values.-->
-					<max_control>Inf</max_control>
-					<!--Name of the generalized coordinate to which the actuator applies.-->
+				<ExpressionBasedCoordinateForce name="PassiveShoulderDampingX_r">
+					<!--Coordinate (name) to apply force to.-->
 					<coordinate>arm_flex_r</coordinate>
-					<!--The maximum generalized force produced by this actuator.-->
-					<optimal_force>10</optimal_force>
-				</CoordinateActuator>
-				<CoordinateActuator name="shoulder_add_r">
-					<!--Minimum allowed value for control signal. Used primarily when solving for control values.-->
-					<min_control>-Inf</min_control>
-					<!--Maximum allowed value for control signal. Used primarily when solving for control values.-->
-					<max_control>Inf</max_control>
-					<!--Name of the generalized coordinate to which the actuator applies.-->
+					<!--Expression of the force magnitude as a function of the coordinate value (q)and its time derivative (qdot). Note, expression cannot have any whitespaceseparating characters-->
+					<expression>-2.44*exp(5.05*(q-1.81))+1.51*exp(-11.88*(q+0.50))-1.0*qdot</expression>
+				</ExpressionBasedCoordinateForce>
+				<ExpressionBasedCoordinateForce name="PassiveShoulderDampingY_r">
+					<!--Coordinate (name) to apply force to.-->
 					<coordinate>arm_add_r</coordinate>
-					<!--The maximum generalized force produced by this actuator.-->
-					<optimal_force>10</optimal_force>
-				</CoordinateActuator>
-				<CoordinateActuator name="shoulder_rot_r">
-					<!--Minimum allowed value for control signal. Used primarily when solving for control values.-->
-					<min_control>-Inf</min_control>
-					<!--Maximum allowed value for control signal. Used primarily when solving for control values.-->
-					<max_control>Inf</max_control>
-					<!--Name of the generalized coordinate to which the actuator applies.-->
+					<!--Expression of the force magnitude as a function of the coordinate value (q)and its time derivative (qdot). Note, expression cannot have any whitespaceseparating characters-->
+					<expression>-15.03*exp(20.94*(q-0.10))+5.03*exp(-14.93*(q+1.57))-1.0*qdot</expression>
+				</ExpressionBasedCoordinateForce>
+				<ExpressionBasedCoordinateForce name="PassiveShoulderDampingZ_r">
+					<!--Coordinate (name) to apply force to.-->
 					<coordinate>arm_rot_r</coordinate>
-					<!--The maximum generalized force produced by this actuator.-->
-					<optimal_force>10</optimal_force>
-				</CoordinateActuator>
-				<CoordinateActuator name="elbow_flex_r">
-					<!--Minimum allowed value for control signal. Used primarily when solving for control values.-->
-					<min_control>-Inf</min_control>
-					<!--Maximum allowed value for control signal. Used primarily when solving for control values.-->
-					<max_control>Inf</max_control>
-					<!--Name of the generalized coordinate to which the actuator applies.-->
+					<!--Expression of the force magnitude as a function of the coordinate value (q)and its time derivative (qdot). Note, expression cannot have any whitespaceseparating characters-->
+					<expression>-0.43*exp(14.94*(q-0.15))+0.43*exp(-14.93*(q+0.15))-1.0*qdot</expression>
+				</ExpressionBasedCoordinateForce>
+				<ExpressionBasedCoordinateForce name="PassiveElbowDamping_r">
+					<!--Coordinate (name) to apply force to.-->
 					<coordinate>elbow_flex_r</coordinate>
-					<!--The maximum generalized force produced by this actuator.-->
-					<optimal_force>10</optimal_force>
-				</CoordinateActuator>
-				<CoordinateActuator name="pro_sup_r">
-					<!--Minimum allowed value for control signal. Used primarily when solving for control values.-->
-					<min_control>-Inf</min_control>
-					<!--Maximum allowed value for control signal. Used primarily when solving for control values.-->
-					<max_control>Inf</max_control>
-					<!--Name of the generalized coordinate to which the actuator applies.-->
-					<coordinate>pro_sup_r</coordinate>
-					<!--The maximum generalized force produced by this actuator.-->
-					<optimal_force>10</optimal_force>
-				</CoordinateActuator>
-				<CoordinateActuator name="wrist_flex_r">
-					<!--Minimum allowed value for control signal. Used primarily when solving for control values.-->
-					<min_control>-Inf</min_control>
-					<!--Maximum allowed value for control signal. Used primarily when solving for control values.-->
-					<max_control>Inf</max_control>
-					<!--Name of the generalized coordinate to which the actuator applies.-->
-					<coordinate>wrist_flex_r</coordinate>
-					<!--The maximum generalized force produced by this actuator.-->
-					<optimal_force>10</optimal_force>
-				</CoordinateActuator>
-				<CoordinateActuator name="wrist_dev_r">
-					<!--Minimum allowed value for control signal. Used primarily when solving for control values.-->
-					<min_control>-Inf</min_control>
-					<!--Maximum allowed value for control signal. Used primarily when solving for control values.-->
-					<max_control>Inf</max_control>
-					<!--Name of the generalized coordinate to which the actuator applies.-->
-					<coordinate>wrist_dev_r</coordinate>
-					<!--The maximum generalized force produced by this actuator.-->
-					<optimal_force>10</optimal_force>
-				</CoordinateActuator>
-				<CoordinateActuator name="shoulder_flex_l">
-					<!--Minimum allowed value for control signal. Used primarily when solving for control values.-->
-					<min_control>-Inf</min_control>
-					<!--Maximum allowed value for control signal. Used primarily when solving for control values.-->
-					<max_control>Inf</max_control>
-					<!--Name of the generalized coordinate to which the actuator applies.-->
+					<!--Expression of the force magnitude as a function of the coordinate value (q)and its time derivative (qdot). Note, expression cannot have any whitespaceseparating characters-->
+					<expression>6.09*exp(-6.94*(q-0.30))-11.03*exp(11.33*(q-2.40))-1.0*qdot</expression>
+				</ExpressionBasedCoordinateForce>
+				<ExpressionBasedCoordinateForce name="PassiveShoulderDampingX_l">
+					<!--Coordinate (name) to apply force to.-->
 					<coordinate>arm_flex_l</coordinate>
-					<!--The maximum generalized force produced by this actuator.-->
-					<optimal_force>10</optimal_force>
-				</CoordinateActuator>
-				<CoordinateActuator name="shoulder_add_l">
-					<!--Minimum allowed value for control signal. Used primarily when solving for control values.-->
-					<min_control>-Inf</min_control>
-					<!--Maximum allowed value for control signal. Used primarily when solving for control values.-->
-					<max_control>Inf</max_control>
-					<!--Name of the generalized coordinate to which the actuator applies.-->
+					<!--Expression of the force magnitude as a function of the coordinate value (q)and its time derivative (qdot). Note, expression cannot have any whitespaceseparating characters-->
+					<expression>-2.44*exp(5.05*(q-1.81))+1.51*exp(-11.88*(q+0.50))-1.0*qdot</expression>
+				</ExpressionBasedCoordinateForce>
+				<ExpressionBasedCoordinateForce name="PassiveShoulderDampingY_l">
+					<!--Coordinate (name) to apply force to.-->
 					<coordinate>arm_add_l</coordinate>
-					<!--The maximum generalized force produced by this actuator.-->
-					<optimal_force>10</optimal_force>
-				</CoordinateActuator>
-				<CoordinateActuator name="shoulder_rot_l">
-					<!--Minimum allowed value for control signal. Used primarily when solving for control values.-->
-					<min_control>-Inf</min_control>
-					<!--Maximum allowed value for control signal. Used primarily when solving for control values.-->
-					<max_control>Inf</max_control>
-					<!--Name of the generalized coordinate to which the actuator applies.-->
+					<!--Expression of the force magnitude as a function of the coordinate value (q)and its time derivative (qdot). Note, expression cannot have any whitespaceseparating characters-->
+					<expression>-15.03*exp(20.94*(q-0.10))+5.03*exp(-14.93*(q+1.57))-1.0*qdot</expression>
+				</ExpressionBasedCoordinateForce>
+				<ExpressionBasedCoordinateForce name="PassiveShoulderDampingZ_l">
+					<!--Coordinate (name) to apply force to.-->
 					<coordinate>arm_rot_l</coordinate>
-					<!--The maximum generalized force produced by this actuator.-->
-					<optimal_force>10</optimal_force>
-				</CoordinateActuator>
-				<CoordinateActuator name="elbow_flex_l">
-					<!--Minimum allowed value for control signal. Used primarily when solving for control values.-->
-					<min_control>-Inf</min_control>
-					<!--Maximum allowed value for control signal. Used primarily when solving for control values.-->
-					<max_control>Inf</max_control>
-					<!--Name of the generalized coordinate to which the actuator applies.-->
+					<!--Expression of the force magnitude as a function of the coordinate value (q)and its time derivative (qdot). Note, expression cannot have any whitespaceseparating characters-->
+					<expression>-0.43*exp(14.94*(q-0.15))+0.43*exp(-14.93*(q+0.15))-1.0*qdot</expression>
+				</ExpressionBasedCoordinateForce>
+				<ExpressionBasedCoordinateForce name="PassiveElbowDamping_l">
+					<!--Coordinate (name) to apply force to.-->
 					<coordinate>elbow_flex_l</coordinate>
-					<!--The maximum generalized force produced by this actuator.-->
-					<optimal_force>10</optimal_force>
-				</CoordinateActuator>
-				<CoordinateActuator name="pro_sup_l">
-					<!--Minimum allowed value for control signal. Used primarily when solving for control values.-->
-					<min_control>-Inf</min_control>
-					<!--Maximum allowed value for control signal. Used primarily when solving for control values.-->
-					<max_control>Inf</max_control>
-					<!--Name of the generalized coordinate to which the actuator applies.-->
-					<coordinate>pro_sup_l</coordinate>
-					<!--The maximum generalized force produced by this actuator.-->
-					<optimal_force>10</optimal_force>
-				</CoordinateActuator>
-				<CoordinateActuator name="wrist_flex_l">
-					<!--Minimum allowed value for control signal. Used primarily when solving for control values.-->
-					<min_control>-Inf</min_control>
-					<!--Maximum allowed value for control signal. Used primarily when solving for control values.-->
-					<max_control>Inf</max_control>
-					<!--Name of the generalized coordinate to which the actuator applies.-->
-					<coordinate>wrist_flex_l</coordinate>
-					<!--The maximum generalized force produced by this actuator.-->
-					<optimal_force>10</optimal_force>
-				</CoordinateActuator>
-				<CoordinateActuator name="wrist_dev_l">
-					<!--Minimum allowed value for control signal. Used primarily when solving for control values.-->
-					<min_control>-Inf</min_control>
-					<!--Maximum allowed value for control signal. Used primarily when solving for control values.-->
-					<max_control>Inf</max_control>
-					<!--Name of the generalized coordinate to which the actuator applies.-->
-					<coordinate>wrist_dev_l</coordinate>
-					<!--The maximum generalized force produced by this actuator.-->
-					<optimal_force>10</optimal_force>
-				</CoordinateActuator>
-				<ExpressionBasedCoordinateForce name="PassiveLumbarDampingX">
-					<!--Coordinate (name) to apply force to.-->
-					<coordinate>lumbar_extension</coordinate>
 					<!--Expression of the force magnitude as a function of the coordinate value (q)and its time derivative (qdot). Note, expression cannot have any whitespaceseparating characters-->
-					<expression>-0.35*exp(30.72*(q-0.17))+0.25*exp(-20.36*(q+0.35))-0.1*qdot</expression>
-				</ExpressionBasedCoordinateForce>
-				<ExpressionBasedCoordinateForce name="PassiveLumbarDampingY">
-					<!--Coordinate (name) to apply force to.-->
-					<coordinate>lumbar_bending</coordinate>
-					<!--Expression of the force magnitude as a function of the coordinate value (q)and its time derivative (qdot). Note, expression cannot have any whitespaceseparating characters-->
-					<expression>-0.25*exp(20.36*(q-0.17))+0.25*exp(-20.36*(q+0.17))-0.1*qdot</expression>
-				</ExpressionBasedCoordinateForce>
-				<ExpressionBasedCoordinateForce name="PassiveLumbarDampingZ">
-					<!--Coordinate (name) to apply force to.-->
-					<coordinate>lumbar_rotation</coordinate>
-					<!--Expression of the force magnitude as a function of the coordinate value (q)and its time derivative (qdot). Note, expression cannot have any whitespaceseparating characters-->
-					<expression>-0.25*exp(20.36*(q-0.17))+0.25*exp(-20.36*(q+0.17))-0.1*qdot</expression>
+					<expression>6.09*exp(-6.94*(q-0.30))-11.03*exp(11.33*(q-2.40))-1.0*qdot</expression>
 				</ExpressionBasedCoordinateForce>
 				<ExpressionBasedCoordinateForce name="PassiveHipDampingX_r">
 					<!--Coordinate (name) to apply force to.-->
@@ -15536,7 +15396,7 @@
 					<!--Path to a Component that satisfies the Socket 'frame' of type PhysicalFrame (description: The frame to which this geometry is attached.).-->
 					<socket_frame>/bodyset/calcn_r</socket_frame>
 					<!--Location of geometry center in the PhysicalFrame.-->
-					<location>0.0146421 0.0 -0.0122799</location>
+					<location>0.0146421 0.02 -0.0122799</location>
 					<!--Default appearance for this Geometry-->
 					<Appearance>
 						<!--Flag indicating whether the associated Geometry is visible or hidden.-->
@@ -15556,7 +15416,7 @@
 					<!--Path to a Component that satisfies the Socket 'frame' of type PhysicalFrame (description: The frame to which this geometry is attached.).-->
 					<socket_frame>/bodyset/calcn_r</socket_frame>
 					<!--Location of geometry center in the PhysicalFrame.-->
-					<location>0.084929099999999993 0.0 0.033864900000000003</location>
+					<location>0.084929099999999993 0.02 0.033864900000000003</location>
 					<!--Default appearance for this Geometry-->
 					<Appearance>
 						<!--Flag indicating whether the associated Geometry is visible or hidden.-->
@@ -15576,7 +15436,7 @@
 					<!--Path to a Component that satisfies the Socket 'frame' of type PhysicalFrame (description: The frame to which this geometry is attached.).-->
 					<socket_frame>/bodyset/calcn_r</socket_frame>
 					<!--Location of geometry center in the PhysicalFrame.-->
-					<location>0.153362 0.0 0.059482899999999998</location>
+					<location>0.153362 0.02 0.059482899999999998</location>
 					<!--Default appearance for this Geometry-->
 					<Appearance>
 						<!--Flag indicating whether the associated Geometry is visible or hidden.-->
@@ -15596,7 +15456,7 @@
 					<!--Path to a Component that satisfies the Socket 'frame' of type PhysicalFrame (description: The frame to which this geometry is attached.).-->
 					<socket_frame>/bodyset/toes_r</socket_frame>
 					<!--Location of geometry center in the PhysicalFrame.-->
-					<location>0.023013999999999989 0.0 0.067046099999999997</location>
+					<location>0.023013999999999989 0.02 0.067046099999999997</location>
 					<!--Default appearance for this Geometry-->
 					<Appearance>
 						<!--Flag indicating whether the associated Geometry is visible or hidden.-->
@@ -15616,7 +15476,7 @@
 					<!--Path to a Component that satisfies the Socket 'frame' of type PhysicalFrame (description: The frame to which this geometry is attached.).-->
 					<socket_frame>/bodyset/toes_r</socket_frame>
 					<!--Location of geometry center in the PhysicalFrame.-->
-					<location>0.074363000000000026 0.0 -0.026039</location>
+					<location>0.074363000000000026 0.02 -0.026039</location>
 					<!--Default appearance for this Geometry-->
 					<Appearance>
 						<!--Flag indicating whether the associated Geometry is visible or hidden.-->
@@ -15636,7 +15496,7 @@
 					<!--Path to a Component that satisfies the Socket 'frame' of type PhysicalFrame (description: The frame to which this geometry is attached.).-->
 					<socket_frame>/bodyset/calcn_r</socket_frame>
 					<!--Location of geometry center in the PhysicalFrame.-->
-					<location>0.20363700000000001 0.0 -0.039868800000000003</location>
+					<location>0.20363700000000001 0.02 -0.039868800000000003</location>
 					<!--Default appearance for this Geometry-->
 					<Appearance>
 						<!--Flag indicating whether the associated Geometry is visible or hidden.-->
@@ -15656,7 +15516,7 @@
 					<!--Path to a Component that satisfies the Socket 'frame' of type PhysicalFrame (description: The frame to which this geometry is attached.).-->
 					<socket_frame>/bodyset/calcn_l</socket_frame>
 					<!--Location of geometry center in the PhysicalFrame.-->
-					<location>0.0146421 0.0 0.0122799</location>
+					<location>0.0146421 0.02 0.0122799</location>
 					<!--Default appearance for this Geometry-->
 					<Appearance>
 						<!--Flag indicating whether the associated Geometry is visible or hidden.-->
@@ -15676,7 +15536,7 @@
 					<!--Path to a Component that satisfies the Socket 'frame' of type PhysicalFrame (description: The frame to which this geometry is attached.).-->
 					<socket_frame>/bodyset/calcn_l</socket_frame>
 					<!--Location of geometry center in the PhysicalFrame.-->
-					<location>0.084929099999999993 0.0 -0.033864900000000003</location>
+					<location>0.084929099999999993 0.02 -0.033864900000000003</location>
 					<!--Default appearance for this Geometry-->
 					<Appearance>
 						<!--Flag indicating whether the associated Geometry is visible or hidden.-->
@@ -15696,7 +15556,7 @@
 					<!--Path to a Component that satisfies the Socket 'frame' of type PhysicalFrame (description: The frame to which this geometry is attached.).-->
 					<socket_frame>/bodyset/calcn_l</socket_frame>
 					<!--Location of geometry center in the PhysicalFrame.-->
-					<location>0.153362 0.0 -0.059482899999999998</location>
+					<location>0.153362 0.02 -0.059482899999999998</location>
 					<!--Default appearance for this Geometry-->
 					<Appearance>
 						<!--Flag indicating whether the associated Geometry is visible or hidden.-->
@@ -15716,7 +15576,7 @@
 					<!--Path to a Component that satisfies the Socket 'frame' of type PhysicalFrame (description: The frame to which this geometry is attached.).-->
 					<socket_frame>/bodyset/toes_l</socket_frame>
 					<!--Location of geometry center in the PhysicalFrame.-->
-					<location>0.023013999999999989 0.0 -0.067046099999999997</location>
+					<location>0.023013999999999989 0.02 -0.067046099999999997</location>
 					<!--Default appearance for this Geometry-->
 					<Appearance>
 						<!--Flag indicating whether the associated Geometry is visible or hidden.-->
@@ -15736,7 +15596,7 @@
 					<!--Path to a Component that satisfies the Socket 'frame' of type PhysicalFrame (description: The frame to which this geometry is attached.).-->
 					<socket_frame>/bodyset/toes_l</socket_frame>
 					<!--Location of geometry center in the PhysicalFrame.-->
-					<location>0.074363000000000026 0.0 0.026039</location>
+					<location>0.074363000000000026 0.02 0.026039</location>
 					<!--Default appearance for this Geometry-->
 					<Appearance>
 						<!--Flag indicating whether the associated Geometry is visible or hidden.-->
@@ -15756,7 +15616,7 @@
 					<!--Path to a Component that satisfies the Socket 'frame' of type PhysicalFrame (description: The frame to which this geometry is attached.).-->
 					<socket_frame>/bodyset/calcn_l</socket_frame>
 					<!--Location of geometry center in the PhysicalFrame.-->
-					<location>0.20363700000000001 0.0 0.039868800000000003</location>
+					<location>0.20363700000000001 0.02 0.039868800000000003</location>
 					<!--Default appearance for this Geometry-->
 					<Appearance>
 						<!--Flag indicating whether the associated Geometry is visible or hidden.-->

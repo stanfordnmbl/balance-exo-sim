@@ -55,6 +55,10 @@ class Result(ABC):
         return os.path.join(f'{self.result_fpath}',
                             f'{name}_grfs.sto')
 
+    def get_solution_path_contacts(self, name):
+        return os.path.join(f'{self.result_fpath}',
+                            f'{name}_contacts.sto')
+
     def get_solution_archive_path_grfs(self, name):
         now = datetime.datetime.now()
         now.strftime('%Y-%m-%dT%H:%M:%S')
@@ -83,7 +87,24 @@ class Result(ABC):
         state = model.initSystem()
         mass = model.getTotalMass(state)
 
-        coordNames = ['lumbar_extension', 'lumbar_bending', 'lumbar_rotation']
+        # Arm actuators
+        coordNames = ['arm_flex', 'arm_add', 'arm_rot', 
+                      'elbow_flex', 'pro_sup']
+        strengths = [0.2, 0.2, 0.2, 0.1, 0.05]
+        for coordName, strength in zip(coordNames, strengths):
+            for side in ['_l', '_r']:
+                actu = osim.ActivationCoordinateActuator()
+                actu.set_coordinate(f'{coordName}{side}')
+                actu.setName(f'torque_{coordName}{side}')
+                actu.setOptimalForce(strength*mass)
+                actu.setMinControl(-1.0)
+                actu.setMaxControl(1.0)
+                model.addForce(actu)
+
+        # Lumbar actuators
+        coordNames = ['lumbar_extension', 
+                      'lumbar_bending', 
+                      'lumbar_rotation']
         for coordName in coordNames:
             actu = osim.ActivationCoordinateActuator()
             actu.set_coordinate(coordName)
@@ -122,6 +143,8 @@ class Result(ABC):
 
         modelProcessor = osim.ModelProcessor(model)
         jointsToWeld = list()
+        for side in ['_l', '_r']:
+            jointsToWeld.append(f'radius_hand{side}')
         modelProcessor.append(osim.ModOpReplaceJointsWithWelds(jointsToWeld))
         modelProcessor.append(osim.ModOpReplaceMusclesWithDeGrooteFregly2016())
         modelProcessor.append(osim.ModOpIgnoreTendonCompliance())
@@ -140,15 +163,6 @@ class Result(ABC):
                 muscle.set_ignore_tendon_compliance(False)
                 muscle.set_tendon_strain_at_one_norm_force(0.10)
                 muscle.set_passive_fiber_strain_at_one_norm_force(2.0)
-
-        # Update contact model properties
-        # -------------------------------
-        # forces = model.updForceSet()
-        # for iforce in np.arange(forces.getSize()):
-        #     if 'contact' in forces.get(int(iforce)).getName():
-        #         sshs = osim.SmoothSphereHalfSpaceForce.safeDownCast(forces.get(int(iforce)))
-        #         sshs.set_transition_velocity(0.1)
-        #         sshs.set_static_friction(0.95)
 
         model.finalizeConnections()
         modelProcessor = osim.ModelProcessor(model)
@@ -217,6 +231,206 @@ class Result(ABC):
         model.initSystem()
         return self.calc_negative_muscle_forces_base(model, solution)
 
+
+    def create_contact_sphere_force_table(self, model, solution):
+
+        model.initSystem()
+        externalForcesTable = osim.TimeSeriesTableVec3()
+        copTable = osim.TimeSeriesTableVec3()
+        statesTrajectory = solution.exportToStatesTrajectory(model);
+        numStates = statesTrajectory.getSize() 
+
+        forceNames = ['forceset/contactHeel',
+                      'forceset/contactLateralRearfoot',
+                      'forceset/contactLateralMidfoot',
+                      'forceset/contactLateralToe',
+                      'forceset/contactMedialToe',
+                      'forceset/contactMedialMidfoot'
+                      ]
+
+        forceLabels = ['heel',
+                       'lat_rear',
+                       'lat_mid', 
+                       'lat_toe', 
+                       'med_toe', 
+                       'med_mid',
+                       ]
+
+        sphereNames = ['contactgeometryset/heel',
+                       'contactgeometryset/lateralRearfoot',
+                       'contactgeometryset/lateralMidfoot',
+                       'contactgeometryset/lateralToe',
+                       'contactgeometryset/medialToe',
+                       'contactgeometryset/medialMidfoot',
+                       ]
+
+
+        for istate in range(numStates):
+
+            state = statesTrajectory.get(istate)
+            model.realizeVelocity(state)
+
+            row = osim.RowVectorVec3(3*2*len(forceNames))
+            copRow = osim.RowVectorVec3(2)
+            labels = osim.StdVectorString()
+            for iside, side in enumerate(['_r', '_l']):
+                
+                cop = osim.Vec3(0)
+                copTorqueSum_x = 0 
+                copForceSum = 0
+                copTorqueSum_z = 0
+
+                zipped = zip(forceNames, forceLabels, sphereNames)
+                for i, (forceName, forceLabel, sphereName) in enumerate(zipped):
+                    force = osim.Vec3(0)
+                    torque = osim.Vec3(0)
+
+                    forceObj = osim.Force.safeDownCast(
+                        model.getComponent(f'{forceName}{side}'))
+                    forceValues = forceObj.getRecordValues(state)
+
+                    force[0] = forceValues.get(0)
+                    force[1] = forceValues.get(1)
+                    force[2] = forceValues.get(2)
+                    torque[0] = forceValues.get(3)
+                    torque[1] = forceValues.get(4)
+                    torque[2] = forceValues.get(5)
+
+                    sphere = osim.ContactSphere.safeDownCast(
+                        model.getComponent(f'{sphereName}{side}'))
+                    frame = sphere.getFrame()
+                    position = frame.getPositionInGround(state)
+                    location = sphere.get_location()
+                    locationInGround = frame.expressVectorInGround(state, location)
+
+                    position[0] = position[0] + locationInGround[0]
+                    position[1] = position[1] + locationInGround[1]
+                    position[2] = position[2] + locationInGround[2]
+
+                    row[3*i] = force
+                    row[3*i + 1] = position
+                    row[3*i + 2] = torque
+
+                    copForceSum += force[1]
+                    copTorqueSum_x += force[1] * position[0]
+                    copTorqueSum_z += force[1] * position[2]
+
+                    for suffix in ['_force_v', '_force_p', '_torque_']:
+                        labels.append(f'{forceLabel}{side}{suffix}')
+
+                if np.abs(copForceSum) > 1e-3:
+                    cop[0] = copTorqueSum_x / copForceSum
+                    cop[2] = copTorqueSum_z / copForceSum
+                
+                copRow[iside] = cop
+
+            externalForcesTable.appendRow(state.getTime(), row)
+            copTable.appendRow(state.getTime(), copRow)
+
+        externalForcesTable.setColumnLabels(labels)
+
+        labels = osim.StdVectorString()
+        labels.append('ground_force_r_p')
+        labels.append('ground_force_l_p')
+        copTable.setColumnLabels(labels)
+
+        suffixes = osim.StdVectorString()
+        suffixes.append('x')
+        suffixes.append('y')
+        suffixes.append('z')
+
+        return externalForcesTable.flatten(suffixes), copTable
+
+    
+    def create_external_loads_table_for_gait(self, model,
+            solution, forcePathsRightFoot, forcePathsLeftFoot,
+            copTable):
+
+        model.initSystem()
+        externalForcesTable = osim.TimeSeriesTableVec3()
+        statesTrajectory = solution.exportToStatesTrajectory(model);
+        numStates = statesTrajectory.getSize() 
+
+        for istate in range(numStates):
+
+            state = statesTrajectory.get(istate)
+            model.realizeVelocity(state)
+
+            forcesRight = osim.Vec3(0)
+            torquesRight = osim.Vec3(0)
+            # copRight = osim.Vec3(0)
+
+            # Loop through all Forces of the right side.
+            for smoothForce in forcePathsRightFoot:
+                force = osim.Force.safeDownCast(model.getComponent(smoothForce))
+                forceValues = force.getRecordValues(state)
+                forcesRight[0] = forcesRight[0] + forceValues.get(0)
+                forcesRight[1] = forcesRight[1] + forceValues.get(1)
+                forcesRight[2] = forcesRight[2] + forceValues.get(2)
+                torquesRight[0] = torquesRight[0] + forceValues.get(3)
+                torquesRight[1] = torquesRight[1] + forceValues.get(4)
+                torquesRight[2] = torquesRight[2] + forceValues.get(5)
+
+            # copRight[0] = torquesRight[2] / forcesRight[1]
+            # copRight[1] = 0
+            # copRight[2] = -torquesRight[0] / forcesRight[1]
+            # torquesRight[0] = 0
+            # torquesRight[1] = torquesRight[1] - copRight[2]*forcesRight[0] + copRight[0]*forcesRight[2]  
+            # torquesRight[2] = 0
+
+            forcesLeft = osim.Vec3(0)
+            torquesLeft = osim.Vec3(0)
+            # copLeft = osim.Vec3(0)
+
+            # Loop through all Forces of the left side.
+            for smoothForce in forcePathsLeftFoot:
+                force = osim.Force.safeDownCast(model.getComponent(smoothForce))
+                forceValues = force.getRecordValues(state)
+                forcesLeft[0] = forcesLeft[0] + forceValues.get(0)
+                forcesLeft[1] = forcesLeft[1] + forceValues.get(1)
+                forcesLeft[2] = forcesLeft[2] + forceValues.get(2)
+                torquesLeft[0] = torquesLeft[0] + forceValues.get(3)
+                torquesLeft[1] = torquesLeft[1] + forceValues.get(4)
+                torquesLeft[2] = torquesLeft[2] + forceValues.get(5)
+
+
+            # copLeft[0] = torquesLeft[2] / forcesLeft[1]
+            # copLeft[1] = 0
+            # copLeft[2] = -torquesLeft[0] / forcesLeft[1]
+            # torquesLeft[0] = 0
+            # torquesLeft[1] = torquesLeft[1] - copLeft[2]*forcesLeft[0] + copLeft[0]*forcesLeft[2]  
+            # torquesLeft[2] = 0
+
+            # Get COP values
+            copRow = copTable.getRowAtIndex(istate)
+
+            # Append row to table.
+            row = osim.RowVectorVec3(6)
+            row[0] = forcesRight
+            row[1] = copRow[0]
+            row[2] = forcesLeft
+            row[3] = copRow[1]
+            row[4] = torquesRight
+            row[5] = torquesLeft
+            externalForcesTable.appendRow(state.getTime(), row);
+        
+        # Create table.
+        labels = osim.StdVectorString()
+        labels.append('ground_force_r_v')
+        labels.append('ground_force_r_p')
+        labels.append('ground_force_l_v')
+        labels.append('ground_force_l_p')
+        labels.append('ground_torque_r_')
+        labels.append('ground_torque_l_')
+
+        externalForcesTable.setColumnLabels(labels)
+
+        suffixes = osim.StdVectorString()
+        suffixes.append('x')
+        suffixes.append('y')
+        suffixes.append('z')
+
+        return externalForcesTable.flatten(suffixes)
 
     def savefig(self, fig, filename):
         fig.savefig(filename + ".png", format="png", dpi=600)
@@ -866,19 +1080,19 @@ class Result(ABC):
         trajectory_filepath = self.get_solution_path(configs[-1].name)
         ref_files = list()
         ref_files.append(self.get_experiment_states_path(configs[-1].name))
-        colorlist = list()
-        colorlist.append('darkgray')
+        colors = list()
+        colors.append('darkgray')
         report_suffix = configs[-1].name
         for config in configs[:-1]:
             ref_files.append(
                 self.get_solution_path(config.name))
-            colorlist.append(config.color)
+            colors.append(config.color)
             report_suffix += '_' + config.name
-        colorlist.append(configs[-1].color)
+        colors.append(configs[-1].color)
         report_output = os.path.join(self.result_fpath, f'{report_suffix}_report.pdf')
         report = osim.report.Report(model=models[0],
                                     trajectory_filepath=trajectory_filepath,
                                     ref_files=ref_files, bilateral=False,
-                                    colorlist=colorlist,
+                                    colors=colors,
                                     output=report_output)
         report.generate()

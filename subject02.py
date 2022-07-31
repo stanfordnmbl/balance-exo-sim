@@ -146,21 +146,10 @@ def add_to_study(study):
     # Scale max isometric forces based on mass and height
     # ---------------------------------------------------
     subject.add_task(tasks.TaskScaleMuscleMaxIsometricForce)
-
-    # Adjust marker locations before inverse kinematics
-    # --------------------------------------------------
-    marker_adjustments = dict()
-    marker_adjustments['RTOE'] = (1, -0.005)
-    marker_adjustments['RMT5'] = (1, -0.01)
-    marker_adjustments['LTOE'] = (1, -0.005)
-    marker_adjustments['LMT5'] = (1, -0.01)
-    subject.add_task(tasks.TaskAdjustScaledModel, marker_adjustments)
     subject.scaled_model_fpath = os.path.join(subject.results_exp_path,
         f'{subject.name}_final.osim')
     subject.sim_model_fpath = os.path.join(subject.results_exp_path,
         f'{subject.name}_final.osim')
-    # subject.temp_model_fpath = os.path.join(subject.results_exp_path,
-    #     f'{subject.name}_temp.osim')
 
     # walk2 condition
     # ---------------

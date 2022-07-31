@@ -140,13 +140,7 @@ def add_to_study(study):
             scale_setup_task=scale_setup_task,
             ignore_unused_markers=True)
 
-    subject.add_task(tasks.TaskScaleMuscleMaxIsometricForce)
-    marker_adjustments = dict()
-    marker_adjustments['RTOE'] = (1, 0.0)
-    marker_adjustments['RMT5'] = (1, -0.005)
-    marker_adjustments['LTOE'] = (1, 0.0)
-    marker_adjustments['LMT5'] = (1, -0.005)
-    subject.add_task(tasks.TaskAdjustScaledModel, marker_adjustments)
+    subject.add_task(tasks.TaskScaleMuscleMaxIsometricForce)  
     subject.scaled_model_fpath = os.path.join(subject.results_exp_path,
         f'{subject.name}_final.osim')
     subject.sim_model_fpath = os.path.join(subject.results_exp_path,

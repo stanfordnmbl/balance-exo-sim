@@ -39,7 +39,7 @@ from tasks import *
 # Custom helper functions for this project
 from helpers import *
 
-model_fname = 'Rajagopal2015_passiveCal_hipAbdMoved_noArms_EBCForces_toesAligned.osim'
+model_fname = 'Rajagopal2015_passiveCal_hipAbdMoved_EBCForces_ankleBushings_toesAligned.osim'
 generic_model_fpath = os.path.join('model', model_fname)
 study = osp.Study('ankle_perturb_sim', 
     generic_model_fpath=generic_model_fpath)
@@ -50,6 +50,7 @@ study.walking_speed = 1.25
 # Generic model file
 # ------------------
 study.add_task(TaskCopyGenericModelFilesToResults)
+study.add_task(TaskApplyMarkerSetToGenericModel)
 
 # Model markers to compute errors for
 marker_suffix = ['ASI', 'PSI', 'TH1', 'TH2', 'TH3', 'CAL', 'TOE', 'MT5']
@@ -58,12 +59,12 @@ error_markers.append('CLAV')
 error_markers.append('C7')
 study.error_markers = error_markers
 
-scale = 0.01
+scale = 0.001
 study.weights = {
-    'state_tracking_weight':   1e1 * scale,
+    'state_tracking_weight':   1e3 * scale,
     'control_weight':          1e3 * scale,
-    'grf_tracking_weight':     1e5 * scale,
-    'upright_torso_weight':    1e2 * scale,
+    'grf_tracking_weight':     1e6 * scale,
+    'upright_torso_weight':    1e3 * scale,
     'control_tracking_weight': 0 * scale, 
     'aux_deriv_weight':        1e5 * scale,
     'acceleration_weight':     1e2 * scale,

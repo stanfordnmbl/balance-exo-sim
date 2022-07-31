@@ -65,7 +65,8 @@ def generate_unperturbed_tasks(study, subject, trial,
         mesh_interval=0.01, 
         walking_speed=study.walking_speed,
         guess_fpath=unperturbed_guess_fpath,
-        periodic=True)
+        periodic=True,
+        create_and_insert_guess=True)
 
     # Unperturbed walking w/ different lumbar stiffnesses
     # ---------------------------------------------------
