@@ -43,7 +43,8 @@ class TrackingConfig:
         self.control_weight = weights['control_weight']
         self.state_tracking_weight = weights['state_tracking_weight'] 
         self.grf_tracking_weight = weights['grf_tracking_weight'] 
-        self.upright_torso_weight = weights['upright_torso_weight']        
+        self.torso_orientation_weight = weights['torso_orientation_weight']        
+        self.feet_orientation_weight = weights['feet_orientation_weight']        
         self.control_tracking_weight = weights['control_tracking_weight']
         self.aux_deriv_weight = weights['aux_deriv_weight'] 
         self.acceleration_weight = weights['acceleration_weight']
@@ -72,7 +73,7 @@ class TrackingProblem(Result):
             coordinates_std_fpath, extloads_fpath, grf_fpath, emg_fpath, 
             initial_time, final_time, cycles, right_strikes, left_strikes, 
             mesh_interval, convergence_tolerance, constraint_tolerance, 
-            walking_speed, configs,
+            num_max_iterations, walking_speed, configs,
             reserve_strength=0,
             implicit_multibody_dynamics=False,
             implicit_tendon_dynamics=False):
@@ -92,6 +93,7 @@ class TrackingProblem(Result):
         self.mesh_interval = mesh_interval
         self.convergence_tolerance = convergence_tolerance
         self.constraint_tolerance = constraint_tolerance
+        self.num_max_iterations = num_max_iterations
         self.walking_speed = walking_speed
         self.emg_fpath = emg_fpath
         self.configs = configs
@@ -219,16 +221,16 @@ class TrackingProblem(Result):
 
             for name in coordinates_std.index:
                 std = coordinates_std.loc[name][0] 
+                denom = 1000 * std * std
 
                 if name in valuePath:
-                    if (config.upright_torso_weight and
-                            'lumbar' in name):
-                        valueWeight = 0.0
-                        speedWeight = 0.0
-
-                    # elif ('ankle' in name):
-                    #     valueWeight = 10.0 / std
-                    #     speedWeight = 0.1 / std
+                    if 'lumbar' in name:
+                        if config.torso_orientation_weight:
+                            valueWeight = 0.0
+                            speedWeight = 0.0
+                        else:
+                            valueWeight = 1.0 / denom
+                            speedWeight = 0.01 / denom
 
                     elif ('beta' in name or 
                           'mtp' in name or 
@@ -237,13 +239,21 @@ class TrackingProblem(Result):
                         valueWeight = 0.0
                         speedWeight = 0.0
 
-                    elif 'pelvis_ty' in name:
-                        valueWeight = 0.0
-                        speedWeight = 0.01 / std
+                    elif 'ankle' in name:
+                        valueWeight = 1.0 / denom
+                        speedWeight = 0.01 / denom
+
+                    elif 'pelvis' in name:
+                        if 'pelvis_ty' in name:
+                            valueWeight = 0.0
+                            speedWeight = 0.01 / denom
+                        else:
+                            valueWeight = 1.0 / denom
+                            speedWeight = 0.01 / denom
 
                     else:  
-                        valueWeight = 1.0  / std 
-                        speedWeight = 0.01 / std
+                        valueWeight = 1.0  / denom 
+                        speedWeight = 0.01 / denom
 
             stateWeights.cloneAndAppend(
                 osim.MocoWeight(valuePath, valueWeight))
@@ -321,16 +331,24 @@ class TrackingProblem(Result):
         averageSpeed.set_desired_average_speed(self.walking_speed)
         problem.addGoal(averageSpeed)
 
-        # Upright torso goal
-        # ------------------
-        if config.upright_torso_weight:
-            torsoTable = osim.TableProcessor(
-                os.path.join(self.root_dir, 'torso_zero_reference.sto'))
+        # Torso orientation goal
+        # ----------------------
+        if config.torso_orientation_weight:
+
+            expStateLabels = experimentStates.getColumnLabels()
+            torsoTable = osim.TimeSeriesTable(experimentStates)
+            stateVars = model.getStateVariableNames()
+            activationVec = osim.Vector(torsoTable.getNumRows(), 0.02)
+            for isv in np.arange(stateVars.getSize()):
+                stateVar = stateVars.get(int(isv))
+                if not stateVar in expStateLabels:
+                    torsoTable.appendColumn(stateVar, activationVec)
 
             torsoOrientationGoal = osim.MocoOrientationTrackingGoal(
-                'upright_torso_orientation_goal', 
-                config.upright_torso_weight)
-            torsoOrientationGoal.setStatesReference(torsoTable)
+                'torso_orientation_goal', 
+                config.torso_orientation_weight)
+            torsoOrientationGoal.setStatesReference(
+                osim.TableProcessor(torsoTable))
             paths = osim.StdVectorString()
             paths.push_back('/bodyset/torso')
             torsoOrientationGoal.setFramePaths(paths)
@@ -338,15 +356,52 @@ class TrackingProblem(Result):
             problem.addGoal(torsoOrientationGoal)
 
             torsoAngVelGoal = osim.MocoAngularVelocityTrackingGoal(
-                'upright_torso_angular_velocity_goal', 
-                config.upright_torso_weight)
-            torsoAngVelGoal.setWeight(0.01 * config.upright_torso_weight)
-            torsoAngVelGoal.setStatesReference(torsoTable)
+                'torso_angular_velocity_goal', 
+                0.1 * config.torso_orientation_weight)
+            torsoAngVelGoal.setStatesReference(
+                osim.TableProcessor(torsoTable))
             paths = osim.StdVectorString()
             paths.push_back('/bodyset/torso')
             torsoAngVelGoal.setFramePaths(paths)
             torsoAngVelGoal.setEnabled(config.tracking_enabled)
             problem.addGoal(torsoAngVelGoal)
+
+        # Feet orientation goal
+        # ---------------------
+        if config.feet_orientation_weight:
+
+            expStateLabels = experimentStates.getColumnLabels()
+            feetTable = osim.TimeSeriesTable(experimentStates)
+            stateVars = model.getStateVariableNames()
+            activationVec = osim.Vector(feetTable.getNumRows(), 0.02)
+            for isv in np.arange(stateVars.getSize()):
+                stateVar = stateVars.get(int(isv))
+                if not stateVar in expStateLabels:
+                    feetTable.appendColumn(stateVar, activationVec)
+
+            feetOrientationGoal = osim.MocoOrientationTrackingGoal(
+                'feet_orientation_goal', 
+                config.feet_orientation_weight)
+            feetOrientationGoal.setStatesReference(
+                osim.TableProcessor(feetTable))
+            paths = osim.StdVectorString()
+            paths.push_back('/bodyset/calcn_r')
+            paths.push_back('/bodyset/calcn_l')
+            feetOrientationGoal.setFramePaths(paths)
+            feetOrientationGoal.setEnabled(config.tracking_enabled)
+            problem.addGoal(feetOrientationGoal)
+
+            feetAngVelGoal = osim.MocoAngularVelocityTrackingGoal(
+                'feet_angular_velocity_goal', 
+                0.1 * config.feet_orientation_weight)
+            feetAngVelGoal.setStatesReference(
+                osim.TableProcessor(feetTable))
+            paths = osim.StdVectorString()
+            paths.push_back('/bodyset/calcn_r')
+            paths.push_back('/bodyset/calcn_l')
+            feetAngVelGoal.setFramePaths(paths)
+            feetAngVelGoal.setEnabled(config.tracking_enabled)
+            problem.addGoal(feetAngVelGoal)
     
         # Distance constraint to prevent intersecting bodies
         # --------------------------------------------------
@@ -366,7 +421,7 @@ class TrackingProblem(Result):
                 osim.MocoFrameDistanceConstraintPair(
                 '/bodyset/toes_l', '/bodyset/calcn_r', footDistance, np.inf))
 
-        armDistance = 0.10
+        armDistance = 0.05
         for body in ['humerus', 'ulna', 'radius', 'hand']:
             for side in ['_l', '_r']:
                 distanceConstraint.addFramePair(
@@ -463,7 +518,7 @@ class TrackingProblem(Result):
             osim.MocoBounds(-100.0, 100.0))
         solver.set_parallel(28)
         solver.set_parameters_require_initsystem(False)
-        solver.set_optim_max_iterations(10000)
+        solver.set_optim_max_iterations(self.num_max_iterations)
         solver.set_scale_variables_using_bounds(True)
         solver.set_optim_finite_difference_scheme('forward')
 
@@ -637,7 +692,12 @@ class TrackingProblem(Result):
             muscle_moments.setColumnLabels(labels)
 
             for label in labels:
-                if (('pelvis' in label) or ('lumbar' in label) or ('beta' in label)):
+                if (('pelvis' in label) or 
+                    ('lumbar' in label) or 
+                    ('beta' in label) or 
+                    ('elbow' in label) or
+                    ('arm' in label) or
+                    ('pro_sup' in label)):
                     muscle_moments.removeColumn(label)
 
             fpath = os.path.join(self.result_fpath,

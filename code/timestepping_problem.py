@@ -342,7 +342,7 @@ class TimeSteppingProblem(Result):
 
         # Add the PrescribedController to the model
         # -----------------------------------------
-        osim.prescribeControlsToModel(trajectory, model, 'GCVSpline')
+        osim.prescribeControlsToModel(trajectory, model, 'PiecewiseLinearFunction')
 
         # Add states reporter to the model.
         # ---------------------------------

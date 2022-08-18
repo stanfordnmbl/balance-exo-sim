@@ -87,10 +87,17 @@ class Result(ABC):
         state = model.initSystem()
         mass = model.getTotalMass(state)
 
+        # Unlock subtalar and mtp coordinates, if locked
+        coordSet = model.updCoordinateSet()
+        for coordName in ['subtalar_angle', 'mtp_angle']:
+            for side in ['_l', '_r']:
+                coord = coordSet.get(f'{coordName}{side}')
+                coord.set_locked(False)
+
         # Arm actuators
         coordNames = ['arm_flex', 'arm_add', 'arm_rot', 
                       'elbow_flex', 'pro_sup']
-        strengths = [0.2, 0.2, 0.2, 0.1, 0.05]
+        strengths = [0.5, 0.5, 0.5, 0.2, 0.2]
         for coordName, strength in zip(coordNames, strengths):
             for side in ['_l', '_r']:
                 actu = osim.ActivationCoordinateActuator()
@@ -264,7 +271,6 @@ class Result(ABC):
                        'contactgeometryset/medialMidfoot',
                        ]
 
-
         for istate in range(numStates):
 
             state = statesTrajectory.get(istate)
@@ -280,6 +286,7 @@ class Result(ABC):
                 copForceSum = 0
                 copTorqueSum_z = 0
 
+                offset = 3 * iside * len(sphereNames)
                 zipped = zip(forceNames, forceLabels, sphereNames)
                 for i, (forceName, forceLabel, sphereName) in enumerate(zipped):
                     force = osim.Vec3(0)
@@ -307,9 +314,9 @@ class Result(ABC):
                     position[1] = position[1] + locationInGround[1]
                     position[2] = position[2] + locationInGround[2]
 
-                    row[3*i] = force
-                    row[3*i + 1] = position
-                    row[3*i + 2] = torque
+                    row[3*i + offset] = force
+                    row[3*i + 1 + offset] = position
+                    row[3*i + 2 + offset] = torque
 
                     copForceSum += force[1]
                     copTorqueSum_x += force[1] * position[0]

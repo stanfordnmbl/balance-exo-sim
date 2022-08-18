@@ -14459,6 +14459,18 @@
 					<!--Scalar number signifying the ratio of length/diameter used to display the force and moment vectors.-->
 					<visual_aspect_ratio>1</visual_aspect_ratio>
  				</ExpressionBasedBushingForce>
+				<ExpressionBasedCoordinateForce name="PassiveSubtalarDamping_r">
+					<!--Coordinate (name) to apply force to.-->
+					<coordinate>subtalar_angle_r</coordinate>
+					<!--Expression of the force magnitude as a function of the coordinate value (q)and its time derivative (qdot). Note, expression cannot have any whitespaceseparating characters-->
+					<expression>-100.0*q-2.0*qdot</expression>
+				</ExpressionBasedCoordinateForce>
+				<ExpressionBasedCoordinateForce name="PassiveSubtalarDamping_l">
+					<!--Coordinate (name) to apply force to.-->
+					<coordinate>subtalar_angle_r</coordinate>
+					<!--Expression of the force magnitude as a function of the coordinate value (q)and its time derivative (qdot). Note, expression cannot have any whitespaceseparating characters-->
+					<expression>-100.0*q-2.0*qdot</expression>
+				</ExpressionBasedCoordinateForce>
  				<ExpressionBasedCoordinateForce name="PassiveToeDamping_r">
 					<!--Coordinate (name) to apply force to.-->
 					<coordinate>mtp_angle_r</coordinate>

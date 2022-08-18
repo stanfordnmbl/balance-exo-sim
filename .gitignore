@@ -236,10 +236,13 @@ lower*.sto
 controls*.sto
 
 /results/perturbed*
+/results/torque_actuators*
 
 # Archived results
 /results/**/archive
 
-# Results file
+# Results files
 /results/**/tracking*.txt
-
+/results/**/center_of_mass*.sto
+/results/**/muscle_mechanics*.sto
+/results/**/muscle_moments*.sto

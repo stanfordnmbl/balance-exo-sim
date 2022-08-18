@@ -23,7 +23,7 @@ def generate_unperturbed_tasks(study, subject, trial,
     # Initial guess creation
     # ----------------------
     guess_fpath = ''
-    scales             = [0.001, 0.1, 1.0]
+    scales             = [0.1, 1.0, 1.0]
     mesh_intervals     = [0.05, 0.04, 0.02]
     reserves           = [1000, 100, 0]
     implicit_multibody = [True, True, False]
@@ -59,6 +59,7 @@ def generate_unperturbed_tasks(study, subject, trial,
         study.config['results_path'],
         'unperturbed', subject.name, 
         'unperturbed.sto')
+
     trial.add_task(
         tasks.TaskMocoUnperturbedWalking,
         initial_time, final_time, 
@@ -66,7 +67,7 @@ def generate_unperturbed_tasks(study, subject, trial,
         walking_speed=study.walking_speed,
         guess_fpath=unperturbed_guess_fpath,
         periodic=True,
-        create_and_insert_guess=True)
+        create_and_insert_guess=False)
 
     # Unperturbed walking w/ different lumbar stiffnesses
     # ---------------------------------------------------

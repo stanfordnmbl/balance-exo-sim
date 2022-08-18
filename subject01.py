@@ -5,6 +5,7 @@ import tasks
 import helpers
 
 def scale_setup_fcn(util, mset, sset, ikts):
+
     m = util.Measurement('torso', mset)
     m.add_markerpair('RASI', 'CLAV')
     m.add_markerpair('LASI', 'CLAV')
@@ -145,6 +146,7 @@ def add_to_study(study):
 
     # Scale max isometric forces based on mass and height
     # ---------------------------------------------------
+    subject.add_task(tasks.TaskCopyModelSegmentMasses)
     subject.add_task(tasks.TaskScaleMuscleMaxIsometricForce)
     subject.scaled_model_fpath = os.path.join(subject.results_exp_path,
         f'{subject.name}_final.osim')
@@ -157,10 +159,10 @@ def add_to_study(study):
     
     # Trial to use
     gait_events = dict()
-    gait_events['right_strikes'] = [1.18, 2.28, 3.36, 4.49] #, 5.57]
-    gait_events['left_toeooffs'] = [1.37, 2.47, 3.58] #, 4.68]
-    gait_events['left_strikes'] = [1.73, 2.84, 3.94] #, 5.05]
-    gait_events['right_toeoffs'] = [1.93, 3.03, 4.14] #, 5.25]
+    gait_events['right_strikes'] = [1.18, 2.28, 3.38, 4.49] 
+    gait_events['left_toeooffs'] = [1.36, 2.46, 3.56]
+    gait_events['left_strikes'] = [1.73, 2.83, 3.94] 
+    gait_events['right_toeoffs'] = [1.92, 3.02, 4.12]
 
     walk2_trial = walk2.add_trial(1,
             gait_events=gait_events,
@@ -173,10 +175,10 @@ def add_to_study(study):
     # Inverse kinematics and inverse dynamics
     ik_setup_task, id_setup_task = helpers.generate_main_tasks(walk2_trial)
 
-    initial_time = 3.36
+    initial_time = 3.38
     final_time = 4.49
-    duration = 1.13
-    right_strikes = [3.36, 4.49]
+    duration = 1.11
+    right_strikes = [3.38, 4.49]
     left_strikes = [3.94]
     walk2_trial.add_task(
         tasks.TaskComputeJointAngleStandardDeviations, 
