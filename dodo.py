@@ -59,16 +59,17 @@ error_markers.append('CLAV')
 error_markers.append('C7')
 study.error_markers = error_markers
 
-scale = 0.05
+scale = 1.0
 study.weights = {
-    'state_tracking_weight':    2e3 * scale,
-    'control_weight':           5e2 * scale,
-    'grf_tracking_weight':      5e5 * scale,
-    'torso_orientation_weight': 1e2 * scale,
-    'feet_orientation_weight':  0 * scale,
+    'state_tracking_weight':    50 * scale,
+    'control_weight':           25 * scale,
+    'grf_tracking_weight':      7500 * scale,
+    'torso_orientation_weight': 10 * scale,
+    'feet_orientation_weight':  10 * scale,
     'control_tracking_weight':  0 * scale, 
-    'aux_deriv_weight':         1e5 * scale,
-    'acceleration_weight':      1e2 * scale,
+    'aux_deriv_weight':         1000 * scale,
+    'acceleration_weight':      1 * scale,
+    'subtalar_weight':          0 * scale,
     }
 study.constraint_tolerance = 1e-4
 study.convergence_tolerance = 1e-2
@@ -114,20 +115,20 @@ subject19.add_to_study(study)
 # ---------------
 study.add_task(TaskCopyMotionCaptureData, walk125=(2, ''))
 
-# Validate
-# --------
+# Plot settings
+# -------------
 subjects = [
             'subject01', 
             'subject02', 
             'subject04', 
-            # 'subject18', 
+            'subject18', 
             'subject19'
             ]
 masses = [
           study.get_subject(1).mass,
           study.get_subject(2).mass,
           study.get_subject(4).mass,
-          # study.get_subject(18).mass,
+          study.get_subject(18).mass,
           study.get_subject(19).mass
           ]
 
@@ -146,53 +147,39 @@ study.plot_colors = [pp.adjust_lightness('orange', amount=1.25),
                      pp.adjust_lightness('blue', amount=1.5)
                     ]
 
-# study.add_task(TaskPlotSensitivityResults, subjects[:1])
+# Methods figure
+# --------------
+study.add_task(TaskPlotMethodsFigure, subjects)
+
+# Validate
+# --------
 study.add_task(TaskPlotUnperturbedResults, subjects, masses,
     study.times)
 study.add_task(TaskValidateTrackingErrors, subjects, masses,
     study.times)
+study.add_task(TaskValidateMarkerErrors)
 
-# Analysis
-# --------
-study.add_task(TaskPlotInstantaneousCenterOfMass, subjects, 
-    study.times, study.rise, study.fall)
-
-study.add_task(TaskPlotInstantaneousGroundReactions, subjects, 
-    study.times, study.rise, study.fall)
-
+# Center-of-mass analysis
+# -----------------------
 study.add_task(TaskPlotCenterOfMassVector, subjects,
     study.times, study.rise, study.fall)
+study.add_task(TaskPlotInstantaneousCenterOfMass, subjects, 
+    study.times, study.rise, study.fall)
+study.add_task(TaskCreateCenterOfMassStatisticsTables, subjects,
+    study.times, study.rise, study.fall)
+for time in study.times:
+    study.add_task(TaskPlotCenterOfMass, subjects, time, study.rise, study.fall)
 
-study.add_task(TaskPlotGroundReactionBreakdown, subjects, 30, 0, -10, study.rise, study.fall)
-study.add_task(TaskPlotGroundReactionBreakdown, subjects, 30, 10, 0, study.rise, study.fall)
-study.add_task(TaskPlotGroundReactionBreakdown, subjects, 30, 10, -10, study.rise, study.fall)
-study.add_task(TaskPlotGroundReactionBreakdown, subjects, 40, 0, -10, study.rise, study.fall)
-study.add_task(TaskPlotGroundReactionBreakdown, subjects, 40, 10, -10, study.rise, study.fall)
-study.add_task(TaskPlotGroundReactionBreakdown, subjects, 50, 0, -10, study.rise, study.fall)
-study.add_task(TaskPlotGroundReactionBreakdown, subjects, 50, 10, -10, study.rise, study.fall)
-study.add_task(TaskPlotGroundReactionBreakdown, subjects, 40, 10, 0, study.rise, study.fall)
-study.add_task(TaskPlotGroundReactionBreakdown, subjects, 45, 10, 0, study.rise, study.fall)
-study.add_task(TaskPlotGroundReactionBreakdown, subjects, 50, 10, 0, study.rise, study.fall)
-study.add_task(TaskPlotGroundReactionBreakdown, subjects, 55, 10, 0, study.rise, study.fall)
-study.add_task(TaskPlotGroundReactionBreakdown, subjects, 60, 10, 0, study.rise, study.fall)
-
+# Ground reactions analysis
+# -------------------------
+study.add_task(TaskPlotInstantaneousGroundReactions, subjects, 
+    study.times, study.rise, study.fall)
 for time in study.times:
     study.add_task(TaskPlotGroundReactions, subjects, time, study.rise, study.fall)
-    study.add_task(TaskPlotCenterOfMass, subjects, time, study.rise, study.fall)
-    study.add_task(TaskPlotBodyAccelerations, subjects, time, study.rise, study.fall)
 
-study.add_task(TaskPlotMethodsFigure, subjects)
-
+# Device powers
+# -------------
 study.add_task(TaskPlotAnkleTorquesAndPowers, 
     subjects[0], [20, 30, 40, 50, 55, 60], 10, 0, study.rise, study.fall)
-
-# for itorque, torque in enumerate(study.torques):
-
-#     study.add_task(TaskPlotInstantaneousCenterOfMassLumbarStiffness, subjects[:1], 
-#         study.times, study.torques[itorque], study.rise, study.fall)
-
-    # for subtalar in study.subtalar_peak_torques:
-    #     for lumbar_stiffness in study.lumbar_stiffnesses:
-    #         study.add_task(TaskPlotGroundReactionsVersusEffectiveForces, subjects, 
-    #             study.times, study.torques[itorque], study.rise, study.fall, subtalar,
-    #             lumbar_stiffness=lumbar_stiffness)
+study.add_task(TaskCreatePerturbationPowersTable, subjects)
+study.add_task(TaskPlotPerturbationPowers, subjects)

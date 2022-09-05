@@ -138,10 +138,15 @@ class Result(ABC):
                            'knee_angle_l', 'ankle_angle_l', 'subtalar_angle_l',
                            'mtp_angle_r', 'mtp_angle_l']
             for coordName in coordNames:
-                actu = osim.ActivationCoordinateActuator()
+                actu = osim.CoordinateActuator()
                 actu.set_coordinate(coordName)
                 actu.setName(f'reserve_{coordName}')
-                actu.setOptimalForce(self.reserve_strength)
+                scale = 1.0
+                if ((coordName == 'pelvis_tx') or
+                        (coordName == 'pelvis_ty') or
+                        (coordName == 'pelvis_tz')):
+                    scale = 10.0
+                actu.setOptimalForce(scale * self.reserve_strength)
                 actu.setMinControl(-1.0)
                 actu.setMaxControl(1.0)
                 model.addForce(actu)

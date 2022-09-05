@@ -48,6 +48,7 @@ class TrackingConfig:
         self.control_tracking_weight = weights['control_tracking_weight']
         self.aux_deriv_weight = weights['aux_deriv_weight'] 
         self.acceleration_weight = weights['acceleration_weight']
+        self.subtalar_weight = weights['subtalar_weight']
 
         # Periodicity arguments
         self.periodic = periodic
@@ -191,9 +192,9 @@ class TrackingProblem(Result):
             dx = (time[int(i)] - time[0]) * self.walking_speed
             pelvis_tx_new[int(i)] = pelvis_tx[int(i)] + dx
 
-        coordinatesTable.setDependentColumnAtIndex(
-            int(coordinatesTable.getColumnIndex('pelvis_tx')), 
-            pelvis_tx_new)
+        pelvis_tx_upd = coordinatesTable.updDependentColumn('pelvis_tx')
+        for i in np.arange(nrows):
+            pelvis_tx_upd[int(i)] = pelvis_tx_new[int(i)]
 
         for side in ['_l', '_r']:
             coordinatesTable.removeColumn(f'wrist_dev{side}')
@@ -221,7 +222,7 @@ class TrackingProblem(Result):
 
             for name in coordinates_std.index:
                 std = coordinates_std.loc[name][0] 
-                denom = 1000 * std * std
+                denom = 10.0 * std
 
                 if name in valuePath:
                     if 'lumbar' in name:
@@ -232,16 +233,20 @@ class TrackingProblem(Result):
                             valueWeight = 1.0 / denom
                             speedWeight = 0.01 / denom
 
+                    elif ('subtalar' in name):
+                        subt_w = config.subtalar_weight
+                        valueWeight = subt_w
+                        speedWeight = 1e-4 * subt_w
+
                     elif ('beta' in name or 
                           'mtp' in name or 
-                          'subtalar' in name or
                           'wrist' in name):  
                         valueWeight = 0.0
                         speedWeight = 0.0
 
                     elif 'ankle' in name:
-                        valueWeight = 1.0 / denom
-                        speedWeight = 0.01 / denom
+                        valueWeight = 2.0 / denom
+                        speedWeight = 0.02 / denom
 
                     elif 'pelvis' in name:
                         if 'pelvis_ty' in name:
@@ -300,8 +305,10 @@ class TrackingProblem(Result):
         problem.setStateInfoPattern('/jointset/.*/speed', speedBounds, [], [])
         problem.setControlInfoPattern('/forceset/.*', muscBounds, [], [])
         problem.setControlInfoPattern('/forceset/torque.*', torqueBounds, [], [])
+        problem.setControlInfoPattern('/forceset/reserve.*', torqueBounds, [], [])
         problem.setStateInfoPattern('.*/activation', muscBounds, [], [])
         problem.setStateInfoPattern('.*torque.*/activation', torqueBounds, [], [])
+        problem.setStateInfoPattern('.*reserve.*/activation', torqueBounds, [], [])
         problem.setStateInfoPattern('.*tendon_force', tendonBounds, [], [])
         for path in stateBounds:
             bounds = stateBounds[path][0]
@@ -393,7 +400,7 @@ class TrackingProblem(Result):
 
             feetAngVelGoal = osim.MocoAngularVelocityTrackingGoal(
                 'feet_angular_velocity_goal', 
-                0.1 * config.feet_orientation_weight)
+                0.01 * config.feet_orientation_weight)
             feetAngVelGoal.setStatesReference(
                 osim.TableProcessor(feetTable))
             paths = osim.StdVectorString()
@@ -467,6 +474,7 @@ class TrackingProblem(Result):
                 for actu in model.getComponentsList():
                     if (not (actu.getConcreteClassName().endswith('Muscle') or
                              actu.getConcreteClassName().endswith('Actuator'))): continue
+                    if 'reserve' in actu.getAbsolutePathString(): continue
 
                     periodic.addStatePair(osim.MocoPeriodicityGoalPair(
                             actu.getStateVariableNames().get(0)))
@@ -542,9 +550,6 @@ class TrackingProblem(Result):
                 for label in controlLabels:
                     if 'reserve' in label:
                         controlsTable.removeColumn(label)
-
-                # import pdb
-                # pdb.set_trace()
 
                 guess.insertStatesTrajectory(statesTable, True)
                 guess.insertControlsTrajectory(controlsTable, True)

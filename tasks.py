@@ -319,6 +319,7 @@ class TaskCopyModelSegmentMasses(osp.SubjectTask):
     def __init__(self, subject):
         super(TaskCopyModelSegmentMasses, self).__init__(subject)
         self.subject = subject
+        self.study = subject.study
         self.name = '%s_copy_model_segment_masses' % self.subject.name
         self.doc = 'Copy model segment masses to addbio model'
         self.scale_model_fpath = os.path.join(self.subject.results_exp_path, 
@@ -341,6 +342,7 @@ class TaskCopyModelSegmentMasses(osp.SubjectTask):
 
         addbio_model = osim.Model(file_dep[1])
         addbio_model.initSystem()
+        addbio_model.setName(f'{self.study.name}_{self.subject.name}')
 
         bodyNames = osim.ArrayStr()
         bodySet_scale = scale_model.getBodySet()
@@ -543,681 +545,9 @@ class TaskTrimTrackingData(osp.TrialTask):
         sto.write(grfs, target[2])
 
 
-# Validate inverse kinematics
-# ---------------------------
-
-class TaskValidateMarkerErrors(osp.StudyTask):
-    REGISTRY = []
-    def __init__(self, study, cond_names=['walk2']):
-        super(TaskValidateMarkerErrors, self).__init__(study)
-        self.name = 'validate_marker_errors'
-        self.doc = 'Compute marker errors across subjects and conditions.'
-        self.results_path = study.config['results_path']
-        self.validate_path = os.path.join(study.config['validate_path'],
-            'marker_errors')
-        self.cond_names = cond_names
-        self.subjects = study.subjects
-
-        errors_fpaths = list()
-        for cond_name in cond_names:
-            for subject in study.subjects:
-                errors_fpaths.append(os.path.join(self.results_path, 
-                    'experiments', subject.name, cond_name, 'ik', 
-                    f'{study.name}_{subject.name}_{cond_name}_ik_ik_marker_errors.sto'))
-                
-        val_fname = os.path.join(self.validate_path, 
-            'marker_errors.txt')
-        self.add_action(errors_fpaths, [val_fname],
-                        self.validate_marker_errors)
-
-    def validate_marker_errors(self, file_dep, target):
-        if not os.path.isdir(self.validate_path): 
-            os.mkdir(self.validate_path)
-
-        mean_rms_errors = list()
-        max_marker_errors = list()
-        for dep in file_dep:
-            marker_errors = osim.TimeSeriesTable(dep)
-            rms_errors = marker_errors.getDependentColumn(
-                'marker_error_RMS').to_numpy()
-            mean_rms_errors.append(np.mean(rms_errors))
-
-            max_errors = marker_errors.getDependentColumn(
-                'marker_error_max').to_numpy()
-            max_marker_errors.append(np.max(max_errors))
-
-        with open(target[0], 'w') as f:
-            f.write('subjects: ')
-            for isubj, subject in enumerate(self.subjects):
-                if isubj:
-                    f.write(', %s' % subject.name)
-                else:
-                    f.write('%s' % subject.name)
-            f.write('\n')
-            f.write('conditions: ')
-            for icond, cond_name in enumerate(self.cond_names):
-                if icond:
-                    f.write(', %s' % subject)
-                else:
-                    f.write('%s' % cond_name)
-            f.write('\n')
-            f.write('Max overall marker error (avg. across subj): %1.3f cm \n' 
-                    % (100*np.mean(max_marker_errors)))
-            f.write('Mean RMS marker error (avg. across subj): %1.3f cm \n'
-                    % (100*np.mean(mean_rms_errors)))
-
-
-class TaskValidateKinetics(osp.StudyTask):
-    REGISTRY = []
-    def __init__(self, study, cond_name='walk2',
-            gen_forces=['hip_flexion_r_moment', 
-                        'knee_angle_r_moment',
-                        'ankle_angle_r_moment'],
-            residual_moments=['pelvis_tilt_moment', 
-                              'pelvis_list_moment',
-                              'pelvis_rotation_moment'],
-            residual_forces=['pelvis_tx_force',
-                             'pelvis_ty_force',
-                             'pelvis_tz_force'],
-            grfs=['ground_force_r_vx',
-                  'ground_force_r_vy', 
-                  'ground_force_r_vz']):
-        super(TaskValidateKinetics, self).__init__(study)
-        suffix = ''
-        self.costdir = ''
-        if not (study.costFunction == 'Default'):
-            suffix += '_%s' % study.costFunction
-            self.costdir = study.costFunction 
-        self.name = 'validate_kinetics%s' % suffix
-        self.doc = 'Validate joint moments and residuals across subjects and conditions.'
-        self.results_path = study.config['results_path']
-        self.validate_path = os.path.join(study.config['validate_path'],
-            'kinetics')
-        self.figure_path = os.path.join(study.config['figures_path'], 
-            'figureS1')
-        self.cond_name = cond_name
-        self.subjects = study.subjects
-        self.gen_forces = gen_forces
-        if not len(residual_moments) == 3:
-            raise Exception('There must be 3 residual moment components.')
-        self.residual_moments = residual_moments
-        if not len(residual_forces) == 3:
-            raise Exception('There must be 3 residual force components.')
-        self.residual_forces = residual_forces
-        if not len(grfs) == 3:
-            raise Exception('There must be 3 ground reaction force components.')
-        self.grfs = grfs
-
-        colors = plt.cm.jet(np.linspace(0, 1, len(study.subjects)))
-        masses = list()
-        for subject in study.subjects:
-            masses.append(subject.mass)
-
-        moments_fpaths_all = list()
-        bodykin_fpaths_all = list()
-        gait_events_all = list()
-        isubjs_all = list()
-        grf_fpaths_all = list()
-
-        moments_fpaths = list()
-        gait_events = list()
-        isubjs = list()
-        for isubj, subject in enumerate(study.subjects):
-            fpath = os.path.join(self.results_path, 'experiments', 
-                subject.name, cond_name, 'id', 'results', 
-                '%s_%s_%s_id_solution.sto' % (study.name, subject.name, 
-                    cond_name))
-            moments_fpaths.append(fpath)
-            moments_fpaths_all.append(fpath)
-
-            bodykin_fpath = os.path.join(self.results_path, 'experiments',
-                subject.name, cond_name, 'body_kinematics', 'results',
-                '%s_%s_%s_body_kinematics_BodyKinematics_pos_global.sto' % (
-                    study.name, subject.name, cond_name))
-            bodykin_fpaths_all.append(bodykin_fpath)
-
-            condition = subject.get_condition(cond_name)
-            trial = condition.get_trial(1)
-            cycles = trial.get_cycles()
-            gait_events_this_cond = list()
-            for cycle in cycles:
-                gait_events_this_cond.append((cycle.start, cycle.end))
-            gait_events.append(gait_events_this_cond)
-            gait_events_all.append(gait_events_this_cond)
-            isubjs.append(isubj)
-            isubjs_all.append(isubj)
-
-            grf_fpath = os.path.join(self.results_path, 'experiments', 
-                subject.name, cond_name, 'expdata', 'ground_reaction.mot')
-            grf_fpaths_all.append(grf_fpath)
-
-        joint_moments_fname = os.path.join(self.validate_path, 
-                'joint_moments_%s.pdf' % cond_name)
-        joint_moments_figname = os.path.join(self.figure_path, 
-                'figureS1.pdf')
-        self.add_action(moments_fpaths, 
-                        [joint_moments_fname, joint_moments_figname], 
-                        self.validate_joint_moments, gait_events, isubjs, 
-                        colors, masses)
-
-        residuals_fname = os.path.join(self.validate_path, 'residuals.txt')
-        moments_fname = os.path.join(self.validate_path, 'moments.csv')
-        forces_fname = os.path.join(self.validate_path, 'forces.csv')
-        self.add_action(moments_fpaths_all, 
-                        [residuals_fname, moments_fname, forces_fname],
-                        self.validate_residuals, gait_events_all, grf_fpaths_all,
-                        bodykin_fpaths_all)
-
-    def validate_joint_moments(self, file_dep, target, gait_events, isubjs,
-            colors, masses):
-        if not os.path.isdir(self.validate_path): os.mkdir(self.validate_path)
-        if not os.path.isdir(self.figure_path): os.mkdir(self.figure_path)
-
-        nice_gen_force_names = {'hip_flexion_r_moment': 'hip flexion moment',
-                                'knee_angle_r_moment': 'knee flexion moment',
-                                'ankle_angle_r_moment': 'ankle plantarflexion moment'}
-
-        y_lim_dict = {'hip_flexion_r_moment': (-1.2, 1.2),
-                       'knee_angle_r_moment': (-1.2, 1.2),
-                       'ankle_angle_r_moment': (-0.5, 2.0)}
-
-        subject_labels = ['subject 1', 'subject 2', 'subject 3', 'subject 4',
-                          'subject 5']
-
-        import matplotlib
-        fig = pl.figure(figsize=(6, 8))
-        ind_axes = list()
-        ind_handles = list()
-        mean_axes = list()
-        dfs = list()
-        for iforce, gen_force in enumerate(self.gen_forces):
-            idx = iforce + 1
-            ind_axes.append(fig.add_subplot(len(self.gen_forces), 2, 2*idx-1))
-            mean_axes.append(fig.add_subplot(len(self.gen_forces), 2, 2*idx))
-            dfs.append(pd.DataFrame())
-
-        for file, gait_events_cond, isubj in zip(file_dep, gait_events, isubjs):
-            id = pp.storage2numpy(file)
-            time = id['time']
-            for ige, gait_event in enumerate(gait_events_cond):
-                start = np.argmin(abs(time-gait_event[0]))
-                end = np.argmin(abs(time-gait_event[1]))
-                new_time = np.linspace(time[start], time[end], 101)
-                pgc = np.linspace(0, 100, 101)
-                for iforce, gen_force in enumerate(self.gen_forces):
-                    force = id[gen_force][start:end] / masses[isubj]                    
-                    force_interp = np.interp(new_time, time[start:end], force)
-                    dfs[iforce] = pd.concat([dfs[iforce], 
-                            pd.DataFrame(force_interp)], axis=1)
-
-                    sign = -1 if gen_force=='ankle_angle_r_moment' else 1
-                    h, = ind_axes[iforce].plot(pgc, sign*force_interp, color=colors[isubj])
-                    if not ige and not iforce:
-                        ind_handles.append(h)
-                    ind_axes[iforce].set_ylabel(
-                        '%s (N-m/kg)' % nice_gen_force_names[gen_force])
-                    ind_axes[iforce].set_ylim(y_lim_dict[gen_force])
-                    ind_axes[iforce].set_xlim((0, 100))
-                    ind_axes[iforce].axhline(ls='--', color='lightgray', zorder=0)
-                    ind_axes[iforce].spines['top'].set_visible(False)
-                    ind_axes[iforce].spines['right'].set_visible(False)
-                    ind_axes[iforce].tick_params(direction='in')
-
-
-        ind_axes[0].legend(ind_handles, subject_labels, fancybox=False,
-                frameon=False, prop={'size': 8}, loc=2)                    
-
-        for iforce, gen_force in enumerate(self.gen_forces):
-            sign = -1 if gen_force=='ankle_angle_r_moment' else 1
-            force_mean = sign*dfs[iforce].mean(axis=1)
-            force_std = dfs[iforce].std(axis=1)
-            mean_axes[iforce].fill_between(pgc, force_mean-force_std, 
-                force_mean+force_std, color='black', alpha=0.2)
-            std_h = matplotlib.patches.Patch(color='black', alpha=0.2)
-            mean_h, = mean_axes[iforce].plot(pgc, force_mean, color='black')
-            mean_axes[iforce].set_ylim(y_lim_dict[gen_force])
-            mean_axes[iforce].set_xlim((0, 100))
-            mean_axes[iforce].axhline(ls='--', color='lightgray', zorder=0)
-            mean_axes[iforce].spines['top'].set_visible(False)
-            mean_axes[iforce].spines['right'].set_visible(False)
-            mean_axes[iforce].tick_params(direction='in')
-            mean_axes[iforce].set_yticklabels([])
-            if iforce == len(self.gen_forces)-1:
-                mean_axes[iforce].set_xlabel('gait cycle (%)')
-                ind_axes[iforce].set_xlabel('gait cycle (%)')
-            else:
-                ind_axes[iforce].set_xticklabels([])
-                mean_axes[iforce].set_xticklabels([])
-
-        mean_axes[0].legend([mean_h, std_h], ['mean', 'std'], fancybox=False,
-                frameon=False, prop={'size': 8}, loc=2)  
-
-        fig.tight_layout()
-        fig.savefig(target[0])
-        fig.savefig(target[0].replace('.pdf', '.png'), dpi=600)
-        fig.savefig(target[1])
-        fig.savefig(target[1].replace('.pdf', '.png'), dpi=600)
-        pl.close(fig)
-
-    def validate_residuals(self, file_dep, target, gait_events, grf_fpaths,
-            bodykin_fpaths):
-        if not os.path.isdir(self.validate_path): os.mkdir(self.validate_path)
-
-        df_moments = pd.DataFrame()
-        df_forces = pd.DataFrame()
-        df_grfs = pd.DataFrame()
-        df_ycom = pd.DataFrame()
-        for file, gait_events_cond, grf_fpath, bodykin_fpath in zip(file_dep, 
-                gait_events, grf_fpaths, bodykin_fpaths):
-            id = pp.storage2numpy(file)
-            time = id['time']
-            grfs = pp.storage2numpy(grf_fpath)
-            grf_time = grfs['time']
-            bodykin = pp.storage2numpy(bodykin_fpath)
-            bodykin_time = bodykin['time']
-            for gait_event in gait_events_cond:
-                start = np.argmin(abs(time-gait_event[0]))
-                end = np.argmin(abs(time-gait_event[1]))
-                new_time = np.linspace(time[start], time[end], 101)
-                for residual_moment in self.residual_moments:
-                    moment = id[residual_moment][start:end] 
-                    moment_interp = np.interp(new_time, time[start:end], moment)
-                    df_moments = pd.concat([df_moments, 
-                        pd.DataFrame(moment_interp)], axis=1)
-
-                for residual_force in self.residual_forces:
-                    force = id[residual_force][start:end]
-                    force_interp = np.interp(new_time, time[start:end], force)
-                    df_forces = pd.concat([df_forces, 
-                        pd.DataFrame(force_interp)], axis=1)
-
-                grf_start = np.argmin(abs(grf_time-gait_event[0]))
-                grf_end = np.argmin(abs(grf_time-gait_event[1]))
-                new_grf_time = np.linspace(grf_time[grf_start], 
-                        grf_time[grf_end], 101)
-                for grf in self.grfs:
-                    reaction = grfs[grf][grf_start:grf_end]
-                    reaction_interp = np.interp(new_grf_time, 
-                        grf_time[grf_start:grf_end], reaction)
-                    df_grfs = pd.concat([df_grfs, pd.DataFrame(reaction_interp)], 
-                        axis=1)
-
-                bodykin_start = np.argmin(abs(bodykin_time-gait_event[0]))
-                bodykin_end = np.argmin(abs(bodykin_time-gait_event[1]))
-                new_bodykin_time = np.linspace(bodykin_time[bodykin_start],
-                    bodykin_time[bodykin_end], 101)
-                ycom = bodykin['center_of_mass_Y'][bodykin_start:bodykin_end]
-                ycom_interp = np.interp(new_bodykin_time, 
-                    bodykin_time[bodykin_start:bodykin_end], ycom)
-                df_ycom = pd.concat([df_ycom, pd.DataFrame(ycom_interp)], axis=1)
-
-        df_moments = pd.DataFrame(np.vstack(np.split(df_moments, 3*len(file_dep), 
-            axis=1)))
-        df_forces = pd.DataFrame(np.vstack(np.split(df_forces, 3*len(file_dep), 
-            axis=1)))
-        df_grfs = pd.DataFrame(np.vstack(np.split(df_grfs, 3*len(file_dep), 
-            axis=1)))
-        df_ycom = pd.DataFrame(np.vstack(np.split(df_ycom, 3*len(file_dep), 
-            axis=1)))
-
-        mag_moments = np.linalg.norm(df_moments, axis=1)
-        mag_forces = np.linalg.norm(df_forces, axis=1)
-        mag_grfs = np.linalg.norm(df_grfs, axis=1)
-        peak_grfs = mag_grfs.max()
-        avg_ycom = df_ycom.mean()[0]
-
-        peak_moments = 100*mag_moments.max() / (peak_grfs * avg_ycom)
-        rms_moments = 100*np.sqrt(np.mean(np.square(mag_moments))) / (
-            peak_grfs * avg_ycom)
-        peak_forces = 100*mag_forces.max() / peak_grfs
-        rms_forces = 100*np.sqrt(np.mean(np.square(mag_forces))) / peak_grfs
-
-        with open(target[0],"w") as f:
-            f.write('subjects: ')
-            for isubj, subject in enumerate(self.subjects):
-                if isubj:
-                    f.write(', %s' % subject.name)
-                else:
-                    f.write('%s' % subject.name)
-            f.write('\n')
-            f.write('condition: %s', self.cond_name)
-            f.write('\n')
-            f.write('Peak residual moments (%% GRF): %1.3f \n' % peak_moments) 
-            f.write('RMS residual moments (%% GRF): %1.3f \n' % rms_moments)
-            f.write('Peak residual forces (%% GRF): %1.3f \n' % peak_forces) 
-            f.write('RMS residual forces (%% GRF): %1.3f \n' % rms_forces)
-
-        target_dir = os.path.dirname(target[1])
-        if not os.path.exists(target_dir):
-            os.makedirs(target_dir)
-        with open(target[1], 'w') as f:
-            f.write('residual moments\n')
-            df_moments.to_csv(f, line_terminator='\n')
-
-        target_dir = os.path.dirname(target[2])
-        if not os.path.exists(target_dir):
-            os.makedirs(target_dir)
-        with open(target[2], 'w') as f:
-            f.write('residual forces\n')
-            df_forces.to_csv(f, line_terminator='\n')
-
-
-class TaskValidateKinematics(osp.StudyTask):
-    REGISTRY = []
-    def __init__(self, study, cond_name='walk2',
-            joint_angles=['hip_flexion_r', 
-                          'knee_angle_r',
-                          'ankle_angle_r']):
-        super(TaskValidateKinematics, self).__init__(study)
-        suffix = ''
-        self.costdir = ''
-        if not (study.costFunction == 'Default'):
-            suffix += '_%s' % study.costFunction
-            self.costdir = study.costFunction 
-        self.name = 'validate_kinematics%s' % suffix
-        self.doc = 'Validate joint angles across subjects and conditions.'
-        self.results_path = study.config['results_path']
-        self.validate_path = os.path.join(study.config['validate_path'],
-            'kinematics')
-        self.figure_path = os.path.join(study.config['figures_path'], 
-            'figureS2')
-        self.cond_name = cond_name
-        self.subjects = study.subjects
-        self.joint_angles = joint_angles
-
-        colors = plt.cm.jet(np.linspace(0, 1, len(study.subjects)))
-
-        angles_fpaths = list()
-        gait_events = list()
-        isubjs = list()
-        for isubj, subject in enumerate(study.subjects):
-            fpath = os.path.join(self.results_path, 'experiments', 
-                subject.name, cond_name, 'ik', 
-                '%s_%s_%s_ik_solution.mot' % (study.name, subject.name, 
-                    cond_name))
-            angles_fpaths.append(fpath)
-
-            condition = subject.get_condition(cond_name)
-            trial = condition.get_trial(1)
-            cycles = trial.get_cycles()
-            gait_events_this_cond = list()
-            for cycle in cycles:
-                gait_events_this_cond.append((cycle.start, cycle.end))
-            gait_events.append(gait_events_this_cond)
-            isubjs.append(isubj)
-
-        joint_angles_fname = os.path.join(self.validate_path, 
-                'joint_angles_%s.pdf' % cond_name)
-        joint_angles_figname = os.path.join(self.figure_path, 
-                'figureS2.pdf')
-        self.add_action(angles_fpaths, 
-                        [joint_angles_fname, joint_angles_figname], 
-                        self.validate_joint_angles, gait_events, isubjs, 
-                        colors)
-
-    def validate_joint_angles(self, file_dep, target, gait_events, isubjs,
-            colors):
-        if not os.path.isdir(self.validate_path): os.mkdir(self.validate_path)
-        if not os.path.isdir(self.figure_path): os.mkdir(self.figure_path)
-
-        nice_joint_angle_names = {'hip_flexion_r': 'hip flexion angle',
-                                  'knee_angle_r': 'knee flexion angle',
-                                  'ankle_angle_r': 'ankle plantarflexion angle'}
-
-        y_lim_dict = {'hip_flexion_r': (-40, 40),
-                       'knee_angle_r': (-10, 80),
-                       'ankle_angle_r': (-30, 30)}
-
-        subject_labels = ['subject 1', 'subject 2', 'subject 3', 'subject 4',
-                          'subject 5']
-
-        import matplotlib
-        fig = pl.figure(figsize=(6, 8))
-        ind_axes = list()
-        ind_handles = list()
-        mean_axes = list()
-        dfs = list()
-        for iangle, joint_angle in enumerate(self.joint_angles):
-            idx = iangle + 1
-            ind_axes.append(fig.add_subplot(len(self.joint_angles), 2, 2*idx-1))
-            mean_axes.append(fig.add_subplot(len(self.joint_angles), 2, 2*idx))
-            dfs.append(pd.DataFrame())
-
-        for file, gait_events_cond, isubj in zip(file_dep, gait_events, isubjs):
-            ik = pp.storage2numpy(file)
-            time = ik['time']
-            for ige, gait_event in enumerate(gait_events_cond):
-                start = np.argmin(abs(time-gait_event[0]))
-                end = np.argmin(abs(time-gait_event[1]))
-                new_time = np.linspace(time[start], time[end], 101)
-                pgc = np.linspace(0, 100, 101)
-                for iangle, joint_angle in enumerate(self.joint_angles):
-                    angle = ik[joint_angle][start:end]                   
-                    angle_interp = np.interp(new_time, time[start:end], angle)
-                    dfs[iangle] = pd.concat([dfs[iangle], 
-                            pd.DataFrame(angle_interp)], axis=1)
-
-                    h, = ind_axes[iangle].plot(pgc, angle_interp, color=colors[isubj])
-                    if not ige and not iangle:
-                        ind_handles.append(h)
-                    ind_axes[iangle].set_ylabel(
-                        '%s (degrees)' % nice_joint_angle_names[joint_angle])
-                    ind_axes[iangle].set_ylim(y_lim_dict[joint_angle])
-                    ind_axes[iangle].set_xlim((0, 100))
-                    ind_axes[iangle].axhline(ls='--', color='lightgray', zorder=0)
-                    ind_axes[iangle].spines['top'].set_visible(False)
-                    ind_axes[iangle].spines['right'].set_visible(False)
-                    ind_axes[iangle].tick_params(direction='in')
-
-
-        ind_axes[0].legend(ind_handles, subject_labels, fancybox=False,
-                frameon=False, prop={'size': 8}, loc=9)                    
-
-        for iangle, joint_angle in enumerate(self.joint_angles):
-            angle_mean = dfs[iangle].mean(axis=1)
-            angle_std = dfs[iangle].std(axis=1)
-            mean_axes[iangle].fill_between(pgc, angle_mean-angle_std, 
-                angle_mean+angle_std, color='black', alpha=0.2)
-            std_h = matplotlib.patches.Patch(color='black', alpha=0.2)
-            mean_h, = mean_axes[iangle].plot(pgc, angle_mean, color='black')
-            mean_axes[iangle].set_ylim(y_lim_dict[joint_angle])
-            mean_axes[iangle].set_xlim((0, 100))
-            mean_axes[iangle].axhline(ls='--', color='lightgray', zorder=0)
-            mean_axes[iangle].spines['top'].set_visible(False)
-            mean_axes[iangle].spines['right'].set_visible(False)
-            mean_axes[iangle].tick_params(direction='in')
-            mean_axes[iangle].set_yticklabels([])
-            if iangle == len(self.joint_angles)-1:
-                mean_axes[iangle].set_xlabel('gait cycle (%)')
-                ind_axes[iangle].set_xlabel('gait cycle (%)')
-            else:
-                ind_axes[iangle].set_xticklabels([])
-                mean_axes[iangle].set_xticklabels([])
-
-        mean_axes[0].legend([mean_h, std_h], ['mean', 'std'], fancybox=False,
-                frameon=False, prop={'size': 8}, loc=9)  
-
-        fig.tight_layout()
-        fig.savefig(target[0])
-        fig.savefig(target[0].replace('.pdf', '.png'), dpi=600)
-        fig.savefig(target[1])
-        fig.savefig(target[1].replace('.pdf', '.png'), dpi=600)
-        pl.close(fig)
-
-
-# Sensitivity analysis
-# --------------------
-
-class TaskMocoSensitivityAnalysis(osp.TrialTask):
-    REGISTRY = []
-    def __init__(self, trial, initial_time, final_time, mesh_interval=0.01,
-                tolerance=1e-2, walking_speed=1.25, guess_fpath=None,
-                randomize_guess=False, implicit_tendon_dynamics=False, **kwargs):
-        super(TaskMocoSensitivityAnalysis, self).__init__(trial)
-        self.tolerance = tolerance
-        self.config_name = f'sensitivity_tol{self.tolerance}'
-        self.name = f'{trial.subject.name}_moco_{self.config_name}'
-        self.initial_time = initial_time
-        self.final_time = final_time
-        self.mesh_interval = mesh_interval
-        self.constraint_tolerance = trial.study.constraint_tolerance
-        self.tolerance = tolerance
-        self.num_max_iterations = 10000
-        self.walking_speed = walking_speed
-        self.weights = trial.study.weights
-        self.root_dir = trial.study.config['doit_path']
-        self.guess_fpath = guess_fpath
-        self.randomize_guess = randomize_guess
-        self.implicit_tendon_dynamics = implicit_tendon_dynamics
-
-        expdata_dir = os.path.join(trial.results_exp_path, 'tracking_data', 'expdata')
-        extloads_dir = os.path.join(trial.results_exp_path, 'tracking_data', 'extloads')
-        self.tracking_coordinates_fpath = os.path.join(expdata_dir, 'coordinates.sto')
-        self.coordinates_std_fpath = os.path.join(trial.results_exp_path, 
-            f'{trial.id}_joint_angle_standard_deviations.csv')
-        self.tracking_extloads_fpath = os.path.join(extloads_dir, 'external_loads.xml')
-        self.tracking_grfs_fpath = os.path.join(expdata_dir, 'ground_reaction.mot')
-
-        self.result_fpath = os.path.join(self.study.config['results_path'],
-            'sensitivity', trial.subject.name, f'tol{self.tolerance}')
-        if not os.path.exists(self.result_fpath): os.makedirs(self.result_fpath)
-
-        self.archive_fpath = os.path.join(self.study.config['results_path'],
-            'sensitivity', trial.subject.name, f'tol{tolerance}', 'archive')
-        if not os.path.exists(self.archive_fpath): os.makedirs(self.archive_fpath)
-
-        self.grf_fpath = os.path.join(trial.results_exp_path, 'expdata', 
-            'ground_reaction.mot')
-        self.emg_fpath = os.path.join(trial.results_exp_path, 'expdata', 
-            'emg.sto')
-
-        self.add_action([trial.subject.sim_model_fpath,
-                         self.tracking_coordinates_fpath,
-                         self.coordinates_std_fpath,
-                         self.tracking_extloads_fpath,
-                         self.tracking_grfs_fpath,
-                         self.emg_fpath,
-                         self.guess_fpath],
-                        [os.path.join(self.result_fpath, 
-                            self.config_name + '.sto')],
-                        self.run_tracking_problem)
-
-    def run_tracking_problem(self, file_dep, target):
-        
-        config = TrackingConfig(
-            self.config_name, self.config_name, 'black', self.weights,
-            periodic=True,
-            periodic_values=True,
-            periodic_speeds=True,
-            periodic_actuators=True,
-            lumbar_stiffness=1.0,
-            guess=file_dep[6],
-            randomize_guess=self.randomize_guess
-            )
-
-        cycles = list()
-        for cycle in self.trial.cycles:
-            cycles.append([cycle.start, cycle.end])
-
-        result = TrackingProblem(
-            self.root_dir, # root directory
-            self.result_fpath, # result directory
-            file_dep[0], # model file path
-            file_dep[1], # IK coordinates path
-            file_dep[2], # Coordinates standard deviations
-            file_dep[3], # external loads file 
-            file_dep[4], # GRF MOT file
-            file_dep[5], # EMG data
-            self.initial_time,
-            self.final_time, 
-            cycles,
-            self.trial.right_strikes,
-            self.trial.left_strikes,
-            self.mesh_interval, 
-            self.tolerance,
-            self.constraint_tolerance,
-            self.num_max_iterations,
-            self.walking_speed,
-            [config],
-            implicit_tendon_dynamics=self.implicit_tendon_dynamics
-        )
-
-        result.generate_results()
-        result.report_results()
-
-
-class TaskPlotSensitivityResults(osp.StudyTask):
-    REGISTRY = []
-    def __init__(self, study, subjects):
-        super(TaskPlotSensitivityResults, self).__init__(study)
-        self.name = 'plot_sensitivity_analysis_results'
-        self.results_path = os.path.join(study.config['results_path'], 
-            'sensitivity')
-        self.validate_path = os.path.join(study.config['validate_path'],
-            'sensitivity')
-        if not os.path.exists(self.validate_path): 
-            os.makedirs(self.validate_path)
-        self.subjects = subjects
-        self.tols = [1e1, 1e0, 1e-1, 1e-2, 1e-3, 1e-4]
-        self.tol_exps = [1, 0, -1, -2, -3, -4]
-
-        deps_tol = list()
-        for subject in subjects:
-            for tol in self.tols:
-                result = f'sensitivity_tol{tol}.sto'
-                result_fpath = os.path.join(
-                    self.results_path,
-                    subject, f'tol{tol}', result)
-                deps_tol.append(result_fpath)
-
-        self.add_action(deps_tol, 
-                        [os.path.join(self.validate_path, 
-                            'sensitivity_analysis.png')], 
-                        self.plot_sensitivity_analysis)
-
-    def plot_sensitivity_analysis(self, file_dep, target):
-
-        idep = 0
-        objectives = np.zeros([len(self.subjects), len(self.tols)])
-        norm_objectives = np.zeros_like(objectives)
-        for isubj, subject in enumerate(self.subjects):
-            for itol, tol in enumerate(self.tols):
-                table = osim.TimeSeriesTable(file_dep[idep])
-                objective = float(table.getTableMetaDataAsString('objective'))
-                objectives[isubj, itol] = objective
-                idep = idep + 1
-
-        for isubj, subject in enumerate(self.subjects):
-            norm_objectives[isubj, :] = 100.0 * ((objectives[isubj, :] / objectives[isubj, -1]) - 1)
-
-        norm_obj_mean = np.mean(norm_objectives[:, :-1], axis=0)
-        norm_obj_std = np.std(norm_objectives[:, :-1], axis=0)   
-
-        fig = pl.figure(figsize=(3.5, 2.5))
-        ax = fig.add_subplot(1,1,1)
-        x = np.arange(len(norm_obj_mean))
-        ax.bar(x, norm_obj_mean)
-        plotline, caplines, barlinecols = ax.errorbar(
-                x, norm_obj_mean, yerr=norm_obj_std, color='black', fmt='none',
-                capsize=0, solid_capstyle='projecting', lw=1, lolims=True)
-        caplines[0].set_marker('_')
-        caplines[0].set_markersize(8)
-        tick_labels = [f'$10^{i}$' for i in self.tol_exps[:-1]]
-        ax.set_xticks(x)
-        ax.set_xticklabels(tick_labels)
-        ax.set_ylim(0, 5)
-        ax.set_yticks([0, 1, 2, 3, 4, 5])
-        ax.set_ylabel(r'$\Delta$ ' + r'normalized objective $[\%]$')
-        ax.set_xlabel('convergence tolerance')
-        # ax.axhline(y=1.0, color='gray', linewidth=0.5, ls='--', zorder=0)
-
-        fig.tight_layout()
-        fig.savefig(target[0], dpi=600)
-        pl.close(fig)
-
-
 # Unperturbed walking
 # -------------------
+
 class TaskMocoUnperturbedWalkingGuess(osp.TrialTask):
     REGISTRY = []
     def __init__(self, trial, initial_time, final_time, mesh_interval=0.02,
@@ -1227,6 +557,8 @@ class TaskMocoUnperturbedWalkingGuess(osp.TrialTask):
                 reserve_strength=0, implicit_multibody_dynamics=False,
                 implicit_tendon_dynamics=False, 
                 create_and_insert_guess=False,
+                convergence_tolerance=1e-2,
+                constraint_tolerance=1e-2,
                 **kwargs):
         super(TaskMocoUnperturbedWalkingGuess, self).__init__(trial)
         config_name = (f'unperturbed_guess_mesh{mesh_interval}'
@@ -1238,8 +570,8 @@ class TaskMocoUnperturbedWalkingGuess(osp.TrialTask):
         self.initial_time = initial_time
         self.final_time = final_time
         self.mesh_interval = mesh_interval
-        self.convergence_tolerance = 1e-2
-        self.constraint_tolerance = 1e-3
+        self.convergence_tolerance = convergence_tolerance
+        self.constraint_tolerance = constraint_tolerance
         self.num_max_iterations = 10000
         self.walking_speed = walking_speed
         self.weights = trial.study.weights
@@ -1293,12 +625,11 @@ class TaskMocoUnperturbedWalkingGuess(osp.TrialTask):
         for weight_name in weights:
             weights[weight_name] *= self.cost_scale
 
-        weights['state_tracking_weight'] /= self.cost_scale
-        weights['state_tracking_weight'] *= 10
+        weights['state_tracking_weight'] *= 5.0
+        weights['grf_tracking_weight'] /= 0.5
+        # weights['subtalar_weight'] = 1.0
 
-        weights['grf_tracking_weight'] /= self.cost_scale
-
-        config = TrackingConfig(
+        config = TrackingConfig( 
             self.config_name, self.config_name, 'black', weights,
             periodic=self.periodic,
             guess=self.guess_fpath,
@@ -1476,6 +807,12 @@ class TaskPlotUnperturbedResults(osp.StudyTask):
            'glmax2_r' : 'glmax2_r',
            'glmed1_r' : 'glmed1_r',
         }
+        self.forces = ['contactHeel_r',
+                       'contactLateralRearfoot_r',
+                       'contactLateralMidfoot_r',
+                       'contactMedialMidfoot_r',
+                       'contactLateralToe_r',
+                       'contactMedialToe_r']
         self.models = list()
         self.times = times
 
@@ -1537,6 +874,11 @@ class TaskPlotUnperturbedResults(osp.StudyTask):
                         [os.path.join(self.validate_path, 
                             f'{self.config_name}_step_widths.png')], 
                         self.plot_unperturbed_step_widths)
+
+        self.add_action(unperturbed_fpaths, 
+                        [os.path.join(self.validate_path, 
+                            f'{self.config_name}_gait_landmarks.txt')], 
+                        self.compute_unperturbed_gait_landmarks)
 
     def plot_unperturbed_coordinates(self, file_dep, target): 
 
@@ -1990,6 +1332,162 @@ class TaskPlotUnperturbedResults(osp.StudyTask):
         fig.savefig(target[0], dpi=600)
         plt.close()
 
+    def compute_unperturbed_gait_landmarks(self, file_dep, target):
+
+        # Aggregate data
+        # --------------
+        import collections
+        unp_dict = collections.defaultdict(dict)
+        N = 202
+        pgc = np.linspace(0, 100, N)
+        for force in ['total'] + self.forces:
+            unp_dict[force]['x'] = np.zeros((N, len(self.subjects)))
+            unp_dict[force]['y'] = np.zeros((N, len(self.subjects)))
+            unp_dict[force]['z'] = np.zeros((N, len(self.subjects)))
+
+        for isubj, subject in enumerate(self.subjects):
+            model = osim.Model(self.models[isubj])
+            state = model.initSystem()
+
+            unperturbed = osim.MocoTrajectory(file_dep[isubj])
+            timeVec = unperturbed.getTimeMat()
+            timeInterp = np.linspace(timeVec[0], timeVec[-1], N)
+
+            for force in self.forces:
+                sshsForce = osim.SmoothSphereHalfSpaceForce.safeDownCast(
+                    model.getComponent(f'/forceset/{force}'))
+
+                # Unperturbed
+                grfx = np.zeros_like(timeVec)
+                grfy = np.zeros_like(timeVec)
+                grfz = np.zeros_like(timeVec)
+                statesTraj = unperturbed.exportToStatesTrajectory(model)
+                for istate in np.arange(statesTraj.getSize()):
+                    state = statesTraj.get(int(istate))
+                    model.realizeVelocity(state)
+                    forceValues = sshsForce.getRecordValues(state)
+
+                    grfx[istate] = forceValues.get(0)
+                    grfy[istate] = forceValues.get(1)
+                    grfz[istate] = forceValues.get(2)
+
+                unp_dict[force]['x'][:, isubj] = np.interp(timeInterp, timeVec, grfx)
+                unp_dict[force]['y'][:, isubj] = np.interp(timeInterp, timeVec, grfy)
+                unp_dict[force]['z'][:, isubj] = np.interp(timeInterp, timeVec, grfz)
+
+        for force in self.forces:
+            for direc in ['x', 'y', 'z']:
+                unp_dict['total'][direc] += unp_dict[force][direc]
+
+        # Detect foot-flat
+        # ----------------
+        threshold = 5.0 # Newtons
+        footFlats = np.zeros(len(self.subjects))
+        for isubj, subject in enumerate(self.subjects):
+            for i in np.arange(N):
+                allSpheresInContact = True
+                for force in self.forces:
+                    if unp_dict[force]['y'][i, isubj] < threshold:
+                        allSpheresInContact = False
+
+                if (i > 10) and allSpheresInContact:
+                    footFlats[isubj] = pgc[i]
+                    break
+
+        # Detect heel-off
+        # ---------------
+        threshold = 5.0 # Newtons
+        heelOffs = np.zeros(len(self.subjects))
+        for isubj, subject in enumerate(self.subjects):
+            vertHeelForce = unp_dict['contactHeel_r']['y'][:, isubj]
+            vertHeelDetect = vertHeelForce > threshold
+            for i in np.arange(N):
+                if (i > 10) and (not vertHeelDetect[i]):
+                    heelOffs[isubj] = pgc[i]
+                    break
+
+        # Detect toe-off
+        # --------------
+        threshold = 5.0 # Newtons
+        toeOffs = np.zeros(len(self.subjects))
+        for isubj, subject in enumerate(self.subjects):
+            vertForce = unp_dict['total']['y'][:, isubj]
+            vertDetect = vertForce > threshold
+            for i in np.arange(N):
+                if (i > 10) and (not vertDetect[i]):
+                    toeOffs[isubj] = pgc[i]
+                    break
+
+        with open(target[0], 'w') as f:
+            f.write('Times in percent gait cycle, mean +/- std across subjects\n')
+            f.write('\n')
+            f.write(f'Foot-flat time: {np.mean(footFlats):.1f} +/- {np.std(footFlats):.1f} %\n')
+            f.write(f'Heel-off time: {np.mean(heelOffs):.1f} +/- {np.std(heelOffs):.1f} %\n')
+            f.write(f'Toe-off time: {np.mean(toeOffs):.1f} +/- {np.std(toeOffs):.1f} %\n')
+
+# Validate inverse kinematics
+# ---------------------------
+
+class TaskValidateMarkerErrors(osp.StudyTask):
+    REGISTRY = []
+    def __init__(self, study, cond_names=['walk2']):
+        super(TaskValidateMarkerErrors, self).__init__(study)
+        self.name = 'validate_marker_errors'
+        self.doc = 'Compute marker errors across subjects and conditions.'
+        self.results_path = study.config['results_path']
+        self.validate_path = os.path.join(study.config['validate_path'],
+            'marker_errors')
+        self.cond_names = cond_names
+        self.subjects = study.subjects
+
+        errors_fpaths = list()
+        for cond_name in cond_names:
+            for subject in study.subjects:
+                errors_fpaths.append(os.path.join(self.results_path, 
+                    'experiments', subject.name, cond_name, 'ik', 
+                    f'{study.name}_{subject.name}_{cond_name}_ik_ik_marker_errors.sto'))
+                
+        val_fname = os.path.join(self.validate_path, 
+            'marker_errors.txt')
+        self.add_action(errors_fpaths, [val_fname],
+                        self.validate_marker_errors)
+
+    def validate_marker_errors(self, file_dep, target):
+        if not os.path.isdir(self.validate_path): 
+            os.mkdir(self.validate_path)
+
+        mean_rms_errors = list()
+        max_marker_errors = list()
+        for dep in file_dep:
+            marker_errors = osim.TimeSeriesTable(dep)
+            rms_errors = marker_errors.getDependentColumn(
+                'marker_error_RMS').to_numpy()
+            mean_rms_errors.append(np.mean(rms_errors))
+
+            max_errors = marker_errors.getDependentColumn(
+                'marker_error_max').to_numpy()
+            max_marker_errors.append(np.max(max_errors))
+
+        with open(target[0], 'w') as f:
+            f.write('subjects: ')
+            for isubj, subject in enumerate(self.subjects):
+                if isubj:
+                    f.write(', %s' % subject.name)
+                else:
+                    f.write('%s' % subject.name)
+            f.write('\n')
+            f.write('conditions: ')
+            for icond, cond_name in enumerate(self.cond_names):
+                if icond:
+                    f.write(', %s' % subject)
+                else:
+                    f.write('%s' % cond_name)
+            f.write('\n')
+            f.write('Max overall marker error (avg. across subj): %1.3f cm \n' 
+                    % (100*np.mean(max_marker_errors)))
+            f.write('Mean RMS marker error (avg. across subj): %1.3f cm \n'
+                    % (100*np.mean(mean_rms_errors)))
+
 
 class TaskValidateTrackingErrors(osp.StudyTask):
     REGISTRY = []
@@ -2034,19 +1532,20 @@ class TaskValidateTrackingErrors(osp.StudyTask):
         self.add_action(unperturbed_fpaths + coordinates_fpaths, 
                         [os.path.join(self.validate_path, 
                             'coordinate_tracking_errors.txt')], 
-                        self.plot_unperturbed_coordinates)
+                        self.compute_coordinate_errors)
 
         self.add_action(unperturbed_grf_fpaths + grf_fpaths, 
                         [os.path.join(self.validate_path, 
                             'grf_tracking_errors.txt')], 
-                        self.plot_unperturbed_grfs)
+                        self.compute_grf_errors)
 
-    def plot_unperturbed_coordinates(self, file_dep, target): 
+    def compute_coordinate_errors(self, file_dep, target): 
 
         numSubjects = len(self.subjects)
-        N = 100
-        coordinates = ['hip_flexion', 'hip_adduction', 'knee_angle', 'ankle_angle']
-        joints = ['hip', 'hip', 'walker_knee', 'ankle']
+        N = 101
+        coordinates = ['hip_flexion', 'hip_adduction', 'hip_rotation', 
+                       'knee_angle', 'ankle_angle']
+        joints = ['hip', 'hip', 'hip', 'walker_knee', 'ankle']
         unperturbed_dict = dict()
         experiment_dict = dict()
         for ic, coord in enumerate(coordinates):
@@ -2068,28 +1567,30 @@ class TaskValidateTrackingErrors(osp.StudyTask):
             for ic, coord in enumerate(coordinates):
                 for side in ['l', 'r']:
                     key = f'/jointset/{joints[ic]}_{side}/{coord}_{side}/value'
-                    unperturbed_col = unperturbed.getDependentColumn(key).to_numpy()
-                    experiment_col = experiment.getDependentColumn(key).to_numpy()[istart:iend+1]
+                    unperturbed_col = (180.0 / np.pi) * unperturbed.getDependentColumn(key).to_numpy()
+                    experiment_col = (180.0 / np.pi) * experiment.getDependentColumn(key).to_numpy()[istart:iend+1]
                     unperturbed_dict[key][:, i] = np.interp(
                         utime_interp, utime, unperturbed_col)
                     experiment_dict[key][:, i] = np.interp(
                         etime_interp, etime[istart:iend+1], experiment_col)
 
-        rmse_dict = dict()
+        import collections
+        rmse_dict = collections.defaultdict(list)
         for ic, coord in enumerate(coordinates):
             for iside, side in enumerate(['l','r']):
                 key = f'/jointset/{joints[ic]}_{side}/{coord}_{side}/value'
-                errors = experiment_dict[key] - unperturbed_dict[key]
-                rmse = np.sqrt(np.sum(np.square(errors)) / N)
-                rmse_dict[f'{coord}_{side}'] = rmse
+                for isubj in np.arange(numSubjects):
+                    errors = experiment_dict[key][:, isubj] - unperturbed_dict[key][:, isubj]
+                    rmse = np.sqrt(np.sum(np.square(errors)) / N)
+                    rmse_dict[f'{coord}_{side}'].append(rmse)
 
         with open(target[0], 'w') as f:
-            f.write('Coordinate tracking errors (RMSE)\n')
-            f.write('---------------------------------\n')
+            f.write('Coordinate tracking RMS errors (mean +/- std across subjects)\n')
+            f.write('-------------------------------------------------------------\n')
             for key, value in rmse_dict.items():
-                f.write(f' -- {key}: {value:.2f} [rad]\n')
+                f.write(f' -- {key}: {np.mean(value):.2f} +/- {np.std(value):.2f} [deg]\n')
 
-    def plot_unperturbed_grfs(self, file_dep, target):
+    def compute_grf_errors(self, file_dep, target):
 
         numSubjects = len(self.subjects)
         N = 101
@@ -2110,33 +1611,35 @@ class TaskValidateTrackingErrors(osp.StudyTask):
             istart = np.argmin(abs(etime-utime[0]))
             iend = np.argmin(abs(etime-utime[-1]))
             etime_interp = np.linspace(etime[istart], etime[iend], N)
-            BW = 9.81 * self.masses[isubj]
 
             for iforce, force in enumerate(forces):
                 for side in ['l', 'r']:
                     label = f'ground_force_{side}_{force}'
-                    unperturbed_col = util.simtk2numpy(unperturbed.getDependentColumn(label)) / BW
+                    unperturbed_col = util.simtk2numpy(unperturbed.getDependentColumn(label))
                     experiment_col = util.simtk2numpy(
-                        experiment.getDependentColumn(label))[istart:iend+1] / BW
+                        experiment.getDependentColumn(label))[istart:iend+1]
 
                     unperturbed_dict[label][:, isubj] = np.interp(
                         utime_interp, utime, unperturbed_col)
                     experiment_dict[label][:, isubj] = np.interp(
                         etime_interp, etime[istart:iend+1], experiment_col)
 
-        rmse_dict = dict()
+        import collections
+        rmse_dict = collections.defaultdict(list)
         for iforce, force in enumerate(forces):
             for iside, side in enumerate(['l', 'r']):
                 label = f'ground_force_{side}_{force}'
-                errors = experiment_dict[label] - unperturbed_dict[label]
-                rmse = np.sqrt(np.sum(np.square(errors)) / N)
-                rmse_dict[label] = rmse
+                for isubj in np.arange(numSubjects):
+                    errors = experiment_dict[label][:, isubj] - unperturbed_dict[label][:, isubj]
+                    rmse = np.sqrt(np.sum(np.square(errors)) / N)
+                    rmse_dict[label].append(rmse)
 
         with open(target[0], 'w') as f:
-            f.write('GRF tracking errors (RMSE)\n')
-            f.write('--------------------------\n')
+            f.write('GRF tracking RMS errors (mean +/- std across subjects)\n')
+            f.write('------------------------------------------------------\n')
             for key, value in rmse_dict.items():
-                f.write(f' -- {key}: {value:.2f} [N] \n')
+                f.write(f' -- {key}: {np.mean(value):.2f} +/- {np.std(value):.2f} [N] \n')
+
 
 # Perturbed walking
 # -----------------
@@ -2520,8 +2023,9 @@ class TaskCreatePerturbedVisualization(osp.StudyTask):
                 
                 i = i + 1
 
+
 # Analysis
-# --------
+# ========
 # Update plot axis limits 'lim' based on input data and desired tick
 # interval 'interval'. Optional argument 'mirror' enforces that the upper
 # and lower plot limits have the same magnitude (i.e., mirrored about zero). 
@@ -2570,6 +2074,260 @@ def plot_errorbarh(ax, y, x, xerr):
         cl.set_marker('|')
         cl.set_markersize(4)
 
+# Methods figure
+# --------------
+
+class TaskPlotMethodsFigure(osp.StudyTask):
+    REGISTRY = []
+    def __init__(self, study, subjects):
+        super(TaskPlotMethodsFigure, self).__init__(study)
+        self.name = 'plot_methods_figure'
+        self.results_path = os.path.join(study.config['results_path'], 
+            'experiments')
+        self.analysis_path = os.path.join(study.config['analysis_path'],
+            'methods_figure')
+        if not os.path.exists(self.analysis_path): 
+            os.makedirs(self.analysis_path)
+
+        self.subjects = subjects
+        self.time = 35
+        self.rise = study.rise
+        self.fall = study.fall
+        self.labels = ['unperturbed', 'perturbed']
+        self.colors = ['dimgrey', 'darkred']
+        deps = list()
+        for isubj, subject in enumerate(subjects):
+
+            # Unperturbed COM
+            deps.append(
+                os.path.join(
+                    self.study.config['results_path'], 
+                    'unperturbed', subject,
+                    'center_of_mass_unperturbed.sto'))
+
+            # Perturbed COM
+            label = (f'perturbed_torque10_time{self.time}'
+                    f'_rise{self.rise}_fall{self.fall}_subtalar-10')
+            deps.append(
+                os.path.join(
+                    self.study.config['results_path'], 
+                    'perturbed', label, subject,
+                    f'center_of_mass_{label}.sto')
+                )
+
+        # Perturbation curve
+        deps.append(
+                os.path.join(
+                    self.study.config['results_path'], 
+                    'perturbed', label, subjects[0],
+                    'ankle_perturbation_curve.sto'))
+
+        self.add_action(deps, 
+                        [os.path.join(self.analysis_path, 
+                            'methods_figure.png')], 
+                        self.plot_center_of_mass)
+
+    def plot_center_of_mass(self, file_dep, target):
+
+        # Initialize figures
+        # ------------------
+        import matplotlib.gridspec as gridspec
+        gs = gridspec.GridSpec(8, 1)
+        fig0 = plt.figure(figsize=(3, 5))
+        ax_tau = fig0.add_subplot(gs[0:2, :])
+        ax_acc = fig0.add_subplot(gs[2:5, :])
+        ax_vel = fig0.add_subplot(gs[5:8, :])
+
+        # Arrowy helper functions
+        # -----------------------
+        def set_arrow_patch_vertical(ax, x, y1, y2):
+            arrowstyle = patches.ArrowStyle.CurveAB(head_length=0.4, 
+                head_width=0.15)
+            lw = 1.0
+
+            arrow = patches.FancyArrowPatch((x, y1), (x, y2),
+                    arrowstyle=arrowstyle, mutation_scale=7.5, shrinkA=2.5, shrinkB=2.5,
+                    joinstyle='miter', color='black', clip_on=False, zorder=2.5, lw=lw)
+            ax.add_patch(arrow)
+
+        def set_arrow_patch_horizontal(ax, y, x1, x2):
+            arrowstyle = patches.ArrowStyle.CurveAB(head_length=0.4, 
+                head_width=0.15)
+            lw = 0.5
+
+            arrow = patches.FancyArrowPatch((x1, y), (x2, y),
+                    arrowstyle=arrowstyle, mutation_scale=7.5, shrinkA=1.5, shrinkB=1.5,
+                    joinstyle='miter', color='black', clip_on=False, zorder=2.5, lw=lw)
+            ax.add_patch(arrow)
+
+        # Plot formatting
+        # ---------------
+        xfs = 6
+        yfs = 7
+        for ax in [ax_tau, ax_acc, ax_vel]:
+            ax.axvline(x=self.time-self.rise, color='gray', linestyle='--',
+                linewidth=0.4, alpha=0.5, zorder=0, clip_on=False)
+            ax.axvline(x=self.time, color='gray', linestyle='--',
+                linewidth=0.4, alpha=0.5, zorder=0, clip_on=False)
+            ax.axvline(x=self.time+self.fall, color='gray', linestyle='--',
+                linewidth=0.4, alpha=0.5, zorder=0, clip_on=False)
+
+            util.publication_spines(ax)
+            xlim = [self.time-self.rise, self.time+self.fall]
+            ax.set_xlim(xlim)
+            ax.set_xticks(get_ticks_from_lims(xlim, 5))
+            ax.spines['left'].set_position(('outward', 10))
+
+        ax_vel.spines['bottom'].set_position(('outward', 10))
+        ax_vel.set_xticklabels(['torque\nonset', '', 'peak\ntorque', 'torque\noffset'],
+            fontsize=xfs)
+        xticks = ax_vel.xaxis.get_major_ticks()
+        xticks[1].set_visible(False)
+
+        for ax in [ax_tau, ax_acc]:
+            ax.set_xticklabels([])
+            ax.spines['bottom'].set_visible(False)
+            ax.tick_params(axis='x', which='both', bottom=False, 
+                           top=False, labelbottom=False)
+
+        for ax in [ax_acc, ax_vel]:
+            ax.set_yticklabels([])
+            ax.spines['left'].set_visible(False)
+            ax.tick_params(axis='y', which='both', left=False, 
+                           right=False, labelbottom=False)
+
+
+        # Plot perturbation torque
+        # ------------------------
+        N = 1001
+        perturbation = osim.TimeSeriesTable(file_dep[-1])
+        perTimeVec = np.array(perturbation.getIndependentColumn())
+        unperturbed = osim.TimeSeriesTable(file_dep[0])
+        unpTimeVec = np.array(unperturbed.getIndependentColumn())
+
+        duration = unpTimeVec[-1] - unpTimeVec[0]
+        time_at_rise = unpTimeVec[0] + (duration * ((self.time - self.rise) / 100.0))
+        time_at_fall = unpTimeVec[0] + (duration * ((self.time + self.fall) / 100.0))
+        irise = np.argmin(np.abs(perTimeVec - time_at_rise))
+        ifall = np.argmin(np.abs(perTimeVec - time_at_fall))
+
+        tau = -perturbation.getDependentColumn(
+            '/forceset/perturbation_ankle_angle_r').to_numpy()[irise:ifall]
+        timeInterp = np.linspace(perTimeVec[irise], perTimeVec[ifall-1], N)
+        tauInterp = np.interp(timeInterp, perTimeVec[irise:ifall], tau)
+        pgc = np.linspace(self.time - self.rise, self.time + self.fall, N)
+        ax_tau.plot(pgc, tauInterp, color='darkred', linewidth=2, 
+            clip_on=False, solid_capstyle='round')
+        ax_tau.set_ylabel(r'perturbation torque $[\frac{N\cdot m}{kg}]$', fontsize=yfs)
+        ax_tau.set_ylim([0, 0.1])
+        ax_tau.set_yticks([0, 0.1])
+        ax_tau.tick_params(axis='both', which='major', labelsize=6)
+
+        # Aggregate data
+        # --------------
+        numLabels = len(self.labels)
+        import collections
+        com_dict = collections.defaultdict(dict)
+        for label in self.labels:
+            com_dict[label]['vel'] = np.zeros((N, len(self.subjects)))
+            com_dict[label]['acc'] = np.zeros((N, len(self.subjects)))
+
+        for isubj, subject in enumerate(self.subjects):
+            for ilabel, label in enumerate(self.labels):
+                table = osim.TimeSeriesTable(file_dep[ilabel + isubj*numLabels])
+                timeVec = np.array(table.getIndependentColumn())
+                
+                if 'unperturbed' in label:
+                    duration = timeVec[-1] - timeVec[0]
+                    time_at_rise = timeVec[0] + (duration * ((self.time - self.rise) / 100.0))
+                    time_at_fall = timeVec[0] + (duration * ((self.time + self.fall) / 100.0))
+                    irise = np.argmin(np.abs(timeVec - time_at_rise))
+                    ifall = np.argmin(np.abs(timeVec - time_at_fall))
+                else:
+                    irise = np.argmin(np.abs(timeVec - time_at_rise))
+                    ifall = len(timeVec)
+
+                velx = table.getDependentColumn('/|com_velocity_x').to_numpy()[irise:ifall]
+                accx = table.getDependentColumn('/|com_acceleration_x').to_numpy()[irise:ifall]
+
+                timeInterp = np.linspace(timeVec[irise], timeVec[ifall-1], N)
+                
+                com_dict[label]['vel'][:, isubj] = np.interp(timeInterp, timeVec[irise:ifall], velx)
+                com_dict[label]['acc'][:, isubj] = np.interp(timeInterp, timeVec[irise:ifall], accx)
+
+        # Plotting
+        # --------
+        vel_mean = np.zeros((N, len(self.labels)))
+        acc_mean = np.zeros((N, len(self.labels)))
+        for ilabel, label in enumerate(self.labels):
+            vel_mean[:, ilabel] = np.mean(com_dict[label]['vel'], axis=1)
+            acc_mean[:, ilabel] = np.mean(com_dict[label]['acc'], axis=1)
+
+        vel_step = 0.01
+        acc_step = 0.1
+        vel_lim = [np.mean(vel_mean), np.mean(vel_mean)]
+        acc_lim = [np.mean(acc_mean), np.mean(acc_mean)]
+        for ilabel, label in enumerate(self.labels): 
+            update_lims(vel_mean[:, ilabel], vel_step, vel_lim)
+            update_lims(acc_mean[:, ilabel], acc_step, acc_lim)
+
+        pgc = np.linspace(self.time - self.rise, self.time + self.fall, N)
+        handles = list()
+        for ilabel, (label, color) in enumerate(zip(self.labels, self.colors)):
+            lw = 3 if 'unperturbed' in label else 2
+
+            h, = ax_vel.plot(pgc, vel_mean[:, ilabel], label=label, color=color, 
+                linewidth=lw, clip_on=False, solid_capstyle='round')
+            handles.append(h)
+            ax_vel.set_ylabel('center-of-mass\nvelocity', fontsize=yfs)
+            ax_vel.set_ylim(vel_lim)
+            ax_vel.set_yticks(get_ticks_from_lims(vel_lim, vel_step))
+                
+            ax_acc.plot(pgc, acc_mean[:, ilabel], label=label, color=color, 
+                linewidth=lw, clip_on=False, solid_capstyle='round')
+            ax_acc.set_ylabel('center-of-mass\nacceleration', fontsize=yfs)
+            ax_acc.set_ylim(acc_lim)
+            ax_acc.set_yticks(get_ticks_from_lims(acc_lim, acc_step))
+
+
+        # Plot decorations
+        ax_acc.text(self.time-6.5, -0.195, 'unperturbed', fontsize=6,
+            color=self.colors[0], fontweight='bold')
+        ax_acc.text(self.time-3.5, -0.475, 'perturbed', fontsize=6,
+            color=self.colors[1], fontweight='bold')
+
+        index = np.argmin(np.abs(pgc-self.time))
+        set_arrow_patch_vertical(ax_acc, self.time, 
+            acc_mean[index, 0], acc_mean[index, 1])
+
+        index = np.argmin(np.abs(pgc-(self.time+self.fall)))
+        set_arrow_patch_vertical(ax_vel, self.time+self.fall, 
+            vel_mean[index, 0], vel_mean[index, 1])
+
+        ax_acc.text(self.time+0.25, -0.21, r'$\Delta a_{COM}$', fontsize=7,
+            color='black', fontweight='bold')
+
+        vloc = (vel_mean[index, 0] + vel_mean[index, 1]) / 2.0
+        ax_vel.text(self.time+self.fall-2.5, vloc, r'$\Delta v_{COM}$', fontsize=7,
+            color='black', fontweight='bold')
+
+        set_arrow_patch_horizontal(ax_vel, vloc-0.022, 
+            self.time-self.rise, self.time)
+        set_arrow_patch_horizontal(ax_vel, vloc-0.022, 
+            self.time, self.time+self.fall)
+
+        ax_vel.text(self.time-5, vloc-0.02, '10% gait cycle', fontsize=4,
+            color='black', fontstyle='italic', ha='center')
+        ax_vel.text(self.time+2.5, vloc-0.02, '5% gait cycle', fontsize=4,
+            color='black', fontstyle='italic', ha='center')
+
+        fig0.tight_layout()
+        fig0.savefig(target[0], dpi=600)
+        plt.close()
+
+
+# Device torques and powers
+# -------------------------
 
 class TaskPlotAnkleTorquesAndPowers(osp.StudyTask):
     REGISTRY = []
@@ -2721,17 +2479,19 @@ class TaskPlotAnkleTorquesAndPowers(osp.StudyTask):
         plt.close()
 
 
-class TaskComputePerturbationPowers(osp.StudyTask):
+class TaskCreatePerturbationPowersTable(osp.StudyTask):
     REGISTRY = []
-    def __init__(self, study, subjects):
-        super(TaskComputePerturbationPowers, self).__init__(study)
-        self.name = 'compute_perturbation_powers'
+    def __init__(self, study, subjects, torque_actuators=False):
+        super(TaskCreatePerturbationPowersTable, self).__init__(study)
+        self.name = 'create_perturbation_powers_table'
         self.subjects = subjects
         self.times = study.times
         self.torques = study.plot_torques
         self.subtalars = study.plot_subtalars
         self.rise = study.rise
         self.fall = study.fall
+        self.actu = '_torque_actuators' if torque_actuators else ''
+        self.subdir = 'torque_actuators' if torque_actuators else 'perturbed'
 
         self.results_path = os.path.join(study.config['results_path'], 
             'experiments')
@@ -2741,51 +2501,66 @@ class TaskComputePerturbationPowers(osp.StudyTask):
             os.makedirs(self.analysis_path)
 
         deps = list()
+        self.unperturbed_map = dict()
         self.solution_map = dict()
         self.perturbation_map = dict()
-        self.multiindex_tuples = dict()
+        self.multiindex_tuples = list()
 
         index = 0
-        for time in self.times:
-            for torque, subtalar in zip(self.torques, self.subtalars):
-                for subject in self.subjects:
+        for isubj, subject in enumerate(subjects):
+
+            deps.append(
+                os.path.join(
+                    self.study.config['results_path'], 
+                    'unperturbed', subject,
+                    'center_of_mass_unperturbed.sto'))
+
+            self.unperturbed_map[f'{subject}_unperturbed'] = index
+            index += 1
+
+            for time in self.times:
+                for torque, subtalar in zip(self.torques, self.subtalars):
                     label = (f'torque{torque}_time{time}'
                              f'_rise{self.rise}_fall{self.fall}{subtalar}')
 
                     deps.append(
                         os.path.join(self.study.config['results_path'], 
-                            'perturbed', f'perturbed_{label}', subject, 
-                            f'perturbed_{label}.sto'))
+                            self.subdir, f'perturbed_{label}{self.actu}', subject, 
+                            f'perturbed_{label}{self.actu}.sto'))
                     self.solution_map[label] = index
                     index += 1
 
                     deps.append(
                         os.path.join(self.study.config['results_path'], 
-                            'perturbed', f'perturbed_{label}', subject, 
+                            self.subdir, f'perturbed_{label}{self.actu}', subject, 
                             'ankle_perturbation_curve.sto'))
                     self.perturbation_map[label] = index
                     index += 1
 
                     self.multiindex_tuples.append((
+                            subject,
                             f'time{time}', 
-                            f'torque{torque}{subtalar}',
-                            subject))
+                            f'torque{torque}{subtalar}'
+                            ))
 
         self.add_action(deps, 
                         [os.path.join(self.analysis_path, 
-                            'perturbation_powers_mean.csv'),
+                            f'perturbation_powers_mean{self.actu}.csv'),
                         os.path.join(self.analysis_path, 
-                            'perturbation_powers_std.csv')], 
-                        self.compute_perturbation_powers)
+                            f'perturbation_powers_std{self.actu}.csv')], 
+                        self.create_perturbation_powers_table)
 
-    def compute_perturbation_powers(self, file_dep, target):
+    def create_perturbation_powers_table(self, file_dep, target):
 
         from scipy.interpolate import interp1d
-        def compute_power(torque, speed, torqueTime, speedTime):
-            torque_interp = interp1d(torqueTime, torque)
-            torque_sampled = torque_interp(speedTime)
+        def compute_power(torque, speed, torqueTime, speedTime, onsetTime, offsetTime):
+            istart = np.argmin(np.abs(speedTime - onsetTime))
+            iend = np.argmin(np.abs(speedTime - offsetTime))
 
-            return np.multiply(speed, torque_sampled)
+            torque_interp = interp1d(torqueTime, torque)
+            torque_sampled = torque_interp(speedTime[istart:iend])
+
+            return np.multiply(speed[istart:iend], torque_sampled)
 
         from collections import OrderedDict
         peak_pos_power = OrderedDict()
@@ -2796,11 +2571,19 @@ class TaskComputePerturbationPowers(osp.StudyTask):
             odict['ankle'] = list()
             odict['subtalar'] = list()
 
-        for time in self.times:
-            onset_time = time - 10
-            offset_time = time + 5
-            for torque, subtalar in zip(self.torques, self.subtalars):
-                for subject in self.subjects:
+        for subject in self.subjects:
+            for time in self.times:
+                onset_pgc = time - 10
+                offset_pgc = time + 5
+                for torque, subtalar in zip(self.torques, self.subtalars):
+                    unperturbed = osim.TimeSeriesTable(
+                        file_dep[self.unperturbed_map[f'{subject}_unperturbed']])
+                    timeUnp = np.array(unperturbed.getIndependentColumn())
+                    pgcSol = 100 * (timeUnp - timeUnp[0]) / (timeUnp[-1] - timeUnp[0])
+                    istart = np.argmin(np.abs(pgcSol - onset_pgc))
+                    iend = np.argmin(np.abs(pgcSol - offset_pgc))
+                    onsetTime = timeUnp[istart]
+                    offsetTime = timeUnp[iend]
         
                     label = (f'torque{torque}_time{time}'
                              f'_rise{self.rise}_fall{self.fall}{subtalar}')
@@ -2808,9 +2591,6 @@ class TaskComputePerturbationPowers(osp.StudyTask):
                     solution = osim.TimeSeriesTable(
                         file_dep[self.solution_map[label]])
                     timeSol = np.array(solution.getIndependentColumn())
-                    pgcSol = 100 * (timeSol - timeSol[0]) / (timeSol[-1] - timeSol[0])
-                    istart = np.argmin(np.abs(pgcSol - onset_time))
-                    iend = np.argmin(np.abs(pgcSol - offset_time))
 
                     perturbation = osim.TimeSeriesTable(
                         file_dep[self.perturbation_map[label]])
@@ -2821,60 +2601,93 @@ class TaskComputePerturbationPowers(osp.StudyTask):
                     ankleTorque = perturbation.getDependentColumn(
                         '/forceset/perturbation_ankle_angle_r').to_numpy()
                     anklePower = compute_power(ankleTorque, ankleSpeed, 
-                                               timePerturb, timeSol)[istart:iend]
+                                               timePerturb, timeSol,
+                                               onsetTime, offsetTime)
 
-                    peak_pos_power['ankle'].append(np.max(anklePower[anklePower > 0]))
-                    peak_neg_power['ankle'].append(np.max(-anklePower[anklePower < 0]))
-                    avg_neg_power['ankle'].append(np.mean(anklePower[anklePower > 0]))
-                    avg_neg_power['ankle'].append(np.mean(anklePower[anklePower < 0]))
+                    if torque:
+                        if np.any(anklePower > 0):
+                            peak_pos_power['ankle'].append(np.max(anklePower[anklePower > 0]))
+                            avg_pos_power['ankle'].append(np.mean(anklePower[anklePower > 0]))
+                        else:
+                            peak_pos_power['ankle'].append(0)
+                            avg_pos_power['ankle'].append(0)
+
+                        if np.any(anklePower < 0):
+                            peak_neg_power['ankle'].append(np.min(anklePower[anklePower < 0]))
+                            avg_neg_power['ankle'].append(np.mean(anklePower[anklePower < 0]))
+                        else:
+                            peak_neg_power['ankle'].append(0)
+                            avg_neg_power['ankle'].append(0)
+
+                    else:
+                        peak_pos_power['ankle'].append(np.nan)
+                        peak_neg_power['ankle'].append(np.nan)
+                        avg_pos_power['ankle'].append(np.nan)
+                        avg_neg_power['ankle'].append(np.nan)
 
                     if 'subtalar' in subtalar:
                         subtalarTorque = perturbation.getDependentColumn(
-                            '/forceset/perturbation_ankle_angle_r').to_numpy()
+                            '/forceset/perturbation_subtalar_angle_r').to_numpy()
                         subtalarSpeed = solution.getDependentColumn(
-                            '/jointset/ankle_r/ankle_angle_r/speed').to_numpy()
+                            '/jointset/subtalar_r/subtalar_angle_r/speed').to_numpy()
                         subtalarPower = compute_power(subtalarTorque, subtalarSpeed, 
-                                                      timePerturb, timeSol)[istart:iend]
-                        peak_pos_power['subtalar'].append(
-                            np.max(subtalarPower[subtalarPower > 0]))
-                        peak_neg_power['subtalar'].append(
-                            np.max(-subtalarPower[subtalarPower < 0]))
-                        avg_pos_power['subtalar'].append(
-                            np.mean(subtalarPower[subtalarPower > 0]))
-                        avg_neg_power['subtalar'].append(
-                            np.mean(subtalarPower[subtalarPower < 0]))
+                                                      timePerturb, timeSol,
+                                                      onsetTime, offsetTime)
+
+                        if np.any(subtalarPower > 0):
+                            peak_pos_power['subtalar'].append(
+                                np.max(subtalarPower[subtalarPower > 0]))
+                            avg_pos_power['subtalar'].append(
+                                np.mean(subtalarPower[subtalarPower > 0]))
+                        else:
+                            peak_pos_power['subtalar'].append(0)
+                            avg_pos_power['subtalar'].append(0)
+                       
+                        if np.any(subtalarPower < 0):
+                            peak_neg_power['subtalar'].append(
+                                np.min(subtalarPower[subtalarPower < 0]))
+                            avg_neg_power['subtalar'].append(
+                                np.mean(subtalarPower[subtalarPower < 0]))
+                        else:
+                            peak_neg_power['subtalar'].append(0)
+                            avg_neg_power['subtalar'].append(0)
+
                     else:
-                        peak_pos_power['subtalar'].append(0)
-                        peak_neg_power['subtalar'].append(0)
-                        avg_pos_power['subtalar'].append(0)
-                        avg_neg_power['subtalar'].append(0)
+                        peak_pos_power['subtalar'].append(np.nan)
+                        peak_neg_power['subtalar'].append(np.nan)
+                        avg_pos_power['subtalar'].append(np.nan)
+                        avg_neg_power['subtalar'].append(np.nan)
 
         index = pd.MultiIndex.from_tuples(self.multiindex_tuples,
-                names=['time', 'perturbation', 'subject'])
+                names=['subject', 'time', 'perturbation'])
 
         df_peak_pos_power = pd.DataFrame(peak_pos_power, index=index)
         df_peak_neg_power = pd.DataFrame(peak_neg_power, index=index)
         df_avg_pos_power = pd.DataFrame(avg_pos_power, index=index)
         df_avg_neg_power = pd.DataFrame(avg_neg_power, index=index)
 
-        coords = ['ankle', 'subtalar']
-        df_peak_pos_power_by_subj = df_peak_pos_power.groupby(level='subject').mean()
-        peak_pos_power_mean = df_peak_pos_power_by_subj.mean()[coords]
-        peak_pos_power_std = df_peak_pos_power_by_subj.std()[coords]
+        peak_pos_power_mean = df_peak_pos_power.groupby(level=['time', 'perturbation']).mean()
+        peak_pos_power_std = df_peak_pos_power.groupby(level=['time', 'perturbation']).std()
 
-        df_peak_neg_power_by_subj = df_peak_neg_power.groupby(level='subject').mean()
-        peak_neg_power_mean = df_peak_neg_power_by_subj.mean()[coords]
-        peak_neg_power_std = df_peak_neg_power_by_subj.std()[coords]
+        peak_neg_power_mean = df_peak_neg_power.groupby(level=['time', 'perturbation']).mean()
+        peak_neg_power_std = df_peak_neg_power.groupby(level=['time', 'perturbation']).std()
 
-        df_avg_pos_power_by_subj = df_avg_pos_power.groupby(level='subject').mean()
-        avg_pos_power_mean = df_avg_pos_power_by_subj.mean()[coords]
-        avg_pos_power_std = df_avg_pos_power_by_subj.std()[coords]
+        avg_pos_power_mean = df_avg_pos_power.groupby(level=['time', 'perturbation']).mean()
+        avg_pos_power_std = df_avg_pos_power.groupby(level=['time', 'perturbation']).std()
 
-        df_avg_neg_power_by_subj = df_avg_neg_power.groupby(level='subject').mean()
-        avg_neg_power_mean = df_avg_neg_power_by_subj.mean()[coords]
-        avg_neg_power_std = df_avg_neg_power_by_subj.std()[coords]
+        avg_neg_power_mean = df_avg_neg_power.groupby(level=['time', 'perturbation']).mean()
+        avg_neg_power_std = df_avg_neg_power.groupby(level=['time', 'perturbation']).std()
 
-        columns = ['peak positive', 'peak negative', 'average positive', 'average negative']
+        column_tuples = [('peak positive', 'ankle'), 
+                         ('peak positive', 'subtalar'),
+                         ('peak negative', 'ankle'),
+                         ('peak negative', 'subtalar'),
+                         ('average positive', 'ankle'),
+                         ('average positive', 'subtalar'),
+                         ('average negative', 'ankle'),
+                         ('average negative', 'subtalar')]
+
+        columns = pd.MultiIndex.from_tuples(column_tuples)
 
         power_mean_dfs = [peak_pos_power_mean, peak_neg_power_mean, 
                           avg_pos_power_mean, avg_neg_power_mean]
@@ -2901,1239 +2714,184 @@ class TaskComputePerturbationPowers(osp.StudyTask):
             power_std.to_csv(f, line_terminator='\n')
 
 
-class TaskPlotCenterOfMass(osp.StudyTask):
-    REGISTRY = []
-    def __init__(self, study, subjects, time, rise, fall):
-        super(TaskPlotCenterOfMass, self).__init__(study)
-        self.name = f'plot_center_of_mass_time{time}_rise{rise}_fall{fall}'
-        self.results_path = os.path.join(study.config['results_path'], 
-            'experiments')
-        self.analysis_path = os.path.join(study.config['analysis_path'],
-            'center_of_mass', f'time{time}_rise{rise}_fall{fall}')
-        if not os.path.exists(self.analysis_path): 
-            os.makedirs(self.analysis_path)
-
-        self.subjects = subjects
-        self.time = time
-        self.rise = rise
-        self.fall = fall
-        self.torques = study.plot_torques
-        self.subtalars = study.plot_subtalars
-        self.colors = ['gray'] + study.plot_colors
-        self.legend_labels = ['unperturbed',
-                              'eversion', 
-                              'plantarflexion + eversion', 
-                              'plantarflexion', 
-                              'plantarflexion + inversion', 
-                              'inversion']
-        self.labels = list()
-        self.labels.append('unperturbed')
-        deps = list()
-        for isubj, subject in enumerate(subjects):
-
-            # Unperturbed COM
-            deps.append(
-                os.path.join(
-                    self.study.config['results_path'], 
-                    'unperturbed', subject,
-                    'center_of_mass_unperturbed.sto'))
-
-            # Perturbed COM
-            for torque, subtalar in zip(self.torques, self.subtalars):
-                label = (f'perturbed_torque{torque}_time{self.time}'
-                        f'_rise{self.rise}_fall{self.fall}{subtalar}')
-                deps.append(
-                    os.path.join(
-                        self.study.config['results_path'], 
-                        'perturbed', label, subject,
-                        f'center_of_mass_{label}.sto')
-                    )
-
-                if not isubj:
-                    self.labels.append(
-                        (f'torque{torque}_time{self.time}'
-                         f'_rise{self.rise}_fall{self.fall}{subtalar}'))
-
-        self.add_action(deps, 
-                        [os.path.join(self.analysis_path, 
-                            'center_of_mass_AP.png'),
-                         os.path.join(self.analysis_path, 
-                            'center_of_mass_SI.png'),
-                         os.path.join(self.analysis_path, 
-                            'center_of_mass_ML.png')], 
-                        self.plot_center_of_mass)
-
-    def plot_center_of_mass(self, file_dep, target):
-
-        # Initialize figures
-        # ------------------
-        fig0 = plt.figure(figsize=(4, 5))
-        ax_accx = fig0.add_subplot(2,1,1)
-        ax_velx = fig0.add_subplot(2,1,2)
-
-        fig1 = plt.figure(figsize=(4, 5))
-        ax_accy = fig1.add_subplot(2,1,1)
-        ax_vely = fig1.add_subplot(2,1,2)
-
-        fig2 = plt.figure(figsize=(4, 5))
-        ax_accz = fig2.add_subplot(2,1,1)
-        ax_velz = fig2.add_subplot(2,1,2)
-
-        # Plot formatting
-        # ---------------
-        for ax in [ax_velx, ax_vely, ax_velz,
-                   ax_accx, ax_accy, ax_accz]:
-            ax.axvline(x=self.time, color='gray', linestyle='-',
-                linewidth=0.25, alpha=1.0, zorder=0)
-            util.publication_spines(ax)
-            xlim = [self.time-self.rise, self.time+self.fall]
-            ax.set_xlim(xlim)
-            ax.set_xticks(get_ticks_from_lims(xlim, 5))
-            ax.spines['left'].set_position(('outward', 10))
-
-        for ax in [ax_velx, ax_vely, ax_velz]:
-            ax.spines['bottom'].set_position(('outward', 10))
-            ax.set_xlabel('time (% gait cycle)')
-
-        for ax in [ax_accx, ax_accy, ax_accz]: 
-            ax.set_xticklabels([])
-            ax.spines['bottom'].set_visible(False)
-            ax.tick_params(axis='x', which='both', bottom=False, 
-                           top=False, labelbottom=False)
-
-        # Aggregate data
-        # --------------
-        numLabels = len(self.labels)
-        import collections
-        com_dict = collections.defaultdict(dict)
-        N = 1001
-        for label in self.labels:
-            com_dict[label]['velx'] = np.zeros((N, len(self.subjects)))
-            com_dict[label]['vely'] = np.zeros((N, len(self.subjects)))
-            com_dict[label]['velz'] = np.zeros((N, len(self.subjects)))
-            com_dict[label]['accx'] = np.zeros((N, len(self.subjects)))
-            com_dict[label]['accy'] = np.zeros((N, len(self.subjects)))
-            com_dict[label]['accz'] = np.zeros((N, len(self.subjects)))
-
-        for isubj, subject in enumerate(self.subjects):
-            for ilabel, label in enumerate(self.labels):
-                table = osim.TimeSeriesTable(file_dep[ilabel + isubj*numLabels])
-                timeVec = np.array(table.getIndependentColumn())
-                
-                if 'unperturbed' in label:
-                    duration = timeVec[-1] - timeVec[0]
-                    time_at_rise = timeVec[0] + (duration * ((self.time - self.rise) / 100.0))
-                    time_at_fall = timeVec[0] + (duration * ((self.time + self.fall) / 100.0))
-                    irise = np.argmin(np.abs(timeVec - time_at_rise))
-                    ifall = np.argmin(np.abs(timeVec - time_at_fall))
-                else:
-                    irise = np.argmin(np.abs(timeVec - time_at_rise))
-                    ifall = len(timeVec)
-
-                velx = table.getDependentColumn('/|com_velocity_x').to_numpy()[irise:ifall]
-                vely = table.getDependentColumn('/|com_velocity_y').to_numpy()[irise:ifall]
-                velz = table.getDependentColumn('/|com_velocity_z').to_numpy()[irise:ifall]
-                accx = table.getDependentColumn('/|com_acceleration_x').to_numpy()[irise:ifall]
-                accy = table.getDependentColumn('/|com_acceleration_y').to_numpy()[irise:ifall]
-                accz = table.getDependentColumn('/|com_acceleration_z').to_numpy()[irise:ifall]
-
-                timeInterp = np.linspace(timeVec[irise], timeVec[ifall-1], N)
-                
-                com_dict[label]['velx'][:, isubj] = np.interp(timeInterp, timeVec[irise:ifall], velx)
-                com_dict[label]['vely'][:, isubj] = np.interp(timeInterp, timeVec[irise:ifall], vely)
-                com_dict[label]['velz'][:, isubj] = np.interp(timeInterp, timeVec[irise:ifall], velz)
-                com_dict[label]['accx'][:, isubj] = np.interp(timeInterp, timeVec[irise:ifall], accx)
-                com_dict[label]['accy'][:, isubj] = np.interp(timeInterp, timeVec[irise:ifall], accy)
-                com_dict[label]['accz'][:, isubj] = np.interp(timeInterp, timeVec[irise:ifall], accz)
-
-
-        # Plotting
-        # --------
-        velx_mean = np.zeros((N, len(self.labels)))
-        vely_mean = np.zeros((N, len(self.labels)))
-        velz_mean = np.zeros((N, len(self.labels)))
-        accx_mean = np.zeros((N, len(self.labels)))
-        accy_mean = np.zeros((N, len(self.labels)))
-        accz_mean = np.zeros((N, len(self.labels)))
-        for ilabel, label in enumerate(self.labels):
-            velx_mean[:, ilabel] = np.mean(com_dict[label]['velx'], axis=1)
-            vely_mean[:, ilabel] = np.mean(com_dict[label]['vely'], axis=1)
-            velz_mean[:, ilabel] = np.mean(com_dict[label]['velz'], axis=1)
-            accx_mean[:, ilabel] = np.mean(com_dict[label]['accx'], axis=1)
-            accy_mean[:, ilabel] = np.mean(com_dict[label]['accy'], axis=1)
-            accz_mean[:, ilabel] = np.mean(com_dict[label]['accz'], axis=1)
-
-        velx_step = 0.01
-        vely_step = 0.01
-        velz_step = 0.01
-        accx_step = 0.1
-        accy_step = 0.1
-        accz_step = 0.1
-        velx_lim = [np.mean(velx_mean), np.mean(velx_mean)]
-        vely_lim = [np.mean(vely_mean), np.mean(vely_mean)]
-        velz_lim = [np.mean(velz_mean), np.mean(velz_mean)]
-        accx_lim = [np.mean(accx_mean), np.mean(accx_mean)]
-        accy_lim = [np.mean(accy_mean), np.mean(accy_mean)]
-        accz_lim = [np.mean(accz_mean), np.mean(accz_mean)]
-        for ilabel, label in enumerate(self.labels): 
-            update_lims(velx_mean[:, ilabel], velx_step, velx_lim)
-            update_lims(vely_mean[:, ilabel], vely_step, vely_lim)
-            update_lims(velz_mean[:, ilabel], velz_step, velz_lim)
-            update_lims(accx_mean[:, ilabel], accx_step, accx_lim)
-            update_lims(accy_mean[:, ilabel], accy_step, accy_lim)
-            update_lims(accz_mean[:, ilabel], accz_step, accz_lim)
-
-        pgc = np.linspace(self.time - self.rise, self.time + self.fall, N)
-        handles = list()
-        for ilabel, (label, color) in enumerate(zip(self.labels, self.colors)):
-            lw = 3 if 'unperturbed' in label else 2
-
-            h, = ax_velx.plot(pgc, velx_mean[:, ilabel], label=label, color=color, 
-                linewidth=lw, clip_on=False, solid_capstyle='round')
-            handles.append(h)
-            ax_velx.set_ylabel(r'velocity $[m/s]$')
-            ax_velx.set_ylim(velx_lim)
-            ax_velx.set_yticks(get_ticks_from_lims(velx_lim, velx_step))
-
-            ax_vely.plot(pgc, vely_mean[:, ilabel], label=label, color=color, 
-                linewidth=lw, clip_on=False, solid_capstyle='round')
-            ax_vely.set_ylabel(r'velocity $[m/s]$')
-            ax_vely.set_ylim(vely_lim)
-            ax_vely.set_yticks(get_ticks_from_lims(vely_lim, vely_step))
-
-            ax_velz.plot(pgc, velz_mean[:, ilabel], label=label, color=color, 
-                linewidth=lw, clip_on=False, solid_capstyle='round')
-            ax_velz.set_ylabel(r'velocity $[m/s]$')
-            ax_velz.set_ylim(velz_lim)
-            ax_velz.set_yticks(get_ticks_from_lims(velz_lim, velz_step))
-                
-            ax_accx.plot(pgc, accx_mean[:, ilabel], label=label, color=color, 
-                linewidth=lw, clip_on=False, solid_capstyle='round')
-            ax_accx.set_ylabel(r'acceleration $[m/s]$')
-            ax_accx.set_ylim(accx_lim)
-            ax_accx.set_yticks(get_ticks_from_lims(accx_lim, accx_step))
-
-            ax_accy.plot(pgc, accy_mean[:, ilabel], label=label, color=color, 
-                linewidth=lw, clip_on=False, solid_capstyle='round')
-            ax_accy.set_ylabel(r'acceleration $[m/s]$')
-            ax_accy.set_ylim(accy_lim)
-            ax_accy.set_yticks(get_ticks_from_lims(accy_lim, accy_step))
-
-            ax_accz.plot(pgc, accz_mean[:, ilabel], label=label, color=color, 
-                linewidth=lw, clip_on=False, solid_capstyle='round')
-            ax_accz.set_ylabel(r'acceleration $[m/s]$')
-            ax_accz.set_ylim(accz_lim)
-            ax_accz.set_yticks(get_ticks_from_lims(accz_lim, accz_step))
-
-        for ax in [ax_accx, ax_accy, ax_accz]:
-            ax.legend(handles, self.legend_labels, loc='best', 
-                frameon=True, prop={'size': 5})
-
-        fig0.tight_layout()
-        fig0.savefig(target[0], dpi=600)
-        plt.close()
-
-        fig1.tight_layout()
-        fig1.savefig(target[1], dpi=600)
-        plt.close()
-
-        fig2.tight_layout()
-        fig2.savefig(target[2], dpi=600)
-        plt.close()
-
-
-class TaskPlotMethodsFigure(osp.StudyTask):
+class TaskPlotPerturbationPowers(osp.StudyTask):
     REGISTRY = []
     def __init__(self, study, subjects):
-        super(TaskPlotMethodsFigure, self).__init__(study)
-        self.name = 'plot_methods_figure'
-        self.results_path = os.path.join(study.config['results_path'], 
-            'experiments')
-        self.analysis_path = os.path.join(study.config['analysis_path'],
-            'methods_figure')
-        if not os.path.exists(self.analysis_path): 
-            os.makedirs(self.analysis_path)
-
+        super(TaskPlotPerturbationPowers, self).__init__(study)
+        self.name = 'plot_perturbation_powers'
         self.subjects = subjects
-        self.time = 35
-        self.rise = study.rise
-        self.fall = study.fall
-        self.labels = ['unperturbed', 'perturbed']
-        self.colors = ['dimgrey', 'darkred']
-        deps = list()
-        for isubj, subject in enumerate(subjects):
-
-            # Unperturbed COM
-            deps.append(
-                os.path.join(
-                    self.study.config['results_path'], 
-                    'unperturbed', subject,
-                    'center_of_mass_unperturbed.sto'))
-
-            # Perturbed COM
-            label = (f'perturbed_torque10_time{self.time}'
-                    f'_rise{self.rise}_fall{self.fall}_subtalar-10')
-            deps.append(
-                os.path.join(
-                    self.study.config['results_path'], 
-                    'perturbed', label, subject,
-                    f'center_of_mass_{label}.sto')
-                )
-
-        # Perturbation curve
-        deps.append(
-                os.path.join(
-                    self.study.config['results_path'], 
-                    'perturbed', label, subjects[0],
-                    'ankle_perturbation_curve.sto'))
-
-        self.add_action(deps, 
-                        [os.path.join(self.analysis_path, 
-                            'methods_figure.png')], 
-                        self.plot_center_of_mass)
-
-    def plot_center_of_mass(self, file_dep, target):
-
-        # Initialize figures
-        # ------------------
-        import matplotlib.gridspec as gridspec
-        gs = gridspec.GridSpec(8, 1)
-        fig0 = plt.figure(figsize=(3, 5))
-        ax_tau = fig0.add_subplot(gs[0:2, :])
-        ax_acc = fig0.add_subplot(gs[2:5, :])
-        ax_vel = fig0.add_subplot(gs[5:8, :])
-
-        # Arrowy helper functions
-        # -----------------------
-        def set_arrow_patch_vertical(ax, x, y1, y2):
-            arrowstyle = patches.ArrowStyle.CurveAB(head_length=0.4, 
-                head_width=0.15)
-            lw = 1.0
-
-            arrow = patches.FancyArrowPatch((x, y1), (x, y2),
-                    arrowstyle=arrowstyle, mutation_scale=7.5, shrinkA=2.5, shrinkB=2.5,
-                    joinstyle='miter', color='black', clip_on=False, zorder=2.5, lw=lw)
-            ax.add_patch(arrow)
-
-        def set_arrow_patch_coronal(ax, x, y, dx, dy, actu):
-            point1 = ax.transData.transform((x, y))
-            point2 = ax.transData.transform((x + dx, y + dx))
-            delta = point2 - point1
-            scale = delta[0] / delta[1]
-
-            if 'muscles' in actu:
-                arrowstyle = patches.ArrowStyle.CurveFilledB(head_length=0.4, 
-                    head_width=0.15)
-                lw = 2.0
-            elif 'torques' in actu: 
-                arrowstyle = patches.ArrowStyle.CurveB()
-                lw = 0.75
-
-            arrow = patches.FancyArrowPatch((x, y), (x + dx, y + scale*dy),
-                    arrowstyle=arrowstyle, mutation_scale=10, shrinkA=0, shrinkB=0,
-                    capstyle='round', joinstyle='miter', 
-                    color=color, clip_on=False, zorder=2.5, lw=lw)
-            ax.add_patch(arrow)
-
-        # Plot formatting
-        # ---------------
-        xfs = 6
-        yfs = 7
-        for ax in [ax_tau, ax_acc, ax_vel]:
-            ax.axvline(x=self.time-self.rise, color='gray', linestyle='--',
-                linewidth=0.4, alpha=0.5, zorder=0, clip_on=False)
-            ax.axvline(x=self.time, color='gray', linestyle='--',
-                linewidth=0.4, alpha=0.5, zorder=0, clip_on=False)
-            ax.axvline(x=self.time+self.fall, color='gray', linestyle='--',
-                linewidth=0.4, alpha=0.5, zorder=0, clip_on=False)
-
-            util.publication_spines(ax)
-            xlim = [self.time-self.rise, self.time+self.fall]
-            ax.set_xlim(xlim)
-            ax.set_xticks(get_ticks_from_lims(xlim, 5))
-            ax.spines['left'].set_position(('outward', 10))
-
-        ax_vel.spines['bottom'].set_position(('outward', 10))
-        ax_vel.set_xticklabels(['torque\nonset', '', 'peak\ntorque', 'torque\noffset'],
-            fontsize=xfs)
-
-        for ax in [ax_tau, ax_acc]:
-            ax.set_xticklabels([])
-            ax.spines['bottom'].set_visible(False)
-            ax.tick_params(axis='x', which='both', bottom=False, 
-                           top=False, labelbottom=False)
-
-        for ax in [ax_acc, ax_vel]:
-            ax.set_yticklabels([])
-            ax.spines['left'].set_visible(False)
-            ax.tick_params(axis='y', which='both', left=False, 
-                           right=False, labelbottom=False)
-
-
-        # Plot perturbation torque
-        # ------------------------
-        N = 1001
-        perturbation = osim.TimeSeriesTable(file_dep[-1])
-        perTimeVec = np.array(perturbation.getIndependentColumn())
-        unperturbed = osim.TimeSeriesTable(file_dep[0])
-        unpTimeVec = np.array(unperturbed.getIndependentColumn())
-
-        duration = unpTimeVec[-1] - unpTimeVec[0]
-        time_at_rise = unpTimeVec[0] + (duration * ((self.time - self.rise) / 100.0))
-        time_at_fall = unpTimeVec[0] + (duration * ((self.time + self.fall) / 100.0))
-        irise = np.argmin(np.abs(perTimeVec - time_at_rise))
-        ifall = np.argmin(np.abs(perTimeVec - time_at_fall))
-
-        tau = -perturbation.getDependentColumn(
-            '/forceset/perturbation_ankle_angle_r').to_numpy()[irise:ifall]
-        timeInterp = np.linspace(perTimeVec[irise], perTimeVec[ifall-1], N)
-        tauInterp = np.interp(timeInterp, perTimeVec[irise:ifall], tau)
-        pgc = np.linspace(self.time - self.rise, self.time + self.fall, N)
-        ax_tau.plot(pgc, tauInterp, color='darkred', linewidth=2, 
-            clip_on=False, solid_capstyle='round')
-        ax_tau.set_ylabel(r'perturbation torque $[\frac{N\cdot m}{kg}]$', fontsize=yfs)
-        ax_tau.set_ylim([0, 0.1])
-        ax_tau.set_yticks([0, 0.1])
-        ax_tau.tick_params(axis='both', which='major', labelsize=6)
-
-        # Aggregate data
-        # --------------
-        numLabels = len(self.labels)
-        import collections
-        com_dict = collections.defaultdict(dict)
-        for label in self.labels:
-            com_dict[label]['vel'] = np.zeros((N, len(self.subjects)))
-            com_dict[label]['acc'] = np.zeros((N, len(self.subjects)))
-
-        for isubj, subject in enumerate(self.subjects):
-            for ilabel, label in enumerate(self.labels):
-                table = osim.TimeSeriesTable(file_dep[ilabel + isubj*numLabels])
-                timeVec = np.array(table.getIndependentColumn())
-                
-                if 'unperturbed' in label:
-                    duration = timeVec[-1] - timeVec[0]
-                    time_at_rise = timeVec[0] + (duration * ((self.time - self.rise) / 100.0))
-                    time_at_fall = timeVec[0] + (duration * ((self.time + self.fall) / 100.0))
-                    irise = np.argmin(np.abs(timeVec - time_at_rise))
-                    ifall = np.argmin(np.abs(timeVec - time_at_fall))
-                else:
-                    irise = np.argmin(np.abs(timeVec - time_at_rise))
-                    ifall = len(timeVec)
-
-                velx = table.getDependentColumn('/|com_velocity_x').to_numpy()[irise:ifall]
-                accx = table.getDependentColumn('/|com_acceleration_x').to_numpy()[irise:ifall]
-
-                timeInterp = np.linspace(timeVec[irise], timeVec[ifall-1], N)
-                
-                com_dict[label]['vel'][:, isubj] = np.interp(timeInterp, timeVec[irise:ifall], velx)
-                com_dict[label]['acc'][:, isubj] = np.interp(timeInterp, timeVec[irise:ifall], accx)
-
-        # Plotting
-        # --------
-        vel_mean = np.zeros((N, len(self.labels)))
-        acc_mean = np.zeros((N, len(self.labels)))
-        for ilabel, label in enumerate(self.labels):
-            vel_mean[:, ilabel] = np.mean(com_dict[label]['vel'], axis=1)
-            acc_mean[:, ilabel] = np.mean(com_dict[label]['acc'], axis=1)
-
-        vel_step = 0.01
-        acc_step = 0.1
-        vel_lim = [np.mean(vel_mean), np.mean(vel_mean)]
-        acc_lim = [np.mean(acc_mean), np.mean(acc_mean)]
-        for ilabel, label in enumerate(self.labels): 
-            update_lims(vel_mean[:, ilabel], vel_step, vel_lim)
-            update_lims(acc_mean[:, ilabel], acc_step, acc_lim)
-
-        pgc = np.linspace(self.time - self.rise, self.time + self.fall, N)
-        handles = list()
-        for ilabel, (label, color) in enumerate(zip(self.labels, self.colors)):
-            lw = 3 if 'unperturbed' in label else 2
-
-            h, = ax_vel.plot(pgc, vel_mean[:, ilabel], label=label, color=color, 
-                linewidth=lw, clip_on=False, solid_capstyle='round')
-            handles.append(h)
-            ax_vel.set_ylabel('center-of-mass\nvelocity', fontsize=yfs)
-            ax_vel.set_ylim(vel_lim)
-            ax_vel.set_yticks(get_ticks_from_lims(vel_lim, vel_step))
-                
-            ax_acc.plot(pgc, acc_mean[:, ilabel], label=label, color=color, 
-                linewidth=lw, clip_on=False, solid_capstyle='round')
-            ax_acc.set_ylabel('center-of-mass\nacceleration', fontsize=yfs)
-            ax_acc.set_ylim(acc_lim)
-            ax_acc.set_yticks(get_ticks_from_lims(acc_lim, acc_step))
-
-
-        # Plot decorations
-        ax_acc.text(self.time-6.5, -0.195, 'unperturbed', fontsize=6,
-            color=self.colors[0], fontweight='bold')
-        ax_acc.text(self.time-3.5, -0.475, 'perturbed', fontsize=6,
-            color=self.colors[1], fontweight='bold')
-
-        index = np.argmin(np.abs(pgc-self.time))
-        set_arrow_patch_vertical(ax_acc, self.time, 
-            acc_mean[index, 0], acc_mean[index, 1])
-
-        index = np.argmin(np.abs(pgc-(self.time+self.fall)))
-        set_arrow_patch_vertical(ax_vel, self.time+self.fall, 
-            vel_mean[index, 0], vel_mean[index, 1])
-
-        ax_acc.text(self.time+0.25, -0.21, r'$\Delta a_{COM}$', fontsize=7,
-            color='black', fontweight='bold')
-
-        vloc = (vel_mean[index, 0] + vel_mean[index, 1]) / 2.0
-        ax_vel.text(self.time+self.fall-2.5, vloc, r'$\Delta v_{COM}$', fontsize=7,
-            color='black', fontweight='bold')
-
-        fig0.tight_layout()
-        fig0.savefig(target[0], dpi=600)
-        plt.close()
-
-
-class TaskPlotInstantaneousCenterOfMass(osp.StudyTask):
-    REGISTRY = []
-    def __init__(self, study, subjects, times, rise, fall):
-        super(TaskPlotInstantaneousCenterOfMass, self).__init__(study)
-        self.name = f'plot_instantaneous_center_of_mass_rise{rise}_fall{fall}'
-        self.results_path = os.path.join(study.config['results_path'], 
-            'experiments')
-        self.analysis_path = os.path.join(study.config['analysis_path'],
-            'center_of_mass_instantaneous',  f'rise{rise}_fall{fall}')
-        if not os.path.exists(self.analysis_path): 
-            os.makedirs(self.analysis_path)
-        self.subjects = subjects
-        self.times = times
-        self.rise = rise
-        self.fall = fall
+        self.times = study.times
         self.torques = study.plot_torques
         self.subtalars = study.plot_subtalars
         self.colors = study.plot_colors
-        self.hatches = [None, None, None, None, None]
-        self.edgecolor = 'black'
-        self.width = 0.15
-        N = len(self.subtalars)
-        min_width = -self.width*((N-1)/2)
-        max_width = -min_width
-        self.shifts = np.linspace(min_width, max_width, N)
         self.legend_labels = ['eversion', 
                               'plantarflexion + eversion', 
                               'plantarflexion', 
                               'plantarflexion + inversion', 
                               'inversion']
-        self.labels = list()
-        self.times_list = list()
+        self.perturb_labels = ['torque0_subtalar-10',
+                               'torque10_subtalar-10',
+                               'torque10',
+                               'torque10_subtalar10',
+                               'torque0_subtalar10']
 
-        self.labels.append('unperturbed')
-        self.times_list.append(100)
-        deps = list()
+        self.analysis_path = os.path.join(study.config['analysis_path'],
+            'perturbation_powers')
+        if not os.path.exists(self.analysis_path): 
+            os.makedirs(self.analysis_path)
 
-        for isubj, subject in enumerate(subjects):
-            # Unperturbed solution
-            deps.append(
-                os.path.join(
-                    self.study.config['results_path'], 
-                    'unperturbed', subject,
-                    'center_of_mass_unperturbed.sto'))
+        self.add_action([os.path.join(self.analysis_path,
+                                'perturbation_powers_mean.csv'),
+                         os.path.join(self.analysis_path, 
+                                'perturbation_powers_std.csv')],
+                        [os.path.join(self.analysis_path, 
+                                'perturbation_powers.png')],
+                        self.plot_perturbation_powers)
 
-            # Perturbed solutions
-            for time in self.times:
-                for torque, subtalar in zip(self.torques, self.subtalars):
-                    label = (f'perturbed_torque{torque}_time{time}'
-                            f'_rise{self.rise}_fall{self.fall}{subtalar}')
-                    deps.append(
-                        os.path.join(
-                            self.study.config['results_path'], 
-                            'perturbed', label, subject,
-                            f'center_of_mass_{label}.sto')
-                        )
-
-                    if not isubj:
-                        self.labels.append(
-                            (f'torque{torque}_time{time}'
-                             f'_rise{self.rise}_fall{self.fall}{subtalar}'))
-                        self.times_list.append(time)
-
-        targets = list()
-        for kin in ['pos', 'vel', 'acc']:
-            # for direc in ['AP', 'SI', 'ML']:
-            targets += [os.path.join(self.analysis_path, 
-                        f'instant_com_{kin}.png')]
-
-        self.add_action(deps, targets, self.plot_instantaneous_com)
-
-    def plot_instantaneous_com(self, file_dep, target):
+    def plot_perturbation_powers(self, file_dep, target):
 
         # Initialize figures
         # ------------------
-        figs = list()
         axes = list()
-        for kin in ['pos', 'vel', 'acc']:
-            fig = plt.figure(figsize=(6, 9))
-            for idirec, direc in enumerate(['AP', 'SI', 'ML']):
-                ax = fig.add_subplot(3, 1, idirec + 1)
-                ax.axhline(y=0, color='black', linestyle='-',
-                        linewidth=0.1, alpha=1.0, zorder=-1)
-                ax.spines['left'].set_position(('outward', 30))
+        fig = plt.figure(figsize=(8, 6))
+        iplot = 1
+        for ipower, power in enumerate(['positive', 'negative']):
+            for icoord, coord in enumerate(['ankle', 'subtalar']):
+                ax = fig.add_subplot(2, 2, iplot)
+                # ax.axhline(y=0, color='black', linestyle='-',
+                #         linewidth=0.1, alpha=1.0, zorder=-1)
+                ax.spines['left'].set_position(('outward', 15))
                 ax.set_xticks(np.arange(len(self.times)))
                 ax.set_xlim(0, len(self.times)-1)
+                ax.grid(color='gray', linestyle='--', linewidth=0.25,
+                    clip_on=False, alpha=0.75)
                 util.publication_spines(ax)
 
-                if not direc == 'ML':
+                if power == 'positive':
                     ax.spines['bottom'].set_visible(False)
                     ax.set_xticklabels([])
                     ax.xaxis.set_ticks_position('none')
                     ax.tick_params(axis='x', which='both', bottom=False, 
                                    top=False, labelbottom=False)
+                    ax.set_ylim(0, 0.12)
+                    ax.set_yticks([0, 0.02, 0.04, 0.06, 0.08, 0.1, 0.12])
+
+                    if coord == 'ankle': 
+                        ax.set_title('ankle perturbation power')
+                        ax.set_ylabel(r'peak positive power $[W/kg]$')
+                    elif coord == 'subtalar':
+                        ax.set_title('subtalar perturbation power')
+
                 else:
                     ax.spines['bottom'].set_position(('outward', 10))
                     ax.set_xticklabels([f'{time}' for time in self.times])
                     ax.set_xlabel('peak perturbation time\n(% gait cycle)')
 
+                    ax.set_ylim(-0.025, 0)
+                    ax.set_yticks([-0.025, -0.02, -0.015, -0.01, -0.005, 0])
+
+                    if coord == 'ankle': 
+                        ax.set_ylabel(r'peak negative power $[W/kg]$')   
+
+                if coord == 'subtalar':
+                    ax.spines['left'].set_visible(False)
+                    ax.set_yticklabels([])
+                    ax.yaxis.set_ticks_position('none')
+                    ax.tick_params(axis='y', which='both', left=False, 
+                                   right=False, labelleft=False)
                 axes.append(ax)
-            figs.append(fig)
+                iplot += 1
 
-        # Aggregate data
-        # --------------
-        numLabels = len(self.labels)
-        import collections
-        com_dict = collections.defaultdict(dict)
-        time_dict = dict()
-        for isubj, subject in enumerate(self.subjects):
-            # Unperturbed center-of-mass trajectories
-            unpTable = osim.TimeSeriesTable(file_dep[isubj*numLabels])
-            unpTimeVec = unpTable.getIndependentColumn()
-            unpTable_np = np.zeros((len(unpTimeVec), 9))
-            unp_pos_x = unpTable.getDependentColumn(
-                '/|com_position_x').to_numpy()
-            unp_pos_y = unpTable.getDependentColumn(
-                '/|com_position_y').to_numpy()
-            unp_pos_z = unpTable.getDependentColumn(
-                '/|com_position_z').to_numpy()
-            unpTable_np[:, 0] = unp_pos_x - unp_pos_x[0] 
-            unpTable_np[:, 1] = unp_pos_y - unp_pos_y[0] 
-            unpTable_np[:, 2] = unp_pos_z - unp_pos_z[0] 
-            unpTable_np[:, 3] = unpTable.getDependentColumn(
-                '/|com_velocity_x').to_numpy() 
-            unpTable_np[:, 4] = unpTable.getDependentColumn(
-                '/|com_velocity_y').to_numpy() 
-            unpTable_np[:, 5] = unpTable.getDependentColumn(
-                '/|com_velocity_z').to_numpy() 
-            unpTable_np[:, 6] = unpTable.getDependentColumn(
-                '/|com_acceleration_x').to_numpy()
-            unpTable_np[:, 7] = unpTable.getDependentColumn(
-                '/|com_acceleration_y').to_numpy()
-            unpTable_np[:, 8] = unpTable.getDependentColumn(
-                '/|com_acceleration_z').to_numpy()
-            time_dict[subject] = unpTimeVec
+        # Load powers
+        # -----------
+        df_powers_mean = pd.read_csv(file_dep[0], index_col=[0, 1], 
+            header=[0,1], skiprows=1)
+        df_powers_std = pd.read_csv(file_dep[1], index_col=[0, 1], 
+            header=[0,1], skiprows=1)
 
-            for i, (label, time) in enumerate(zip(self.labels, self.times_list)):
-                # Perturbed center-of-mass trajectories
-                table = osim.TimeSeriesTable(file_dep[i + isubj*numLabels])
-                timeVec = table.getIndependentColumn()
-                N = len(timeVec)
-                table_np = np.zeros((N, 9))
-                pos_x = table.getDependentColumn(
-                    '/|com_position_x').to_numpy()
-                pos_y = table.getDependentColumn(
-                    '/|com_position_y').to_numpy()
-                pos_z = table.getDependentColumn(
-                    '/|com_position_z').to_numpy()
-                table_np[:, 0] = pos_x - pos_x[0] 
-                table_np[:, 1] = pos_y - pos_y[0] 
-                table_np[:, 2] = pos_z - pos_z[0] 
-                table_np[:, 3] = table.getDependentColumn(
-                    '/|com_velocity_x').to_numpy()
-                table_np[:, 4] = table.getDependentColumn(
-                    '/|com_velocity_y').to_numpy()
-                table_np[:, 5] = table.getDependentColumn(
-                    '/|com_velocity_z').to_numpy() 
-                table_np[:, 6] = table.getDependentColumn(
-                    '/|com_acceleration_x').to_numpy()
-                table_np[:, 7] = table.getDependentColumn(
-                    '/|com_acceleration_y').to_numpy()
-                table_np[:, 8] = table.getDependentColumn(
-                    '/|com_acceleration_z').to_numpy()
+        ankle_indices = [1, 2, 3]
+        subtalar_indices = [0, 1, 3, 4]
 
-                # Compute difference between perturbed and unperturbed
-                # trajectories for this subject. We don't need to interpolate
-                # here since the perturbed and unperturbed trajectories contain
-                # the same time points (up until the end of the perturbation).
-                com_dict[subject][label] = table_np - unpTable_np[0:N, :]
+        ax_pos_ankle = axes[0]
+        ax_neg_ankle = axes[2]
+        df_ankle_pos_powers_mean = df_powers_mean['peak positive']['ankle']
+        df_ankle_pos_powers_std = df_powers_std['peak positive']['ankle']
+        df_ankle_neg_powers_mean = df_powers_mean['peak negative']['ankle']
+        df_ankle_neg_powers_std = df_powers_std['peak negative']['ankle']
+        for iankle in ankle_indices:
+            perturb = self.perturb_labels[iankle]
+            color = self.colors[iankle]
+            x = np.arange(len(self.times))
 
-        # Plotting
-        # --------
-        pos_x_diff = np.zeros(len(self.subjects))
-        pos_y_diff = np.zeros(len(self.subjects))
-        pos_z_diff = np.zeros(len(self.subjects))
-        vel_x_diff = np.zeros(len(self.subjects))
-        vel_y_diff = np.zeros(len(self.subjects))
-        vel_z_diff = np.zeros(len(self.subjects))
-        acc_x_diff = np.zeros(len(self.subjects))
-        acc_y_diff = np.zeros(len(self.subjects))
-        acc_z_diff = np.zeros(len(self.subjects))
-        pos_x_diff_mean = np.zeros((len(self.times), len(self.subtalars)))
-        pos_y_diff_mean = np.zeros((len(self.times), len(self.subtalars)))
-        pos_z_diff_mean = np.zeros((len(self.times), len(self.subtalars)))
-        vel_x_diff_mean = np.zeros((len(self.times), len(self.subtalars)))
-        vel_y_diff_mean = np.zeros((len(self.times), len(self.subtalars)))
-        vel_z_diff_mean = np.zeros((len(self.times), len(self.subtalars)))
-        acc_x_diff_mean = np.zeros((len(self.times), len(self.subtalars)))
-        acc_y_diff_mean = np.zeros((len(self.times), len(self.subtalars)))
-        acc_z_diff_mean = np.zeros((len(self.times), len(self.subtalars)))
-        pos_x_diff_std = np.zeros((len(self.times), len(self.subtalars)))
-        pos_y_diff_std = np.zeros((len(self.times), len(self.subtalars)))
-        pos_z_diff_std = np.zeros((len(self.times), len(self.subtalars)))
-        vel_x_diff_std = np.zeros((len(self.times), len(self.subtalars)))
-        vel_y_diff_std = np.zeros((len(self.times), len(self.subtalars)))
-        vel_z_diff_std = np.zeros((len(self.times), len(self.subtalars)))
-        acc_x_diff_std = np.zeros((len(self.times), len(self.subtalars)))
-        acc_y_diff_std = np.zeros((len(self.times), len(self.subtalars)))
-        acc_z_diff_std = np.zeros((len(self.times), len(self.subtalars)))
-        for itime, time in enumerate(self.times):
-            zipped = zip(self.torques, self.subtalars, self.colors, self.shifts)
-            for isubt, (torque, subtalar, color, shift) in enumerate(zipped):
+            df_this_ankle_pos_powers_mean = df_ankle_pos_powers_mean.xs(
+                perturb, level=1, drop_level=False)
+            df_this_ankle_pos_powers_std = df_ankle_pos_powers_std.xs(
+                perturb, level=1, drop_level=False)
 
-                label = (f'torque{torque}_time{time}'
-                         f'_rise{self.rise}_fall{self.fall}{subtalar}')
-                for isubj, subject in enumerate(self.subjects):
-                    com = com_dict[subject][label]
+            ax_pos_ankle.plot(x, df_this_ankle_pos_powers_mean, 'o-', color=color,
+                clip_on=False)
+            # ple, cle, ble = ax_ankle.errorbar(x, df_this_ankle_powers_mean, 
+            #     yerr=df_this_ankle_powers_std, 
+            #     fmt='none', ecolor='black', color='black', 
+            #     solid_capstyle='projecting',
+            #     lw=0.25, clip_on=False,
+            #     elinewidth=0.4, markeredgewidth=0.4)
+            # for cl in cle:
+            #     cl.set_marker('_')
+            #     cl.set_markersize(4)
 
-                    # Compute the closet time index to the current peak 
-                    # perturbation time. 
-                    #
-                    # TODO: A given peak perturbation time (e.g 50% of the 
-                    # gait cycle) may not lie exactly on a time point of 
-                    # from the simulation. The interval between time points
-                    # is 5ms, meaning that the time index could be up to 2.5ms
-                    # away from the actual perturbation peak time. 
-                    timeVec = np.array(time_dict[subject])
-                    duration = timeVec[-1] - timeVec[0]
-                    time_at_peak = timeVec[0] + (duration * (time / 100.0))
-                    index = np.argmin(np.abs(timeVec - time_at_peak))
+            df_this_ankle_neg_powers_mean = df_ankle_neg_powers_mean.xs(
+                perturb, level=1, drop_level=False)
+            df_this_ankle_neg_powers_std = df_ankle_neg_powers_std.xs(
+                perturb, level=1, drop_level=False)
 
-                    pos_x_diff[isubj] = 100*com[index, 0]
-                    pos_y_diff[isubj] = 100*com[index, 1]
-                    pos_z_diff[isubj] = 100*com[index, 2]
-                    vel_x_diff[isubj] = com[index, 3]
-                    vel_y_diff[isubj] = com[index, 4]
-                    vel_z_diff[isubj] = com[index, 5]
-                    acc_x_diff[isubj] = com[index, 6]
-                    acc_y_diff[isubj] = com[index, 7]
-                    acc_z_diff[isubj] = com[index, 8]
+            ax_neg_ankle.plot(x, df_this_ankle_neg_powers_mean, 'o-', color=color,
+                clip_on=False)
 
-                pos_x_diff_mean[itime, isubt] = np.mean(pos_x_diff)
-                pos_y_diff_mean[itime, isubt] = np.mean(pos_y_diff)
-                pos_z_diff_mean[itime, isubt] = np.mean(pos_z_diff)
-                vel_x_diff_mean[itime, isubt] = np.mean(vel_x_diff)
-                vel_y_diff_mean[itime, isubt] = np.mean(vel_y_diff)
-                vel_z_diff_mean[itime, isubt] = np.mean(vel_z_diff)
-                acc_x_diff_mean[itime, isubt] = np.mean(acc_x_diff)
-                acc_y_diff_mean[itime, isubt] = np.mean(acc_y_diff)
-                acc_z_diff_mean[itime, isubt] = np.mean(acc_z_diff)
-                pos_x_diff_std[itime, isubt] = np.std(pos_x_diff)
-                pos_y_diff_std[itime, isubt] = np.std(pos_y_diff)
-                pos_z_diff_std[itime, isubt] = np.std(pos_z_diff)
-                vel_x_diff_std[itime, isubt] = np.std(vel_x_diff)
-                vel_y_diff_std[itime, isubt] = np.std(vel_y_diff)
-                vel_z_diff_std[itime, isubt] = np.std(vel_z_diff)
-                acc_x_diff_std[itime, isubt] = np.std(acc_x_diff)
-                acc_y_diff_std[itime, isubt] = np.std(acc_y_diff)
-                acc_z_diff_std[itime, isubt] = np.std(acc_z_diff)
+        ax_pos_subtalar = axes[1]
+        ax_neg_subtalar = axes[3]
+        df_subtalar_pos_powers_mean = df_powers_mean['peak positive']['subtalar']
+        df_subtalar_pos_powers_std = df_powers_std['peak positive']['subtalar']
+        df_subtalar_neg_powers_mean = df_powers_mean['peak negative']['subtalar']
+        df_subtalar_neg_powers_std = df_powers_std['peak negative']['subtalar']
+        for isubtalar in subtalar_indices:
+            perturb = self.perturb_labels[isubtalar]
+            color = self.colors[isubtalar]
+            x = np.arange(len(self.times))
+
+            df_this_subtalar_pos_powers_mean = df_subtalar_pos_powers_mean.xs(
+                perturb, level=1, drop_level=False)
+            df_this_subtalar_pos_powers_std = df_subtalar_pos_powers_std.xs(
+                perturb, level=1, drop_level=False)
+
+            ax_pos_subtalar.plot(x, df_this_subtalar_pos_powers_mean, 'o-', color=color,
+                clip_on=False)
+            # ple, cle, ble = ax_subtalar.errorbar(x, df_this_subtalar_powers_mean, 
+            #     yerr=df_this_subtalar_powers_std, 
+            #     fmt='none', ecolor='black', color='black', 
+            #     solid_capstyle='projecting',
+            #     lw=0.25, clip_on=False,
+            #     elinewidth=0.4, markeredgewidth=0.4)
+            # for cl in cle:
+            #     cl.set_marker('_')
+            #     cl.set_markersize(4)
+
+            df_this_subtalar_neg_powers_mean = df_subtalar_neg_powers_mean.xs(
+                perturb, level=1, drop_level=False)
+            df_this_subtalar_neg_powers_std = df_subtalar_neg_powers_std.xs(
+                perturb, level=1, drop_level=False)
+
+            ax_neg_subtalar.plot(x, df_this_subtalar_neg_powers_mean, 'o-', color=color,
+                clip_on=False)
+
+        fig.tight_layout()
+        fig.savefig(target[0], dpi=600)
+        plt.close()
 
 
-        pos_x_step = 0.02 # cm
-        pos_y_step = 0.05 # cm
-        pos_z_step = 0.02 # cm
-        vel_x_step = 0.005
-        vel_y_step = 0.01
-        vel_z_step = 0.005
-        acc_x_step = 0.1
-        acc_y_step = 0.1
-        acc_z_step = 0.1
-        pos_x_lim = [0.0, 0.0]
-        pos_y_lim = [0.0, 0.0]
-        pos_z_lim = [0.0, 0.0]
-        vel_x_lim = [0.0, 0.0]
-        vel_y_lim = [0.0, 0.0]
-        vel_z_lim = [0.0, 0.0]
-        acc_x_lim = [0.0, 0.0]
-        acc_y_lim = [0.0, 0.0]
-        acc_z_lim = [0.0, 0.0]
-        update_lims(pos_x_diff_mean-pos_x_diff_std, pos_x_step, pos_x_lim, mirror=True)
-        update_lims(pos_y_diff_mean-pos_y_diff_std, pos_y_step, pos_y_lim)
-        update_lims(pos_z_diff_mean-pos_z_diff_std, pos_z_step, pos_z_lim)
-        update_lims(vel_x_diff_mean-vel_x_diff_std, vel_x_step, vel_x_lim, mirror=True)
-        update_lims(vel_y_diff_mean-vel_y_diff_std, vel_y_step, vel_y_lim)
-        update_lims(vel_z_diff_mean-vel_z_diff_std, vel_z_step, vel_z_lim)
-        update_lims(acc_x_diff_mean-acc_x_diff_std, acc_x_step, acc_x_lim, mirror=True)
-        update_lims(acc_y_diff_mean-acc_y_diff_std, acc_y_step, acc_y_lim)
-        update_lims(acc_z_diff_mean-acc_z_diff_std, acc_z_step, acc_z_lim)        
-        update_lims(pos_x_diff_mean+pos_x_diff_std, pos_x_step, pos_x_lim, mirror=True)
-        update_lims(pos_y_diff_mean+pos_y_diff_std, pos_y_step, pos_y_lim)
-        update_lims(pos_z_diff_mean+pos_z_diff_std, pos_z_step, pos_z_lim)
-        update_lims(vel_x_diff_mean+vel_x_diff_std, vel_x_step, vel_x_lim, mirror=True)
-        update_lims(vel_y_diff_mean+vel_y_diff_std, vel_y_step, vel_y_lim)
-        update_lims(vel_z_diff_mean+vel_z_diff_std, vel_z_step, vel_z_lim)
-        update_lims(acc_x_diff_mean+acc_x_diff_std, acc_x_step, acc_x_lim, mirror=True)
-        update_lims(acc_y_diff_mean+acc_y_diff_std, acc_y_step, acc_y_lim)
-        update_lims(acc_z_diff_mean+acc_z_diff_std, acc_z_step, acc_z_lim)
-        handles_pos = list()
-        handles_vel = list()
-        handles_acc = list()
-        for itime, time in enumerate(self.times):
-            zipped = zip(self.torques, self.subtalars, self.colors, self.shifts, self.hatches)
-            for isubt, (torque, subtalar, color, shift, hatch) in enumerate(zipped):
 
-                # Set the x-position for these bar chart entries.
-                x = itime + shift
-                lw = 0.1
-
-                # Instantaneous positions
-                # -----------------------
-                plot_errorbar(axes[0], x, pos_x_diff_mean[itime, isubt], pos_x_diff_std[itime, isubt])
-                h_pos = axes[0].bar(x, pos_x_diff_mean[itime, isubt], self.width, color=color, clip_on=False, 
-                    hatch=hatch, edgecolor=self.edgecolor, lw=lw)
-                handles_pos.append(h_pos)
-                axes[0].set_ylabel(r'$\Delta$' + ' fore-aft position $[cm]$')
-                
-                plot_errorbar(axes[1], x, pos_y_diff_mean[itime, isubt], pos_y_diff_std[itime, isubt])
-                axes[1].bar(x, pos_y_diff_mean[itime, isubt], self.width, color=color, clip_on=False, 
-                    hatch=hatch, edgecolor=self.edgecolor , lw=lw)
-                axes[1].set_ylabel(r'$\Delta$' + ' vertical position $[cm]$')
-
-                plot_errorbar(axes[2], x, pos_z_diff_mean[itime, isubt], pos_z_diff_std[itime, isubt])
-                axes[2].bar(x, pos_z_diff_mean[itime, isubt], self.width, color=color, clip_on=False, 
-                    hatch=hatch, edgecolor=self.edgecolor , lw=lw)
-                axes[2].set_ylabel(r'$\Delta$' + ' medio-lateral position $[cm]$')
-
-                # Instantaneous velocities
-                # ------------------------
-                plot_errorbar(axes[3], x, vel_x_diff_mean[itime, isubt], vel_x_diff_std[itime, isubt])
-                h_vel = axes[3].bar(x, vel_x_diff_mean[itime, isubt], self.width, color=color, clip_on=False, 
-                    hatch=hatch, edgecolor=self.edgecolor, lw=lw)
-                handles_vel.append(h_vel)
-                axes[3].set_ylabel(r'$\Delta$' + ' fore-aft velocity $[m/s]$')
-
-                plot_errorbar(axes[4], x, vel_y_diff_mean[itime, isubt], vel_y_diff_std[itime, isubt])
-                axes[4].bar(x, vel_y_diff_mean[itime, isubt], self.width, color=color, clip_on=False, 
-                    hatch=hatch, edgecolor=self.edgecolor, lw=lw)
-                axes[4].set_ylabel(r'$\Delta$' + ' vertical velocity $[m/s]$')
-
-                plot_errorbar(axes[5], x, vel_z_diff_mean[itime, isubt], vel_z_diff_std[itime, isubt])
-                axes[5].bar(x, vel_z_diff_mean[itime, isubt], self.width, color=color, clip_on=False, 
-                    hatch=hatch, edgecolor=self.edgecolor, lw=lw)
-                axes[5].set_ylabel(r'$\Delta$' + ' medio-lateral velocity $[m/s]$')
-
-                # Instantaneous accelerations
-                # ---------------------------
-                plot_errorbar(axes[6], x, acc_x_diff_mean[itime, isubt], acc_x_diff_std[itime, isubt])
-                h_acc = axes[6].bar(x, acc_x_diff_mean[itime, isubt], self.width, color=color, clip_on=False, 
-                    hatch=hatch, edgecolor=self.edgecolor, lw=lw)
-                handles_acc.append(h_acc)
-                axes[6].set_ylabel(r'$\Delta$' + ' fore-aft acceleration $[m/s^2]$')
-
-                plot_errorbar(axes[7], x, acc_y_diff_mean[itime, isubt], acc_y_diff_std[itime, isubt])
-                axes[7].bar(x, acc_y_diff_mean[itime, isubt], self.width, color=color, clip_on=False,
-                    hatch=hatch, edgecolor=self.edgecolor, lw=lw)
-                axes[7].set_ylabel(r'$\Delta$' + ' vertical acceleration $[m/s^2]$')
-
-                plot_errorbar(axes[8], x, acc_z_diff_mean[itime, isubt], acc_z_diff_std[itime, isubt])
-                axes[8].bar(x, acc_z_diff_mean[itime, isubt], self.width, color=color, clip_on=False, 
-                    hatch=hatch, edgecolor=self.edgecolor, lw=lw)
-                axes[8].set_ylabel(r'$\Delta$' + ' medio-lateral acceleration $[m/s^2]$')
-
-        axes[0].set_ylim(pos_x_lim)
-        axes[0].set_yticks(get_ticks_from_lims(pos_x_lim, pos_x_step))
-        axes[0].legend(handles_pos, self.legend_labels, loc='upper left', 
-            title='perturbation', frameon=True)
-        axes[1].set_ylim(pos_y_lim)
-        axes[1].set_yticks(get_ticks_from_lims(pos_y_lim, pos_y_step))
-        axes[2].set_ylim(pos_z_lim)
-        axes[2].set_yticks(get_ticks_from_lims(pos_z_lim, pos_z_step))
-        axes[3].set_ylim(vel_x_lim)
-        axes[3].set_yticks(get_ticks_from_lims(vel_x_lim, vel_x_step))
-        axes[3].legend(handles_vel, self.legend_labels, loc='upper left', 
-            title='perturbation', frameon=True)
-        axes[4].set_ylim(vel_y_lim)
-        axes[4].set_yticks(get_ticks_from_lims(vel_y_lim, vel_y_step))
-        axes[5].set_ylim(vel_z_lim)
-        axes[5].set_yticks(get_ticks_from_lims(vel_z_lim, vel_z_step))
-        axes[6].set_ylim(acc_x_lim)
-        axes[6].set_yticks(get_ticks_from_lims(acc_x_lim, acc_x_step))
-        axes[6].legend(handles_acc, self.legend_labels, loc='upper left', 
-            title='perturbation', frameon=True)
-        axes[7].set_ylim(acc_y_lim)
-        axes[7].set_yticks(get_ticks_from_lims(acc_y_lim, acc_y_step))
-        axes[8].set_ylim(acc_z_lim)
-        axes[8].set_yticks(get_ticks_from_lims(acc_z_lim, acc_z_step))      
-
-        for ifig, fig in enumerate(figs):
-            fig.tight_layout()
-            fig.savefig(target[ifig], dpi=600)
-            plt.close()
-
-
-class TaskPlotInstantaneousCenterOfMassLumbarStiffness(osp.StudyTask):
-    REGISTRY = []
-    def __init__(self, study, subjects, times, torque, rise, fall):
-        super(TaskPlotInstantaneousCenterOfMassLumbarStiffness, self).__init__(study)
-        self.name = f'plot_instantaneous_center_of_mass_lumbar_stiffness_torque{torque}_rise{rise}_fall{fall}'
-        self.results_path = os.path.join(study.config['results_path'], 'experiments')
-        self.analysis_path = os.path.join(study.config['analysis_path'],
-            'lumbar_stiffness',  f'lumbar_stiffness_torque{torque}_rise{rise}_fall{fall}')
-        if not os.path.exists(self.analysis_path): 
-            os.makedirs(self.analysis_path)
-        self.subjects = subjects
-        self.torque = torque
-        self.times = times
-        self.rise = rise
-        self.fall = fall
-        self.subtalars = study.subtalar_suffixes
-        self.width = 0.25
-        self.lumbars = list()
-        for stiffness in study.lumbar_stiffnesses:
-            lumbar = ''
-            if not stiffness == 1.0:
-                lumbar = f'lumbar{stiffness}'
-            self.lumbars.append(lumbar)
-        min_width = -self.width*((len(self.lumbars)-1)/2)
-        max_width = -min_width
-        self.lumbar_shifts = np.linspace(min_width, max_width, len(self.lumbars))
-        cmap = plt.get_cmap('viridis')
-        indices = np.linspace(0, 1.0, len(self.lumbars)) 
-        self.lumbar_colors = [cmap(idx) for idx in indices]
-        self.labels = list()
-        self.times_list = list()
-
-        deps = list()
-        for isubj, subject in enumerate(subjects):
-            for lumbar in self.lumbars:
-                # Unperturbed solutions
-                deps.append(
-                    os.path.join(
-                        self.study.config['results_path'], 
-                        lumbar, 'unperturbed', subject,
-                        f'center_of_mass_unperturbed{lumbar}.sto'))
-
-                self.labels.append(f'unperturbed{lumbar}')
-                self.times_list.append(100)
-
-                # Perturbed solutions
-                for time in self.times:
-                    for subtalar in self.subtalars:
-                        label = (f'perturbed_torque{torque}_time{time}'
-                                f'_rise{self.rise}_fall{self.fall}{subtalar}_{lumbar}')
-                        deps.append(
-                            os.path.join(
-                                self.study.config['results_path'], 
-                                lumbar, label, subject,
-                                f'center_of_mass_{label}.sto')
-                            )
-
-                        if not isubj:
-                            self.labels.append(
-                                (f'torque{self.torque}_time{time}'
-                                 f'_rise{self.rise}_fall{self.fall}{subtalar}_{lumbar}'))
-                            self.times_list.append(time)
-
-        targets = list()
-        for kin in ['pos', 'vel', 'acc']:
-            for direc in ['AP', 'SI', 'ML']:
-                targets += [os.path.join(self.analysis_path, 
-                            f'instant_com_{direc}{kin}.png')]
-
-        self.add_action(deps, targets, self.plot_instantaneous_com)
-
-    def plot_instantaneous_com(self, file_dep, target):
-
-        # Initialize figures
-        # ------------------
-        figs = list()
-        axes = list()
-        for kin in ['pos', 'vel', 'acc']:
-            for direc in ['AP', 'SI', 'ML']:
-                fig = plt.figure(figsize=(4, 2.5*len(self.subtalars)))
-                these_axes = list()
-                for isubt, subt in enumerate(self.subtalars):
-                    ax = fig.add_subplot(3, 1, isubt+1)
-                    these_axes.append(ax)
-
-                figs.append(fig)
-                axes.append(these_axes)
-
-        # Aggregate data
-        # --------------
-        import collections
-        com_dict = collections.defaultdict(dict)
-        time_dict = dict()
-        index = 0
-        for isubj, subject in enumerate(self.subjects):
-            for ilumbar, lumbar in enumerate(self.lumbars):
-                # Unperturbed center-of-mass trajectories
-                # iunp = isubj*numLumbars + ilumbar*(numTimes*numSubtalars + 1)
-                unpTable = osim.TimeSeriesTable(file_dep[index])
-                unpTimeVec = unpTable.getIndependentColumn()
-                unpTable_np = np.zeros((len(unpTimeVec), 9))
-                unp_pos_x = unpTable.getDependentColumn(
-                    '/|com_position_x').to_numpy()
-                unp_pos_y = unpTable.getDependentColumn(
-                    '/|com_position_y').to_numpy()
-                unp_pos_z = unpTable.getDependentColumn(
-                    '/|com_position_z').to_numpy()
-                unpTable_np[:, 0] = unp_pos_x - unp_pos_x[0] 
-                unpTable_np[:, 1] = unp_pos_y - unp_pos_y[0] 
-                unpTable_np[:, 2] = unp_pos_z - unp_pos_z[0] 
-                unpTable_np[:, 3] = unpTable.getDependentColumn(
-                    '/|com_velocity_x').to_numpy() 
-                unpTable_np[:, 4] = unpTable.getDependentColumn(
-                    '/|com_velocity_y').to_numpy() 
-                unpTable_np[:, 5] = unpTable.getDependentColumn(
-                    '/|com_velocity_z').to_numpy() 
-                unpTable_np[:, 6] = unpTable.getDependentColumn(
-                    '/|com_acceleration_x').to_numpy()
-                unpTable_np[:, 7] = unpTable.getDependentColumn(
-                    '/|com_acceleration_y').to_numpy()
-                unpTable_np[:, 8] = unpTable.getDependentColumn(
-                    '/|com_acceleration_z').to_numpy()
-                time_dict[subject] = unpTimeVec
-
-                index = index + 1
-                for time in self.times:
-                    for subtalar in self.subtalars:
-                        label = (f'perturbed_torque{self.torque}_time{time}'
-                                 f'_rise{self.rise}_fall{self.fall}{subtalar}_{lumbar}')
-
-                        # Perturbed center-of-mass trajectories
-                        table = osim.TimeSeriesTable(file_dep[index])
-                        timeVec = table.getIndependentColumn()
-                        N = len(timeVec)
-                        table_np = np.zeros((N, 9))
-                        pos_x = table.getDependentColumn(
-                            '/|com_position_x').to_numpy()
-                        pos_y = table.getDependentColumn(
-                            '/|com_position_y').to_numpy()
-                        pos_z = table.getDependentColumn(
-                            '/|com_position_z').to_numpy()
-                        table_np[:, 0] = pos_x - pos_x[0] 
-                        table_np[:, 1] = pos_y - pos_y[0] 
-                        table_np[:, 2] = pos_z - pos_z[0] 
-                        table_np[:, 3] = table.getDependentColumn(
-                            '/|com_velocity_x').to_numpy()
-                        table_np[:, 4] = table.getDependentColumn(
-                            '/|com_velocity_y').to_numpy()
-                        table_np[:, 5] = table.getDependentColumn(
-                            '/|com_velocity_z').to_numpy() 
-                        table_np[:, 6] = table.getDependentColumn(
-                            '/|com_acceleration_x').to_numpy()
-                        table_np[:, 7] = table.getDependentColumn(
-                            '/|com_acceleration_y').to_numpy()
-                        table_np[:, 8] = table.getDependentColumn(
-                            '/|com_acceleration_z').to_numpy()
-
-                        # Compute difference between perturbed and unperturbed
-                        # trajectories for this subject. We don't need to interpolate
-                        # here since the perturbed and unperturbed trajectories contain
-                        # the same time points (up until the end of the perturbation).
-                        com_dict[subject][label] = table_np - unpTable_np[0:N, :]
-
-                        index = index + 1
-
-        # Plotting
-        # --------
-        for isubt, subtalar in enumerate(self.subtalars):
-
-            pos_x_diff = np.zeros(len(self.subjects))
-            pos_y_diff = np.zeros(len(self.subjects))
-            pos_z_diff = np.zeros(len(self.subjects))
-            vel_x_diff = np.zeros(len(self.subjects))
-            vel_y_diff = np.zeros(len(self.subjects))
-            vel_z_diff = np.zeros(len(self.subjects))
-            acc_x_diff = np.zeros(len(self.subjects))
-            acc_y_diff = np.zeros(len(self.subjects))
-            acc_z_diff = np.zeros(len(self.subjects))
-            pos_x_diff_mean = np.zeros((len(self.times), len(self.lumbars)))
-            pos_y_diff_mean = np.zeros((len(self.times), len(self.lumbars)))
-            pos_z_diff_mean = np.zeros((len(self.times), len(self.lumbars)))
-            vel_x_diff_mean = np.zeros((len(self.times), len(self.lumbars)))
-            vel_y_diff_mean = np.zeros((len(self.times), len(self.lumbars)))
-            vel_z_diff_mean = np.zeros((len(self.times), len(self.lumbars)))
-            acc_x_diff_mean = np.zeros((len(self.times), len(self.lumbars)))
-            acc_y_diff_mean = np.zeros((len(self.times), len(self.lumbars)))
-            acc_z_diff_mean = np.zeros((len(self.times), len(self.lumbars)))
-            pos_x_diff_std = np.zeros((len(self.times), len(self.lumbars)))
-            pos_y_diff_std = np.zeros((len(self.times), len(self.lumbars)))
-            pos_z_diff_std = np.zeros((len(self.times), len(self.lumbars)))
-            vel_x_diff_std = np.zeros((len(self.times), len(self.lumbars)))
-            vel_y_diff_std = np.zeros((len(self.times), len(self.lumbars)))
-            vel_z_diff_std = np.zeros((len(self.times), len(self.lumbars)))
-            acc_x_diff_std = np.zeros((len(self.times), len(self.lumbars)))
-            acc_y_diff_std = np.zeros((len(self.times), len(self.lumbars)))
-            acc_z_diff_std = np.zeros((len(self.times), len(self.lumbars)))
-            for itime, time in enumerate(self.times):
-                zipped = zip(self.lumbars, self.lumbar_colors, self.lumbar_shifts)
-                for ilumbar, (lumbar, color, shift) in enumerate(zipped):
-
-                    label = (f'perturbed_torque{self.torque}_time{time}'
-                             f'_rise{self.rise}_fall{self.fall}{subtalar}_{lumbar}')
-                    for isubj, subject in enumerate(self.subjects):
-                        com = com_dict[subject][label]
-
-                        # Compute the closet time index to the current peak 
-                        # perturbation time. 
-                        #
-                        # TODO: A given peak perturbation time (e.g 50% of the 
-                        # gait cycle) may not lie exactly on a time point of 
-                        # from the simulation. The interval between time points
-                        # is 5ms, meaning that the time index could be up to 2.5ms
-                        # away from the actual perturbation peak time. 
-                        timeVec = np.array(time_dict[subject])
-                        duration = timeVec[-1] - timeVec[0]
-                        time_at_peak = timeVec[0] + (duration * (time / 100.0))
-                        index = np.argmin(np.abs(timeVec - time_at_peak))
-
-                        pos_x_diff[isubj] = 100*com[index, 0]
-                        pos_y_diff[isubj] = 100*com[index, 1]
-                        pos_z_diff[isubj] = 100*com[index, 2]
-                        vel_x_diff[isubj] = com[index, 3]
-                        vel_y_diff[isubj] = com[index, 4]
-                        vel_z_diff[isubj] = com[index, 5]
-                        acc_x_diff[isubj] = com[index, 6]
-                        acc_y_diff[isubj] = com[index, 7]
-                        acc_z_diff[isubj] = com[index, 8]
-
-                    pos_x_diff_mean[itime, ilumbar] = np.mean(pos_x_diff)
-                    pos_y_diff_mean[itime, ilumbar] = np.mean(pos_y_diff)
-                    pos_z_diff_mean[itime, ilumbar] = np.mean(pos_z_diff)
-                    vel_x_diff_mean[itime, ilumbar] = np.mean(vel_x_diff)
-                    vel_y_diff_mean[itime, ilumbar] = np.mean(vel_y_diff)
-                    vel_z_diff_mean[itime, ilumbar] = np.mean(vel_z_diff)
-                    acc_x_diff_mean[itime, ilumbar] = np.mean(acc_x_diff)
-                    acc_y_diff_mean[itime, ilumbar] = np.mean(acc_y_diff)
-                    acc_z_diff_mean[itime, ilumbar] = np.mean(acc_z_diff)
-                    pos_x_diff_std[itime, ilumbar] = np.std(pos_x_diff)
-                    pos_y_diff_std[itime, ilumbar] = np.std(pos_y_diff)
-                    pos_z_diff_std[itime, ilumbar] = np.std(pos_z_diff)
-                    vel_x_diff_std[itime, ilumbar] = np.std(vel_x_diff)
-                    vel_y_diff_std[itime, ilumbar] = np.std(vel_y_diff)
-                    vel_z_diff_std[itime, ilumbar] = np.std(vel_z_diff)
-                    acc_x_diff_std[itime, ilumbar] = np.std(acc_x_diff)
-                    acc_y_diff_std[itime, ilumbar] = np.std(acc_y_diff)
-                    acc_z_diff_std[itime, ilumbar] = np.std(acc_z_diff)
-
-            pos_step = 0.2 # cm
-            vel_step = 0.02
-            acc_step = 0.1
-            pos_x_lim = [0.0, 0.0]
-            pos_y_lim = [0.0, 0.0]
-            pos_z_lim = [0.0, 0.0]
-            vel_x_lim = [0.0, 0.0]
-            vel_y_lim = [0.0, 0.0]
-            vel_z_lim = [0.0, 0.0]
-            acc_x_lim = [0.0, 0.0]
-            acc_y_lim = [0.0, 0.0]
-            acc_z_lim = [0.0, 0.0]
-            update_lims(pos_x_diff_mean-pos_x_diff_std, pos_step, pos_x_lim)
-            update_lims(pos_y_diff_mean-pos_y_diff_std, pos_step, pos_y_lim)
-            update_lims(pos_z_diff_mean-pos_z_diff_std, pos_step, pos_z_lim)
-            update_lims(vel_x_diff_mean-vel_x_diff_std, vel_step, vel_x_lim)
-            update_lims(vel_y_diff_mean-vel_y_diff_std, vel_step, vel_y_lim)
-            update_lims(vel_z_diff_mean-vel_z_diff_std, vel_step, vel_z_lim)
-            update_lims(acc_x_diff_mean-acc_x_diff_std, acc_step, acc_x_lim)
-            update_lims(acc_y_diff_mean-acc_y_diff_std, acc_step, acc_y_lim)
-            update_lims(acc_z_diff_mean-acc_z_diff_std, acc_step, acc_z_lim)        
-            update_lims(pos_x_diff_mean+pos_x_diff_std, pos_step, pos_x_lim)
-            update_lims(pos_y_diff_mean+pos_y_diff_std, pos_step, pos_y_lim)
-            update_lims(pos_z_diff_mean+pos_z_diff_std, pos_step, pos_z_lim)
-            update_lims(vel_x_diff_mean+vel_x_diff_std, vel_step, vel_x_lim)
-            update_lims(vel_y_diff_mean+vel_y_diff_std, vel_step, vel_y_lim)
-            update_lims(vel_z_diff_mean+vel_z_diff_std, vel_step, vel_z_lim)
-            update_lims(acc_x_diff_mean+acc_x_diff_std, acc_step, acc_x_lim)
-            update_lims(acc_y_diff_mean+acc_y_diff_std, acc_step, acc_y_lim)
-            update_lims(acc_z_diff_mean+acc_z_diff_std, acc_step, acc_z_lim)
-            for itime, time in enumerate(self.times):
-                zipped = zip(self.lumbars, self.lumbar_colors, self.lumbar_shifts)
-                for ilumbar, (lumbar, color, shift) in enumerate(zipped):
-
-                    # Set the x-position for these bar chart entries.
-                    x = itime + shift
-
-                    # Instantaneous positions
-                    # -----------------------
-                    plot_errorbar(axes[0][isubt], x, pos_x_diff_mean[itime, ilumbar], pos_x_diff_std[itime, ilumbar])
-                    axes[0][isubt].bar(x, pos_x_diff_mean[itime, ilumbar], self.width, color=color, clip_on=False)
-                    axes[0][isubt].set_ylabel(r'$\Delta$' + ' fore-aft position $[cm]$')
-                    
-                    plot_errorbar(axes[1][isubt], x, pos_y_diff_mean[itime, ilumbar], pos_y_diff_std[itime, ilumbar])
-                    axes[1][isubt].bar(x, pos_y_diff_mean[itime, ilumbar], self.width, color=color, clip_on=False)
-                    axes[1][isubt].set_ylabel(r'$\Delta$' + ' vertical position $[cm]$')
-
-                    plot_errorbar(axes[2][isubt], x, pos_z_diff_mean[itime, ilumbar], pos_z_diff_std[itime, ilumbar])
-                    axes[2][isubt].bar(x, pos_z_diff_mean[itime, ilumbar], self.width, color=color, clip_on=False)
-                    axes[2][isubt].set_ylabel(r'$\Delta$' + ' medio-lateral position $[cm]$')
-
-                    # Instantaneous velocities
-                    # ------------------------
-                    plot_errorbar(axes[3][isubt], x, vel_x_diff_mean[itime, ilumbar], vel_x_diff_std[itime, ilumbar])
-                    axes[3][isubt].bar(x, vel_x_diff_mean[itime, ilumbar], self.width, color=color, clip_on=False)
-                    axes[3][isubt].set_ylabel(r'$\Delta$' + ' fore-aft velocity $[m/s]$')
-
-                    plot_errorbar(axes[4][isubt], x, vel_y_diff_mean[itime, ilumbar], vel_y_diff_std[itime, ilumbar])
-                    axes[4][isubt].bar(x, vel_y_diff_mean[itime, ilumbar], self.width, color=color, clip_on=False)
-                    axes[4][isubt].set_ylabel(r'$\Delta$' + ' vertical velocity $[m/s]$')
-
-                    plot_errorbar(axes[5][isubt], x, vel_z_diff_mean[itime, ilumbar], vel_z_diff_std[itime, ilumbar])
-                    axes[5][isubt].bar(x, vel_z_diff_mean[itime, ilumbar], self.width, color=color, clip_on=False)
-                    axes[5][isubt].set_ylabel(r'$\Delta$' + ' medio-lateral velocity $[m/s]$')
-
-                    # Instantaneous accelerations
-                    # ---------------------------
-                    plot_errorbar(axes[6][isubt], x, acc_x_diff_mean[itime, ilumbar], acc_x_diff_std[itime, ilumbar])
-                    axes[6][isubt].bar(x, acc_x_diff_mean[itime, ilumbar], self.width, color=color, clip_on=False)
-                    axes[6][isubt].set_ylabel(r'$\Delta$' + ' fore-aft acceleration $[m/s^2]$')
-
-                    plot_errorbar(axes[7][isubt], x, acc_y_diff_mean[itime, ilumbar], acc_y_diff_std[itime, ilumbar])
-                    axes[7][isubt].bar(x, acc_y_diff_mean[itime, ilumbar], self.width, color=color, clip_on=False)
-                    axes[7][isubt].set_ylabel(r'$\Delta$' + ' vertical acceleration $[m/s^2]$')
-
-                    plot_errorbar(axes[8][isubt], x, acc_z_diff_mean[itime, ilumbar], acc_z_diff_std[itime, ilumbar])
-                    axes[8][isubt].bar(x, acc_z_diff_mean[itime, ilumbar], self.width, color=color, clip_on=False)
-                    axes[8][isubt].set_ylabel(r'$\Delta$' + ' medio-lateral acceleration $[m/s^2]$')
-
-            axes[0][isubt].set_ylim(pos_x_lim)
-            axes[0][isubt].set_yticks(get_ticks_from_lims(pos_x_lim, pos_step))
-            axes[1][isubt].set_ylim(pos_y_lim)
-            axes[1][isubt].set_yticks(get_ticks_from_lims(pos_y_lim, pos_step))
-            axes[2][isubt].set_ylim(pos_z_lim)
-            axes[2][isubt].set_yticks(get_ticks_from_lims(pos_z_lim, pos_step))
-            axes[3][isubt].set_ylim(vel_x_lim)
-            axes[3][isubt].set_yticks(get_ticks_from_lims(vel_x_lim, vel_step))
-            axes[4][isubt].set_ylim(vel_y_lim)
-            axes[4][isubt].set_yticks(get_ticks_from_lims(vel_y_lim, vel_step))
-            axes[5][isubt].set_ylim(vel_z_lim)
-            axes[5][isubt].set_yticks(get_ticks_from_lims(vel_z_lim, vel_step))
-            axes[6][isubt].set_ylim(acc_x_lim)
-            axes[6][isubt].set_yticks(get_ticks_from_lims(acc_x_lim, acc_step))
-            axes[7][isubt].set_ylim(acc_y_lim)
-            axes[7][isubt].set_yticks(get_ticks_from_lims(acc_y_lim, acc_step))
-            axes[8][isubt].set_ylim(acc_z_lim)
-            axes[8][isubt].set_yticks(get_ticks_from_lims(acc_z_lim, acc_step))
-
-        for these_axes in axes:
-            for ax in these_axes:
-                ax.axhline(y=0, color='black', linestyle='-',
-                        linewidth=0.1, alpha=1.0, zorder=-1)
-                ax.spines['bottom'].set_position(('outward', 10))
-                ax.spines['left'].set_position(('outward', 20))
-                ax.set_xticks(np.arange(len(self.times)))
-                ax.set_xlim(0, len(self.times)-1)
-                ax.set_xticklabels([f'{time}' for time in self.times])
-                ax.set_xlabel('peak perturbation time\n(% gait cycle)')
-                util.publication_spines(ax)
-
-        for ifig, fig in enumerate(figs):
-            fig.tight_layout()
-            fig.savefig(target[ifig], dpi=600)
-            plt.close()
-
+# Center-of-mass
+# --------------
 
 class TaskPlotCenterOfMassVector(osp.StudyTask):
     REGISTRY = []
@@ -4661,6 +3419,1333 @@ class TaskPlotCenterOfMassVector(osp.StudyTask):
         plt.close()
 
 
+class TaskPlotCenterOfMass(osp.StudyTask):
+    REGISTRY = []
+    def __init__(self, study, subjects, time, rise, fall):
+        super(TaskPlotCenterOfMass, self).__init__(study)
+        self.name = f'plot_center_of_mass_time{time}_rise{rise}_fall{fall}'
+        self.results_path = os.path.join(study.config['results_path'], 
+            'experiments')
+        self.analysis_path = os.path.join(study.config['analysis_path'],
+            'center_of_mass', f'time{time}_rise{rise}_fall{fall}')
+        if not os.path.exists(self.analysis_path): 
+            os.makedirs(self.analysis_path)
+
+        self.subjects = subjects
+        self.time = time
+        self.rise = rise
+        self.fall = fall
+        self.torques = study.plot_torques
+        self.subtalars = study.plot_subtalars
+        self.colors = ['gray'] + study.plot_colors
+        self.legend_labels = ['unperturbed',
+                              'eversion', 
+                              'plantarflexion + eversion', 
+                              'plantarflexion', 
+                              'plantarflexion + inversion', 
+                              'inversion']
+        self.labels = list()
+        self.labels.append('unperturbed')
+        deps = list()
+        for isubj, subject in enumerate(subjects):
+
+            # Unperturbed COM
+            deps.append(
+                os.path.join(
+                    self.study.config['results_path'], 
+                    'unperturbed', subject,
+                    'center_of_mass_unperturbed.sto'))
+
+            # Perturbed COM
+            for torque, subtalar in zip(self.torques, self.subtalars):
+                label = (f'perturbed_torque{torque}_time{self.time}'
+                        f'_rise{self.rise}_fall{self.fall}{subtalar}')
+                deps.append(
+                    os.path.join(
+                        self.study.config['results_path'], 
+                        'perturbed', label, subject,
+                        f'center_of_mass_{label}.sto')
+                    )
+
+                if not isubj:
+                    self.labels.append(
+                        (f'torque{torque}_time{self.time}'
+                         f'_rise{self.rise}_fall{self.fall}{subtalar}'))
+
+        self.add_action(deps, 
+                        [os.path.join(self.analysis_path, 
+                            'center_of_mass_AP.png'),
+                         os.path.join(self.analysis_path, 
+                            'center_of_mass_SI.png'),
+                         os.path.join(self.analysis_path, 
+                            'center_of_mass_ML.png')], 
+                        self.plot_center_of_mass)
+
+    def plot_center_of_mass(self, file_dep, target):
+
+        # Initialize figures
+        # ------------------
+        fig0 = plt.figure(figsize=(4, 5))
+        ax_accx = fig0.add_subplot(2,1,1)
+        ax_velx = fig0.add_subplot(2,1,2)
+
+        fig1 = plt.figure(figsize=(4, 5))
+        ax_accy = fig1.add_subplot(2,1,1)
+        ax_vely = fig1.add_subplot(2,1,2)
+
+        fig2 = plt.figure(figsize=(4, 5))
+        ax_accz = fig2.add_subplot(2,1,1)
+        ax_velz = fig2.add_subplot(2,1,2)
+
+        # Plot formatting
+        # ---------------
+        for ax in [ax_velx, ax_vely, ax_velz,
+                   ax_accx, ax_accy, ax_accz]:
+            ax.axvline(x=self.time, color='gray', linestyle='-',
+                linewidth=0.25, alpha=1.0, zorder=0)
+            util.publication_spines(ax)
+            xlim = [self.time-self.rise, self.time+self.fall]
+            ax.set_xlim(xlim)
+            ax.set_xticks(get_ticks_from_lims(xlim, 5))
+            ax.spines['left'].set_position(('outward', 10))
+
+        for ax in [ax_velx, ax_vely, ax_velz]:
+            ax.spines['bottom'].set_position(('outward', 10))
+            ax.set_xlabel('time (% gait cycle)')
+
+        for ax in [ax_accx, ax_accy, ax_accz]: 
+            ax.set_xticklabels([])
+            ax.spines['bottom'].set_visible(False)
+            ax.tick_params(axis='x', which='both', bottom=False, 
+                           top=False, labelbottom=False)
+
+        # Aggregate data
+        # --------------
+        numLabels = len(self.labels)
+        import collections
+        com_dict = collections.defaultdict(dict)
+        N = 1001
+        for label in self.labels:
+            com_dict[label]['velx'] = np.zeros((N, len(self.subjects)))
+            com_dict[label]['vely'] = np.zeros((N, len(self.subjects)))
+            com_dict[label]['velz'] = np.zeros((N, len(self.subjects)))
+            com_dict[label]['accx'] = np.zeros((N, len(self.subjects)))
+            com_dict[label]['accy'] = np.zeros((N, len(self.subjects)))
+            com_dict[label]['accz'] = np.zeros((N, len(self.subjects)))
+
+        for isubj, subject in enumerate(self.subjects):
+            for ilabel, label in enumerate(self.labels):
+                table = osim.TimeSeriesTable(file_dep[ilabel + isubj*numLabels])
+                timeVec = np.array(table.getIndependentColumn())
+                
+                if 'unperturbed' in label:
+                    duration = timeVec[-1] - timeVec[0]
+                    time_at_rise = timeVec[0] + (duration * ((self.time - self.rise) / 100.0))
+                    time_at_fall = timeVec[0] + (duration * ((self.time + self.fall) / 100.0))
+                    irise = np.argmin(np.abs(timeVec - time_at_rise))
+                    ifall = np.argmin(np.abs(timeVec - time_at_fall))
+                else:
+                    irise = np.argmin(np.abs(timeVec - time_at_rise))
+                    ifall = len(timeVec)
+
+                velx = table.getDependentColumn('/|com_velocity_x').to_numpy()[irise:ifall]
+                vely = table.getDependentColumn('/|com_velocity_y').to_numpy()[irise:ifall]
+                velz = table.getDependentColumn('/|com_velocity_z').to_numpy()[irise:ifall]
+                accx = table.getDependentColumn('/|com_acceleration_x').to_numpy()[irise:ifall]
+                accy = table.getDependentColumn('/|com_acceleration_y').to_numpy()[irise:ifall]
+                accz = table.getDependentColumn('/|com_acceleration_z').to_numpy()[irise:ifall]
+
+                timeInterp = np.linspace(timeVec[irise], timeVec[ifall-1], N)
+                
+                com_dict[label]['velx'][:, isubj] = np.interp(timeInterp, timeVec[irise:ifall], velx)
+                com_dict[label]['vely'][:, isubj] = np.interp(timeInterp, timeVec[irise:ifall], vely)
+                com_dict[label]['velz'][:, isubj] = np.interp(timeInterp, timeVec[irise:ifall], velz)
+                com_dict[label]['accx'][:, isubj] = np.interp(timeInterp, timeVec[irise:ifall], accx)
+                com_dict[label]['accy'][:, isubj] = np.interp(timeInterp, timeVec[irise:ifall], accy)
+                com_dict[label]['accz'][:, isubj] = np.interp(timeInterp, timeVec[irise:ifall], accz)
+
+
+        # Plotting
+        # --------
+        velx_mean = np.zeros((N, len(self.labels)))
+        vely_mean = np.zeros((N, len(self.labels)))
+        velz_mean = np.zeros((N, len(self.labels)))
+        accx_mean = np.zeros((N, len(self.labels)))
+        accy_mean = np.zeros((N, len(self.labels)))
+        accz_mean = np.zeros((N, len(self.labels)))
+        for ilabel, label in enumerate(self.labels):
+            velx_mean[:, ilabel] = np.mean(com_dict[label]['velx'], axis=1)
+            vely_mean[:, ilabel] = np.mean(com_dict[label]['vely'], axis=1)
+            velz_mean[:, ilabel] = np.mean(com_dict[label]['velz'], axis=1)
+            accx_mean[:, ilabel] = np.mean(com_dict[label]['accx'], axis=1)
+            accy_mean[:, ilabel] = np.mean(com_dict[label]['accy'], axis=1)
+            accz_mean[:, ilabel] = np.mean(com_dict[label]['accz'], axis=1)
+
+        velx_step = 0.01
+        vely_step = 0.01
+        velz_step = 0.01
+        accx_step = 0.1
+        accy_step = 0.1
+        accz_step = 0.1
+        velx_lim = [np.mean(velx_mean), np.mean(velx_mean)]
+        vely_lim = [np.mean(vely_mean), np.mean(vely_mean)]
+        velz_lim = [np.mean(velz_mean), np.mean(velz_mean)]
+        accx_lim = [np.mean(accx_mean), np.mean(accx_mean)]
+        accy_lim = [np.mean(accy_mean), np.mean(accy_mean)]
+        accz_lim = [np.mean(accz_mean), np.mean(accz_mean)]
+        for ilabel, label in enumerate(self.labels): 
+            update_lims(velx_mean[:, ilabel], velx_step, velx_lim)
+            update_lims(vely_mean[:, ilabel], vely_step, vely_lim)
+            update_lims(velz_mean[:, ilabel], velz_step, velz_lim)
+            update_lims(accx_mean[:, ilabel], accx_step, accx_lim)
+            update_lims(accy_mean[:, ilabel], accy_step, accy_lim)
+            update_lims(accz_mean[:, ilabel], accz_step, accz_lim)
+
+        pgc = np.linspace(self.time - self.rise, self.time + self.fall, N)
+        handles = list()
+        for ilabel, (label, color) in enumerate(zip(self.labels, self.colors)):
+            lw = 3 if 'unperturbed' in label else 2
+
+            h, = ax_velx.plot(pgc, velx_mean[:, ilabel], label=label, color=color, 
+                linewidth=lw, clip_on=False, solid_capstyle='round')
+            handles.append(h)
+            ax_velx.set_ylabel(r'velocity $[m/s]$')
+            ax_velx.set_ylim(velx_lim)
+            ax_velx.set_yticks(get_ticks_from_lims(velx_lim, velx_step))
+
+            ax_vely.plot(pgc, vely_mean[:, ilabel], label=label, color=color, 
+                linewidth=lw, clip_on=False, solid_capstyle='round')
+            ax_vely.set_ylabel(r'velocity $[m/s]$')
+            ax_vely.set_ylim(vely_lim)
+            ax_vely.set_yticks(get_ticks_from_lims(vely_lim, vely_step))
+
+            ax_velz.plot(pgc, velz_mean[:, ilabel], label=label, color=color, 
+                linewidth=lw, clip_on=False, solid_capstyle='round')
+            ax_velz.set_ylabel(r'velocity $[m/s]$')
+            ax_velz.set_ylim(velz_lim)
+            ax_velz.set_yticks(get_ticks_from_lims(velz_lim, velz_step))
+                
+            ax_accx.plot(pgc, accx_mean[:, ilabel], label=label, color=color, 
+                linewidth=lw, clip_on=False, solid_capstyle='round')
+            ax_accx.set_ylabel(r'acceleration $[m/s]$')
+            ax_accx.set_ylim(accx_lim)
+            ax_accx.set_yticks(get_ticks_from_lims(accx_lim, accx_step))
+
+            ax_accy.plot(pgc, accy_mean[:, ilabel], label=label, color=color, 
+                linewidth=lw, clip_on=False, solid_capstyle='round')
+            ax_accy.set_ylabel(r'acceleration $[m/s]$')
+            ax_accy.set_ylim(accy_lim)
+            ax_accy.set_yticks(get_ticks_from_lims(accy_lim, accy_step))
+
+            ax_accz.plot(pgc, accz_mean[:, ilabel], label=label, color=color, 
+                linewidth=lw, clip_on=False, solid_capstyle='round')
+            ax_accz.set_ylabel(r'acceleration $[m/s]$')
+            ax_accz.set_ylim(accz_lim)
+            ax_accz.set_yticks(get_ticks_from_lims(accz_lim, accz_step))
+
+        for ax in [ax_accx, ax_accy, ax_accz]:
+            ax.legend(handles, self.legend_labels, loc='best', 
+                frameon=True, prop={'size': 5})
+
+        fig0.tight_layout()
+        fig0.savefig(target[0], dpi=600)
+        plt.close()
+
+        fig1.tight_layout()
+        fig1.savefig(target[1], dpi=600)
+        plt.close()
+
+        fig2.tight_layout()
+        fig2.savefig(target[2], dpi=600)
+        plt.close()
+
+
+class TaskPlotInstantaneousCenterOfMass(osp.StudyTask):
+    REGISTRY = []
+    def __init__(self, study, subjects, times, rise, fall):
+        super(TaskPlotInstantaneousCenterOfMass, self).__init__(study)
+        self.name = f'plot_instantaneous_center_of_mass_rise{rise}_fall{fall}'
+        self.results_path = os.path.join(study.config['results_path'], 
+            'experiments')
+        self.analysis_path = os.path.join(study.config['analysis_path'],
+            'center_of_mass_instantaneous',  f'rise{rise}_fall{fall}')
+        if not os.path.exists(self.analysis_path): 
+            os.makedirs(self.analysis_path)
+        self.subjects = subjects
+        self.times = times
+        self.rise = rise
+        self.fall = fall
+        self.gravity = 9.81
+        self.torques = study.plot_torques
+        self.subtalars = study.plot_subtalars
+        self.colors = study.plot_colors
+        self.hatches = [None, None, None, None, None]
+        self.edgecolor = 'black'
+        self.width = 0.15
+        N = len(self.subtalars)
+        min_width = -self.width*((N-1)/2)
+        max_width = -min_width
+        self.shifts = np.linspace(min_width, max_width, N)
+        self.legend_labels = ['eversion', 
+                              'plantarflexion + eversion', 
+                              'plantarflexion', 
+                              'plantarflexion + inversion', 
+                              'inversion']
+        deps = list()
+        self.label_dict = dict()
+        ilabel = 0
+        for isubj, subject in enumerate(subjects):
+
+            # Unperturbed solutions
+            # ---------------------
+            deps.append(
+                os.path.join(
+                    self.study.config['results_path'], 
+                    'unperturbed', subject,
+                    'center_of_mass_unperturbed.sto'))
+
+            self.label_dict[f'{subject}_unperturbed'] = ilabel
+            ilabel += 1
+
+            for actu in [False, True]:
+                torque_act = '_torque_actuators' if actu else ''
+                subpath = 'torque_actuators' if actu else 'perturbed'
+
+                for time in self.times:
+
+                    # Unperturbed time-stepping solutions
+                    # -----------------------------------
+                    label = (f'perturbed_torque0_time{time}'
+                             f'_rise{self.rise}_fall{self.fall}{torque_act}')
+                    deps.append(
+                        os.path.join(
+                            self.study.config['results_path'], 
+                            subpath, label, subject,
+                            f'center_of_mass_{label}.sto'))
+
+                    self.label_dict[f'{subject}_unperturbed_time{time}{torque_act}'] = ilabel
+                    ilabel += 1
+
+                    for torque, subtalar in zip(self.torques, self.subtalars):
+
+                         # Perturbed solutions
+                         # -------------------
+                        label = (f'perturbed_torque{torque}_time{time}'
+                                f'_rise{self.rise}_fall{self.fall}{subtalar}{torque_act}')
+                        deps.append(
+                            os.path.join(
+                                self.study.config['results_path'], 
+                                subpath, label, subject,
+                                f'center_of_mass_{label}.sto')
+                            )
+
+                        self.label_dict[f'{subject}_{label}'] = ilabel
+                        ilabel += 1
+
+        targets = list()
+        for actu in ['muscles', 'torques']:
+            for kin in ['pos', 'vel', 'acc']:
+                targets += [os.path.join(self.analysis_path, 
+                            f'instant_com_{kin}_{actu}.png')]
+
+        self.add_action(deps, targets, self.plot_instantaneous_com)
+
+    def plot_instantaneous_com(self, file_dep, target):
+
+        # Initialize figures
+        # ------------------
+        from collections import defaultdict
+        figs = list()
+        axes = defaultdict(list)
+        for actu in ['muscles', 'torques']:
+            for kin in ['pos', 'vel', 'acc']:
+                fig = plt.figure(figsize=(6, 9))
+                for idirec, direc in enumerate(['AP', 'SI', 'ML']):
+                    ax = fig.add_subplot(3, 1, idirec + 1)
+                    ax.axhline(y=0, color='black', linestyle='-',
+                            linewidth=0.1, alpha=1.0, zorder=-1)
+                    ax.spines['left'].set_position(('outward', 30))
+                    ax.set_xticks(np.arange(len(self.times)))
+                    ax.set_xlim(0, len(self.times)-1)
+                    util.publication_spines(ax)
+
+                    if not direc == 'ML':
+                        ax.spines['bottom'].set_visible(False)
+                        ax.set_xticklabels([])
+                        ax.xaxis.set_ticks_position('none')
+                        ax.tick_params(axis='x', which='both', bottom=False, 
+                                       top=False, labelbottom=False)
+                    else:
+                        ax.spines['bottom'].set_position(('outward', 10))
+                        ax.set_xticklabels([f'{time}' for time in self.times])
+                        ax.set_xlabel('peak perturbation time\n(% gait cycle)')
+
+                    axes[actu].append(ax)
+                figs.append(fig)
+
+        # Aggregate data
+        # --------------
+        import collections
+        com_dict = collections.defaultdict(dict)
+        time_dict = dict()
+        com_height_dict = dict()
+        duration_dict = dict()
+
+        for isubj, subject in enumerate(self.subjects):
+
+            # Unperturbed center-of-mass trajectory
+            # -------------------------------------
+            unperturb_index = self.label_dict[f'{subject}_unperturbed']
+            tableTemp = osim.TimeSeriesTable(file_dep[unperturb_index])
+            com_height_dict[subject] = np.mean(tableTemp.getDependentColumn(
+                                               '/|com_position_y').to_numpy())
+            timeTemp = np.array(tableTemp.getIndependentColumn())
+            duration_dict[subject] = timeTemp[-1] - timeTemp[0]
+            time_dict[subject] = timeTemp
+
+            for actu in [False, True]:
+                torque_act = '_torque_actuators' if actu else ''
+
+                for time in self.times:
+
+                    # Unperturbed center-of-mass trajectory
+                    # -------------------------------------
+                    unperturb_index = self.label_dict[f'{subject}_unperturbed_time{time}{torque_act}']
+                    unpTable = osim.TimeSeriesTable(file_dep[unperturb_index])
+                    unpTimeVec = unpTable.getIndependentColumn()
+                    unpTable_np = np.zeros((len(unpTimeVec), 9))
+                    unp_pos_x = unpTable.getDependentColumn(
+                        '/|com_position_x').to_numpy()
+                    unp_pos_y = unpTable.getDependentColumn(
+                        '/|com_position_y').to_numpy()
+                    unp_pos_z = unpTable.getDependentColumn(
+                        '/|com_position_z').to_numpy()
+                    unpTable_np[:, 0] = unp_pos_x - unp_pos_x[0] 
+                    unpTable_np[:, 1] = unp_pos_y - unp_pos_y[0] 
+                    unpTable_np[:, 2] = unp_pos_z - unp_pos_z[0] 
+                    unpTable_np[:, 3] = unpTable.getDependentColumn(
+                        '/|com_velocity_x').to_numpy() 
+                    unpTable_np[:, 4] = unpTable.getDependentColumn(
+                        '/|com_velocity_y').to_numpy() 
+                    unpTable_np[:, 5] = unpTable.getDependentColumn(
+                        '/|com_velocity_z').to_numpy() 
+                    unpTable_np[:, 6] = unpTable.getDependentColumn(
+                        '/|com_acceleration_x').to_numpy()
+                    unpTable_np[:, 7] = unpTable.getDependentColumn(
+                        '/|com_acceleration_y').to_numpy()
+                    unpTable_np[:, 8] = unpTable.getDependentColumn(
+                        '/|com_acceleration_z').to_numpy()
+
+                    for torque, subtalar in zip(self.torques, self.subtalars):
+
+                        # Perturbed center-of-mass trajectory
+                        # -----------------------------------
+                        label = (f'{subject}_perturbed_torque{torque}_time{time}'
+                                 f'_rise{self.rise}_fall{self.fall}{subtalar}{torque_act}')
+                        perturb_index = self.label_dict[label]
+                        table = osim.TimeSeriesTable(file_dep[perturb_index])
+                        timeVec = table.getIndependentColumn()
+                        N = len(timeVec)
+                        table_np = np.zeros((N, 9))
+                        pos_x = table.getDependentColumn(
+                            '/|com_position_x').to_numpy()
+                        pos_y = table.getDependentColumn(
+                            '/|com_position_y').to_numpy()
+                        pos_z = table.getDependentColumn(
+                            '/|com_position_z').to_numpy()
+                        table_np[:, 0] = pos_x - pos_x[0] 
+                        table_np[:, 1] = pos_y - pos_y[0] 
+                        table_np[:, 2] = pos_z - pos_z[0] 
+                        table_np[:, 3] = table.getDependentColumn(
+                            '/|com_velocity_x').to_numpy()
+                        table_np[:, 4] = table.getDependentColumn(
+                            '/|com_velocity_y').to_numpy()
+                        table_np[:, 5] = table.getDependentColumn(
+                            '/|com_velocity_z').to_numpy() 
+                        table_np[:, 6] = table.getDependentColumn(
+                            '/|com_acceleration_x').to_numpy()
+                        table_np[:, 7] = table.getDependentColumn(
+                            '/|com_acceleration_y').to_numpy()
+                        table_np[:, 8] = table.getDependentColumn(
+                            '/|com_acceleration_z').to_numpy()
+
+                        # Compute difference between perturbed and unperturbed
+                        # trajectories for this subject. We don't need to interpolate
+                        # here since the perturbed and unperturbed trajectories contain
+                        # the same time points (up until the end of the perturbation).
+                        com_dict[subject][label] = table_np - unpTable_np
+
+        # Plotting
+        # --------
+        pos_x_diff = np.zeros(len(self.subjects))
+        pos_y_diff = np.zeros(len(self.subjects))
+        pos_z_diff = np.zeros(len(self.subjects))
+        vel_x_diff = np.zeros(len(self.subjects))
+        vel_y_diff = np.zeros(len(self.subjects))
+        vel_z_diff = np.zeros(len(self.subjects))
+        acc_x_diff = np.zeros(len(self.subjects))
+        acc_y_diff = np.zeros(len(self.subjects))
+        acc_z_diff = np.zeros(len(self.subjects))
+        pos_x_diff_mean = dict()
+        pos_y_diff_mean = dict()
+        pos_z_diff_mean = dict()
+        vel_x_diff_mean = dict()
+        vel_y_diff_mean = dict()
+        vel_z_diff_mean = dict()
+        acc_x_diff_mean = dict()
+        acc_y_diff_mean = dict()
+        acc_z_diff_mean = dict()
+        pos_x_diff_std = dict()
+        pos_y_diff_std = dict()
+        pos_z_diff_std = dict()
+        vel_x_diff_std = dict()
+        vel_y_diff_std = dict()
+        vel_z_diff_std = dict()
+        acc_x_diff_std = dict()
+        acc_y_diff_std = dict()
+        acc_z_diff_std = dict()
+        for actu in [False, True]:
+            torque_act = '_torque_actuators' if actu else ''
+            actu_key = 'torques' if actu else 'muscles'
+            pos_x_diff_mean[actu_key] = np.zeros((len(self.times), len(self.subtalars)))
+            pos_y_diff_mean[actu_key] = np.zeros((len(self.times), len(self.subtalars)))
+            pos_z_diff_mean[actu_key] = np.zeros((len(self.times), len(self.subtalars)))
+            vel_x_diff_mean[actu_key] = np.zeros((len(self.times), len(self.subtalars)))
+            vel_y_diff_mean[actu_key] = np.zeros((len(self.times), len(self.subtalars)))
+            vel_z_diff_mean[actu_key] = np.zeros((len(self.times), len(self.subtalars)))
+            acc_x_diff_mean[actu_key] = np.zeros((len(self.times), len(self.subtalars)))
+            acc_y_diff_mean[actu_key] = np.zeros((len(self.times), len(self.subtalars)))
+            acc_z_diff_mean[actu_key] = np.zeros((len(self.times), len(self.subtalars)))
+            pos_x_diff_std[actu_key] = np.zeros((len(self.times), len(self.subtalars)))
+            pos_y_diff_std[actu_key] = np.zeros((len(self.times), len(self.subtalars)))
+            pos_z_diff_std[actu_key] = np.zeros((len(self.times), len(self.subtalars)))
+            vel_x_diff_std[actu_key] = np.zeros((len(self.times), len(self.subtalars)))
+            vel_y_diff_std[actu_key] = np.zeros((len(self.times), len(self.subtalars)))
+            vel_z_diff_std[actu_key] = np.zeros((len(self.times), len(self.subtalars)))
+            acc_x_diff_std[actu_key] = np.zeros((len(self.times), len(self.subtalars)))
+            acc_y_diff_std[actu_key] = np.zeros((len(self.times), len(self.subtalars)))
+            acc_z_diff_std[actu_key] = np.zeros((len(self.times), len(self.subtalars)))
+
+            for itime, time in enumerate(self.times):
+                zipped = zip(self.torques, self.subtalars, self.colors, self.shifts)
+                for isubt, (torque, subtalar, color, shift) in enumerate(zipped):
+                    for isubj, subject in enumerate(self.subjects):
+                        label = (f'{subject}_perturbed_torque{torque}_time{time}'
+                             f'_rise{self.rise}_fall{self.fall}{subtalar}{torque_act}')
+                        com = com_dict[subject][label]
+
+                        # Compute the closet time index to the current peak 
+                        # perturbation time. 
+                        #
+                        # TODO: A given peak perturbation time (e.g 50% of the 
+                        # gait cycle) may not lie exactly on a time point of 
+                        # from the simulation. The interval between time points
+                        # is 5ms, meaning that the time index could be up to 2.5ms
+                        # away from the actual perturbation peak time. 
+                        timeVec = time_dict[subject]
+                        duration = timeVec[-1] - timeVec[0]
+                        time_at_peak = timeVec[0] + (duration * (time / 100.0))
+                        index_peak = np.argmin(np.abs(timeVec - time_at_peak))
+                        index_fall = -1
+
+                        l_max = com_height_dict[subject]
+                        v_max = np.sqrt(self.gravity * l_max)
+                        pos_x_diff[isubj] = com[index_fall, 0] / l_max
+                        pos_y_diff[isubj] = com[index_fall, 1] / l_max
+                        pos_z_diff[isubj] = com[index_fall, 2] / l_max
+                        vel_x_diff[isubj] = com[index_fall, 3] / v_max
+                        vel_y_diff[isubj] = com[index_fall, 4] / v_max
+                        vel_z_diff[isubj] = com[index_fall, 5] / v_max
+                        acc_x_diff[isubj] = com[index_peak, 6] / self.gravity
+                        acc_y_diff[isubj] = com[index_peak, 7] / self.gravity
+                        acc_z_diff[isubj] = com[index_peak, 8] / self.gravity
+
+                    pos_x_diff_mean[actu_key][itime, isubt] = np.mean(pos_x_diff)
+                    pos_y_diff_mean[actu_key][itime, isubt] = np.mean(pos_y_diff)
+                    pos_z_diff_mean[actu_key][itime, isubt] = np.mean(pos_z_diff)
+                    vel_x_diff_mean[actu_key][itime, isubt] = np.mean(vel_x_diff)
+                    vel_y_diff_mean[actu_key][itime, isubt] = np.mean(vel_y_diff)
+                    vel_z_diff_mean[actu_key][itime, isubt] = np.mean(vel_z_diff)
+                    acc_x_diff_mean[actu_key][itime, isubt] = np.mean(acc_x_diff)
+                    acc_y_diff_mean[actu_key][itime, isubt] = np.mean(acc_y_diff)
+                    acc_z_diff_mean[actu_key][itime, isubt] = np.mean(acc_z_diff)
+                    pos_x_diff_std[actu_key][itime, isubt] = np.std(pos_x_diff)
+                    pos_y_diff_std[actu_key][itime, isubt] = np.std(pos_y_diff)
+                    pos_z_diff_std[actu_key][itime, isubt] = np.std(pos_z_diff)
+                    vel_x_diff_std[actu_key][itime, isubt] = np.std(vel_x_diff)
+                    vel_y_diff_std[actu_key][itime, isubt] = np.std(vel_y_diff)
+                    vel_z_diff_std[actu_key][itime, isubt] = np.std(vel_z_diff)
+                    acc_x_diff_std[actu_key][itime, isubt] = np.std(acc_x_diff)
+                    acc_y_diff_std[actu_key][itime, isubt] = np.std(acc_y_diff)
+                    acc_z_diff_std[actu_key][itime, isubt] = np.std(acc_z_diff)
+
+
+        pos_x_step = 0.0002
+        pos_y_step = 0.0005
+        pos_z_step = 0.0002
+        vel_x_step = 0.005
+        vel_y_step = 0.01
+        vel_z_step = 0.005
+        acc_x_step = 0.01
+        acc_y_step = 0.01
+        acc_z_step = 0.01
+        pos_x_lim = [0.0, 0.0]
+        pos_y_lim = [0.0, 0.0]
+        pos_z_lim = [0.0, 0.0]
+        vel_x_lim = [0.0, 0.0]
+        vel_y_lim = [0.0, 0.0]
+        vel_z_lim = [0.0, 0.0]
+        acc_x_lim = [0.0, 0.0]
+        acc_y_lim = [0.0, 0.0]
+        acc_z_lim = [0.0, 0.0]
+        for actu in ['muscles', 'torques']:
+            update_lims(pos_x_diff_mean[actu]-pos_x_diff_std[actu], pos_x_step, pos_x_lim, mirror=True)
+            update_lims(pos_y_diff_mean[actu]-pos_y_diff_std[actu], pos_y_step, pos_y_lim)
+            update_lims(pos_z_diff_mean[actu]-pos_z_diff_std[actu], pos_z_step, pos_z_lim)
+            update_lims(vel_x_diff_mean[actu]-vel_x_diff_std[actu], vel_x_step, vel_x_lim, mirror=True)
+            update_lims(vel_y_diff_mean[actu]-vel_y_diff_std[actu], vel_y_step, vel_y_lim)
+            update_lims(vel_z_diff_mean[actu]-vel_z_diff_std[actu], vel_z_step, vel_z_lim)
+            update_lims(acc_x_diff_mean[actu]-acc_x_diff_std[actu], acc_x_step, acc_x_lim, mirror=True)
+            update_lims(acc_y_diff_mean[actu]-acc_y_diff_std[actu], acc_y_step, acc_y_lim)
+            update_lims(acc_z_diff_mean[actu]-acc_z_diff_std[actu], acc_z_step, acc_z_lim)        
+            update_lims(pos_x_diff_mean[actu]+pos_x_diff_std[actu], pos_x_step, pos_x_lim, mirror=True)
+            update_lims(pos_y_diff_mean[actu]+pos_y_diff_std[actu], pos_y_step, pos_y_lim)
+            update_lims(pos_z_diff_mean[actu]+pos_z_diff_std[actu], pos_z_step, pos_z_lim)
+            update_lims(vel_x_diff_mean[actu]+vel_x_diff_std[actu], vel_x_step, vel_x_lim, mirror=True)
+            update_lims(vel_y_diff_mean[actu]+vel_y_diff_std[actu], vel_y_step, vel_y_lim)
+            update_lims(vel_z_diff_mean[actu]+vel_z_diff_std[actu], vel_z_step, vel_z_lim)
+            update_lims(acc_x_diff_mean[actu]+acc_x_diff_std[actu], acc_x_step, acc_x_lim, mirror=True)
+            update_lims(acc_y_diff_mean[actu]+acc_y_diff_std[actu], acc_y_step, acc_y_lim)
+            update_lims(acc_z_diff_mean[actu]+acc_z_diff_std[actu], acc_z_step, acc_z_lim)
+        
+            handles_pos = list()
+            handles_vel = list()
+            handles_acc = list()
+            for itime, time in enumerate(self.times):
+                zipped = zip(self.torques, self.subtalars, self.colors, self.shifts, self.hatches)
+                for isubt, (torque, subtalar, color, shift, hatch) in enumerate(zipped):
+
+                    # Set the x-position for these bar chart entries.
+                    x = itime + shift
+                    lw = 0.1
+
+                    # Instantaneous positions
+                    # -----------------------
+                    plot_errorbar(axes[actu][0], x, pos_x_diff_mean[actu][itime, isubt], pos_x_diff_std[actu][itime, isubt])
+                    h_pos = axes[actu][0].bar(x, pos_x_diff_mean[actu][itime, isubt], self.width, color=color, clip_on=False, 
+                        hatch=hatch, edgecolor=self.edgecolor, lw=lw)
+                    handles_pos.append(h_pos)
+                    axes[actu][0].set_ylabel(r'$\Delta$' + ' fore-aft position $[-]$')
+                    
+                    plot_errorbar(axes[actu][1], x, pos_y_diff_mean[actu][itime, isubt], pos_y_diff_std[actu][itime, isubt])
+                    axes[actu][1].bar(x, pos_y_diff_mean[actu][itime, isubt], self.width, color=color, clip_on=False, 
+                        hatch=hatch, edgecolor=self.edgecolor , lw=lw)
+                    axes[actu][1].set_ylabel(r'$\Delta$' + ' vertical position $[-]$')
+
+                    plot_errorbar(axes[actu][2], x, pos_z_diff_mean[actu][itime, isubt], pos_z_diff_std[actu][itime, isubt])
+                    axes[actu][2].bar(x, pos_z_diff_mean[actu][itime, isubt], self.width, color=color, clip_on=False, 
+                        hatch=hatch, edgecolor=self.edgecolor , lw=lw)
+                    axes[actu][2].set_ylabel(r'$\Delta$' + ' medio-lateral position $[-]$')
+
+                    # Instantaneous velocities
+                    # ------------------------
+                    plot_errorbar(axes[actu][3], x, vel_x_diff_mean[actu][itime, isubt], vel_x_diff_std[actu][itime, isubt])
+                    h_vel = axes[actu][3].bar(x, vel_x_diff_mean[actu][itime, isubt], self.width, color=color, clip_on=False, 
+                        hatch=hatch, edgecolor=self.edgecolor, lw=lw)
+                    handles_vel.append(h_vel)
+                    axes[actu][3].set_ylabel(r'$\Delta$' + ' fore-aft velocity $[-]$')
+
+                    plot_errorbar(axes[actu][4], x, vel_y_diff_mean[actu][itime, isubt], vel_y_diff_std[actu][itime, isubt])
+                    axes[actu][4].bar(x, vel_y_diff_mean[actu][itime, isubt], self.width, color=color, clip_on=False, 
+                        hatch=hatch, edgecolor=self.edgecolor, lw=lw)
+                    axes[actu][4].set_ylabel(r'$\Delta$' + ' vertical velocity $[-]$')
+
+                    plot_errorbar(axes[actu][5], x, vel_z_diff_mean[actu][itime, isubt], vel_z_diff_std[actu][itime, isubt])
+                    axes[actu][5].bar(x, vel_z_diff_mean[actu][itime, isubt], self.width, color=color, clip_on=False, 
+                        hatch=hatch, edgecolor=self.edgecolor, lw=lw)
+                    axes[actu][5].set_ylabel(r'$\Delta$' + ' medio-lateral velocity $[-]$')
+
+                    # Instantaneous accelerations
+                    # ---------------------------
+                    plot_errorbar(axes[actu][6], x, acc_x_diff_mean[actu][itime, isubt], acc_x_diff_std[actu][itime, isubt])
+                    h_acc = axes[actu][6].bar(x, acc_x_diff_mean[actu][itime, isubt], self.width, color=color, clip_on=False, 
+                        hatch=hatch, edgecolor=self.edgecolor, lw=lw)
+                    handles_acc.append(h_acc)
+                    axes[actu][6].set_ylabel(r'$\Delta$' + ' fore-aft acceleration $[-]$')
+
+                    plot_errorbar(axes[actu][7], x, acc_y_diff_mean[actu][itime, isubt], acc_y_diff_std[actu][itime, isubt])
+                    axes[actu][7].bar(x, acc_y_diff_mean[actu][itime, isubt], self.width, color=color, clip_on=False,
+                        hatch=hatch, edgecolor=self.edgecolor, lw=lw)
+                    axes[actu][7].set_ylabel(r'$\Delta$' + ' vertical acceleration $[-]$')
+
+                    plot_errorbar(axes[actu][8], x, acc_z_diff_mean[actu][itime, isubt], acc_z_diff_std[actu][itime, isubt])
+                    axes[actu][8].bar(x, acc_z_diff_mean[actu][itime, isubt], self.width, color=color, clip_on=False, 
+                        hatch=hatch, edgecolor=self.edgecolor, lw=lw)
+                    axes[actu][8].set_ylabel(r'$\Delta$' + ' medio-lateral acceleration $[-]$')
+
+            axes[actu][0].set_ylim(pos_x_lim)
+            axes[actu][0].set_yticks(get_ticks_from_lims(pos_x_lim, pos_x_step))
+            axes[actu][0].legend(handles_pos, self.legend_labels, loc='upper left', 
+                title='perturbation', frameon=True)
+            axes[actu][1].set_ylim(pos_y_lim)
+            axes[actu][1].set_yticks(get_ticks_from_lims(pos_y_lim, pos_y_step))
+            axes[actu][2].set_ylim(pos_z_lim)
+            axes[actu][2].set_yticks(get_ticks_from_lims(pos_z_lim, pos_z_step))
+            axes[actu][3].set_ylim(vel_x_lim)
+            axes[actu][3].set_yticks(get_ticks_from_lims(vel_x_lim, vel_x_step))
+            axes[actu][3].legend(handles_vel, self.legend_labels, loc='upper left', 
+                title='perturbation', frameon=True)
+            axes[actu][4].set_ylim(vel_y_lim)
+            axes[actu][4].set_yticks(get_ticks_from_lims(vel_y_lim, vel_y_step))
+            axes[actu][5].set_ylim(vel_z_lim)
+            axes[actu][5].set_yticks(get_ticks_from_lims(vel_z_lim, vel_z_step))
+            axes[actu][6].set_ylim(acc_x_lim)
+            axes[actu][6].set_yticks(get_ticks_from_lims(acc_x_lim, acc_x_step))
+            axes[actu][6].legend(handles_acc, self.legend_labels, loc='upper left', 
+                title='perturbation', frameon=True)
+            axes[actu][7].set_ylim(acc_y_lim)
+            axes[actu][7].set_yticks(get_ticks_from_lims(acc_y_lim, acc_y_step))
+            axes[actu][8].set_ylim(acc_z_lim)
+            axes[actu][8].set_yticks(get_ticks_from_lims(acc_z_lim, acc_z_step))      
+
+        for ifig, fig in enumerate(figs):
+            fig.tight_layout()
+            fig.savefig(target[ifig], dpi=600)
+            plt.close()
+
+
+class TaskCreateCenterOfMassStatisticsTables(osp.StudyTask):
+    REGISTRY = []
+    def __init__(self, study, subjects, times, rise, fall):
+        super(TaskCreateCenterOfMassStatisticsTables, self).__init__(study)
+        self.name = f'create_center_of_mass_statistics_tables_{rise}_fall{fall}'
+        self.results_path = os.path.join(study.config['results_path'], 
+            'experiments')
+        self.subjects = subjects
+        self.times = times
+        self.rise = rise
+        self.fall = fall
+        self.gravity = 9.81
+        self.torques = study.plot_torques
+        self.subtalars = study.plot_subtalars
+
+        deps = list()
+        self.multiindex_tuples = list()
+        self.label_dict = dict()
+        ilabel = 0
+        for isubj, subject in enumerate(subjects):
+
+            # Unperturbed solutions
+            # ---------------------
+            deps.append(
+                os.path.join(
+                    self.study.config['results_path'], 
+                    'unperturbed', subject,
+                    'center_of_mass_unperturbed.sto'))
+
+            self.label_dict[f'{subject}_unperturbed'] = ilabel
+            ilabel += 1
+
+            for actu in [False, True]:
+                torque_act = '_torque_actuators' if actu else ''
+                subpath = 'torque_actuators' if actu else 'perturbed'
+
+                for itime, time in enumerate(self.times):
+
+                    # Unperturbed time-stepping solutions
+                    # -----------------------------------
+                    label = (f'perturbed_torque0_time{time}'
+                             f'_rise{self.rise}_fall{self.fall}{torque_act}')
+                    deps.append(
+                        os.path.join(
+                            self.study.config['results_path'], 
+                            subpath, label, subject,
+                            f'center_of_mass_{label}.sto'))
+
+                    self.label_dict[f'{subject}_unperturbed_time{time}{torque_act}'] = ilabel
+                    ilabel += 1
+
+                    if actu and not itime:
+                        self.multiindex_tuples.append((
+                            subject,
+                            'unperturbed'
+                            ))
+
+                    for torque, subtalar in zip(self.torques, self.subtalars):
+
+                         # Perturbed solutions
+                         # -------------------
+                        label = (f'perturbed_torque{torque}_time{time}'
+                                f'_rise{self.rise}_fall{self.fall}{subtalar}{torque_act}')
+                        deps.append(
+                            os.path.join(
+                                self.study.config['results_path'], 
+                                subpath, label, subject,
+                                f'center_of_mass_{label}.sto')
+                            )
+
+                        self.label_dict[f'{subject}_{label}'] = ilabel
+                        ilabel += 1
+
+                        if actu and not itime:
+                            self.multiindex_tuples.append((
+                                subject,
+                                f'perturbed_torque{torque}{subtalar}'
+                                ))
+
+        targets = list()
+        for actu in ['muscles', 'torques']:
+            for time in self.times:
+                for kin in ['pos', 'vel', 'acc']:
+                        targets += [os.path.join(study.config['statistics_path'], 'tables',
+                                    f'com_stats_time{time}_{kin}_{actu}.csv')]
+
+        self.add_action(deps, targets, self.create_com_stats_table)
+
+    def create_com_stats_table(self, file_dep, target):
+
+        # Aggregate data
+        # --------------
+        import collections
+        com_dict = collections.defaultdict(dict)
+        time_dict = dict()
+        com_height_dict = dict()
+        duration_dict = dict()
+
+        for isubj, subject in enumerate(self.subjects):
+
+            # Unperturbed center-of-mass trajectory
+            # -------------------------------------
+            unperturb_index = self.label_dict[f'{subject}_unperturbed']
+            tableTemp = osim.TimeSeriesTable(file_dep[unperturb_index])
+            com_height_dict[subject] = np.mean(tableTemp.getDependentColumn(
+                                               '/|com_position_y').to_numpy())
+            timeTemp = np.array(tableTemp.getIndependentColumn())
+            duration_dict[subject] = timeTemp[-1] - timeTemp[0]
+            time_dict[subject] = timeTemp
+
+            for actu in [False, True]:
+                torque_act = '_torque_actuators' if actu else ''
+
+                for time in self.times:
+
+                    # Unperturbed center-of-mass trajectory
+                    # -------------------------------------
+                    label = f'{subject}_unperturbed_time{time}{torque_act}'
+                    unperturb_index = self.label_dict[label]
+                    unpTable = osim.TimeSeriesTable(file_dep[unperturb_index])
+                    unpTimeVec = unpTable.getIndependentColumn()
+                    unpTable_np = np.zeros((len(unpTimeVec), 9))
+                    unp_pos_x = unpTable.getDependentColumn(
+                        '/|com_position_x').to_numpy()
+                    unp_pos_y = unpTable.getDependentColumn(
+                        '/|com_position_y').to_numpy()
+                    unp_pos_z = unpTable.getDependentColumn(
+                        '/|com_position_z').to_numpy()
+                    unpTable_np[:, 0] = unp_pos_x - unp_pos_x[0] 
+                    unpTable_np[:, 1] = unp_pos_y - unp_pos_y[0] 
+                    unpTable_np[:, 2] = unp_pos_z - unp_pos_z[0] 
+                    unpTable_np[:, 3] = unpTable.getDependentColumn(
+                        '/|com_velocity_x').to_numpy() 
+                    unpTable_np[:, 4] = unpTable.getDependentColumn(
+                        '/|com_velocity_y').to_numpy() 
+                    unpTable_np[:, 5] = unpTable.getDependentColumn(
+                        '/|com_velocity_z').to_numpy() 
+                    unpTable_np[:, 6] = unpTable.getDependentColumn(
+                        '/|com_acceleration_x').to_numpy()
+                    unpTable_np[:, 7] = unpTable.getDependentColumn(
+                        '/|com_acceleration_y').to_numpy()
+                    unpTable_np[:, 8] = unpTable.getDependentColumn(
+                        '/|com_acceleration_z').to_numpy()
+
+                    com_dict[subject][label] = unpTable_np
+
+                    for torque, subtalar in zip(self.torques, self.subtalars):
+
+                        # Perturbed center-of-mass trajectory
+                        # -----------------------------------
+                        label = (f'{subject}_perturbed_torque{torque}_time{time}'
+                                 f'_rise{self.rise}_fall{self.fall}{subtalar}{torque_act}')
+                        perturb_index = self.label_dict[label]
+                        table = osim.TimeSeriesTable(file_dep[perturb_index])
+                        timeVec = table.getIndependentColumn()
+                        N = len(timeVec)
+                        table_np = np.zeros((N, 9))
+                        pos_x = table.getDependentColumn(
+                            '/|com_position_x').to_numpy()
+                        pos_y = table.getDependentColumn(
+                            '/|com_position_y').to_numpy()
+                        pos_z = table.getDependentColumn(
+                            '/|com_position_z').to_numpy()
+                        table_np[:, 0] = pos_x - pos_x[0] 
+                        table_np[:, 1] = pos_y - pos_y[0] 
+                        table_np[:, 2] = pos_z - pos_z[0] 
+                        table_np[:, 3] = table.getDependentColumn(
+                            '/|com_velocity_x').to_numpy()
+                        table_np[:, 4] = table.getDependentColumn(
+                            '/|com_velocity_y').to_numpy()
+                        table_np[:, 5] = table.getDependentColumn(
+                            '/|com_velocity_z').to_numpy() 
+                        table_np[:, 6] = table.getDependentColumn(
+                            '/|com_acceleration_x').to_numpy()
+                        table_np[:, 7] = table.getDependentColumn(
+                            '/|com_acceleration_y').to_numpy()
+                        table_np[:, 8] = table.getDependentColumn(
+                            '/|com_acceleration_z').to_numpy()
+
+                        # Compute difference between perturbed and unperturbed
+                        # trajectories for this subject. We don't need to interpolate
+                        # here since the perturbed and unperturbed trajectories contain
+                        # the same time points (up until the end of the perturbation).
+                        com_dict[subject][label] = table_np
+
+        # Create tables
+        # -------------
+        for iactu, actu in enumerate([False, True]):
+            torque_act = '_torque_actuators' if actu else ''
+
+            for itime, time in enumerate(self.times):
+                pos = list()
+                vel = list()
+                acc = list()
+
+                for isubj, subject in enumerate(self.subjects):
+
+                    # Compute the closet time index to the current peak 
+                    # perturbation time. 
+                    #
+                    # TODO: A given peak perturbation time (e.g 50% of the 
+                    # gait cycle) may not lie exactly on a time point of 
+                    # from the simulation. The interval between time points
+                    # is 5ms, meaning that the time index could be up to 2.5ms
+                    # away from the actual perturbation peak time. 
+                    timeVec = time_dict[subject]
+                    duration = timeVec[-1] - timeVec[0]
+                    time_at_peak = timeVec[0] + (duration * (time / 100.0))
+                    index_peak = np.argmin(np.abs(timeVec - time_at_peak))
+                    index_fall = -1
+                    l_max = com_height_dict[subject]
+                    v_max = np.sqrt(self.gravity * l_max)
+
+                    # Unperturbed
+                    label = f'{subject}_unperturbed_time{time}{torque_act}'
+                    com = com_dict[subject][label]
+                    pos_x = com[index_fall, 0] / l_max
+                    pos_y = com[index_fall, 1] / l_max
+                    pos_z = com[index_fall, 2] / l_max
+                    vel_x = com[index_fall, 3] / v_max
+                    vel_y = com[index_fall, 4] / v_max
+                    vel_z = com[index_fall, 5] / v_max
+                    acc_x = com[index_peak, 6] / self.gravity
+                    acc_y = com[index_peak, 7] / self.gravity
+                    acc_z = com[index_peak, 8] / self.gravity
+
+                    pos.append(np.sqrt(pos_x*pos_x +  pos_y*pos_y + pos_z*pos_z))
+                    vel.append(np.sqrt(vel_x*vel_x +  vel_y*vel_y + vel_z*vel_z))
+                    acc.append(np.sqrt(acc_x*acc_x +  acc_y*acc_y + acc_z*acc_z))
+
+                    # Perturbed
+                    for isubt, (torque, subtalar) in enumerate(zip(self.torques, self.subtalars)):
+                        label = (f'{subject}_perturbed_torque{torque}_time{time}'
+                                 f'_rise{self.rise}_fall{self.fall}{subtalar}{torque_act}')
+                        com = com_dict[subject][label]
+                        pos_x = com[index_fall, 0] / l_max
+                        pos_y = com[index_fall, 1] / l_max
+                        pos_z = com[index_fall, 2] / l_max
+                        vel_x = com[index_fall, 3] / v_max
+                        vel_y = com[index_fall, 4] / v_max
+                        vel_z = com[index_fall, 5] / v_max
+                        acc_x = com[index_peak, 6] / self.gravity
+                        acc_y = com[index_peak, 7] / self.gravity
+                        acc_z = com[index_peak, 8] / self.gravity
+
+                        pos.append(np.sqrt(pos_x*pos_x +  pos_y*pos_y + pos_z*pos_z))
+                        vel.append(np.sqrt(vel_x*vel_x +  vel_y*vel_y + vel_z*vel_z))
+                        acc.append(np.sqrt(acc_x*acc_x +  acc_y*acc_y + acc_z*acc_z))
+
+                index = pd.MultiIndex.from_tuples(self.multiindex_tuples,
+                    names=['subject', 'perturbation'])
+
+                df_list = list()
+                df_list.append(pd.DataFrame(pos, index=index, columns=['com']))
+                df_list.append(pd.DataFrame(vel, index=index, columns=['com']))
+                df_list.append(pd.DataFrame(acc, index=index, columns=['com']))
+
+                offset = len(df_list)*(itime + iactu*len(self.times))
+                for index in np.arange(len(df_list)):
+                    target_dir = os.path.dirname(target[offset + index])
+                    if not os.path.exists(target_dir):
+                        os.makedirs(target_dir)
+                    with open(target[offset + index], 'w') as f:
+                        df_list[index].to_csv(f, line_terminator='\n')
+
+
+class TaskPlotInstantaneousCenterOfMassLumbarStiffness(osp.StudyTask):
+    REGISTRY = []
+    def __init__(self, study, subjects, times, torque, rise, fall):
+        super(TaskPlotInstantaneousCenterOfMassLumbarStiffness, self).__init__(study)
+        self.name = f'plot_instantaneous_center_of_mass_lumbar_stiffness_torque{torque}_rise{rise}_fall{fall}'
+        self.results_path = os.path.join(study.config['results_path'], 'experiments')
+        self.analysis_path = os.path.join(study.config['analysis_path'],
+            'lumbar_stiffness',  f'lumbar_stiffness_torque{torque}_rise{rise}_fall{fall}')
+        if not os.path.exists(self.analysis_path): 
+            os.makedirs(self.analysis_path)
+        self.subjects = subjects
+        self.torque = torque
+        self.times = times
+        self.rise = rise
+        self.fall = fall
+        self.subtalars = study.subtalar_suffixes
+        self.width = 0.25
+        self.lumbars = list()
+        for stiffness in study.lumbar_stiffnesses:
+            lumbar = ''
+            if not stiffness == 1.0:
+                lumbar = f'lumbar{stiffness}'
+            self.lumbars.append(lumbar)
+        min_width = -self.width*((len(self.lumbars)-1)/2)
+        max_width = -min_width
+        self.lumbar_shifts = np.linspace(min_width, max_width, len(self.lumbars))
+        cmap = plt.get_cmap('viridis')
+        indices = np.linspace(0, 1.0, len(self.lumbars)) 
+        self.lumbar_colors = [cmap(idx) for idx in indices]
+        self.labels = list()
+        self.times_list = list()
+
+        deps = list()
+        for isubj, subject in enumerate(subjects):
+            for lumbar in self.lumbars:
+                # Unperturbed solutions
+                deps.append(
+                    os.path.join(
+                        self.study.config['results_path'], 
+                        lumbar, 'unperturbed', subject,
+                        f'center_of_mass_unperturbed{lumbar}.sto'))
+
+                self.labels.append(f'unperturbed{lumbar}')
+                self.times_list.append(100)
+
+                # Perturbed solutions
+                for time in self.times:
+                    for subtalar in self.subtalars:
+                        label = (f'perturbed_torque{torque}_time{time}'
+                                f'_rise{self.rise}_fall{self.fall}{subtalar}_{lumbar}')
+                        deps.append(
+                            os.path.join(
+                                self.study.config['results_path'], 
+                                lumbar, label, subject,
+                                f'center_of_mass_{label}.sto')
+                            )
+
+                        if not isubj:
+                            self.labels.append(
+                                (f'torque{self.torque}_time{time}'
+                                 f'_rise{self.rise}_fall{self.fall}{subtalar}_{lumbar}'))
+                            self.times_list.append(time)
+
+        targets = list()
+        for kin in ['pos', 'vel', 'acc']:
+            for direc in ['AP', 'SI', 'ML']:
+                targets += [os.path.join(self.analysis_path, 
+                            f'instant_com_{direc}{kin}.png')]
+
+        self.add_action(deps, targets, self.plot_instantaneous_com)
+
+    def plot_instantaneous_com(self, file_dep, target):
+
+        # Initialize figures
+        # ------------------
+        figs = list()
+        axes = list()
+        for kin in ['pos', 'vel', 'acc']:
+            for direc in ['AP', 'SI', 'ML']:
+                fig = plt.figure(figsize=(4, 2.5*len(self.subtalars)))
+                these_axes = list()
+                for isubt, subt in enumerate(self.subtalars):
+                    ax = fig.add_subplot(3, 1, isubt+1)
+                    these_axes.append(ax)
+
+                figs.append(fig)
+                axes.append(these_axes)
+
+        # Aggregate data
+        # --------------
+        import collections
+        com_dict = collections.defaultdict(dict)
+        time_dict = dict()
+        index = 0
+        for isubj, subject in enumerate(self.subjects):
+            for ilumbar, lumbar in enumerate(self.lumbars):
+                # Unperturbed center-of-mass trajectories
+                # iunp = isubj*numLumbars + ilumbar*(numTimes*numSubtalars + 1)
+                unpTable = osim.TimeSeriesTable(file_dep[index])
+                unpTimeVec = unpTable.getIndependentColumn()
+                unpTable_np = np.zeros((len(unpTimeVec), 9))
+                unp_pos_x = unpTable.getDependentColumn(
+                    '/|com_position_x').to_numpy()
+                unp_pos_y = unpTable.getDependentColumn(
+                    '/|com_position_y').to_numpy()
+                unp_pos_z = unpTable.getDependentColumn(
+                    '/|com_position_z').to_numpy()
+                unpTable_np[:, 0] = unp_pos_x - unp_pos_x[0] 
+                unpTable_np[:, 1] = unp_pos_y - unp_pos_y[0] 
+                unpTable_np[:, 2] = unp_pos_z - unp_pos_z[0] 
+                unpTable_np[:, 3] = unpTable.getDependentColumn(
+                    '/|com_velocity_x').to_numpy() 
+                unpTable_np[:, 4] = unpTable.getDependentColumn(
+                    '/|com_velocity_y').to_numpy() 
+                unpTable_np[:, 5] = unpTable.getDependentColumn(
+                    '/|com_velocity_z').to_numpy() 
+                unpTable_np[:, 6] = unpTable.getDependentColumn(
+                    '/|com_acceleration_x').to_numpy()
+                unpTable_np[:, 7] = unpTable.getDependentColumn(
+                    '/|com_acceleration_y').to_numpy()
+                unpTable_np[:, 8] = unpTable.getDependentColumn(
+                    '/|com_acceleration_z').to_numpy()
+                time_dict[subject] = unpTimeVec
+
+                index = index + 1
+                for time in self.times:
+                    for subtalar in self.subtalars:
+                        label = (f'perturbed_torque{self.torque}_time{time}'
+                                 f'_rise{self.rise}_fall{self.fall}{subtalar}_{lumbar}')
+
+                        # Perturbed center-of-mass trajectories
+                        table = osim.TimeSeriesTable(file_dep[index])
+                        timeVec = table.getIndependentColumn()
+                        N = len(timeVec)
+                        table_np = np.zeros((N, 9))
+                        pos_x = table.getDependentColumn(
+                            '/|com_position_x').to_numpy()
+                        pos_y = table.getDependentColumn(
+                            '/|com_position_y').to_numpy()
+                        pos_z = table.getDependentColumn(
+                            '/|com_position_z').to_numpy()
+                        table_np[:, 0] = pos_x - pos_x[0] 
+                        table_np[:, 1] = pos_y - pos_y[0] 
+                        table_np[:, 2] = pos_z - pos_z[0] 
+                        table_np[:, 3] = table.getDependentColumn(
+                            '/|com_velocity_x').to_numpy()
+                        table_np[:, 4] = table.getDependentColumn(
+                            '/|com_velocity_y').to_numpy()
+                        table_np[:, 5] = table.getDependentColumn(
+                            '/|com_velocity_z').to_numpy() 
+                        table_np[:, 6] = table.getDependentColumn(
+                            '/|com_acceleration_x').to_numpy()
+                        table_np[:, 7] = table.getDependentColumn(
+                            '/|com_acceleration_y').to_numpy()
+                        table_np[:, 8] = table.getDependentColumn(
+                            '/|com_acceleration_z').to_numpy()
+
+                        # Compute difference between perturbed and unperturbed
+                        # trajectories for this subject. We don't need to interpolate
+                        # here since the perturbed and unperturbed trajectories contain
+                        # the same time points (up until the end of the perturbation).
+                        com_dict[subject][label] = table_np - unpTable_np[0:N, :]
+
+                        index = index + 1
+
+        # Plotting
+        # --------
+        for isubt, subtalar in enumerate(self.subtalars):
+
+            pos_x_diff = np.zeros(len(self.subjects))
+            pos_y_diff = np.zeros(len(self.subjects))
+            pos_z_diff = np.zeros(len(self.subjects))
+            vel_x_diff = np.zeros(len(self.subjects))
+            vel_y_diff = np.zeros(len(self.subjects))
+            vel_z_diff = np.zeros(len(self.subjects))
+            acc_x_diff = np.zeros(len(self.subjects))
+            acc_y_diff = np.zeros(len(self.subjects))
+            acc_z_diff = np.zeros(len(self.subjects))
+            pos_x_diff_mean = np.zeros((len(self.times), len(self.lumbars)))
+            pos_y_diff_mean = np.zeros((len(self.times), len(self.lumbars)))
+            pos_z_diff_mean = np.zeros((len(self.times), len(self.lumbars)))
+            vel_x_diff_mean = np.zeros((len(self.times), len(self.lumbars)))
+            vel_y_diff_mean = np.zeros((len(self.times), len(self.lumbars)))
+            vel_z_diff_mean = np.zeros((len(self.times), len(self.lumbars)))
+            acc_x_diff_mean = np.zeros((len(self.times), len(self.lumbars)))
+            acc_y_diff_mean = np.zeros((len(self.times), len(self.lumbars)))
+            acc_z_diff_mean = np.zeros((len(self.times), len(self.lumbars)))
+            pos_x_diff_std = np.zeros((len(self.times), len(self.lumbars)))
+            pos_y_diff_std = np.zeros((len(self.times), len(self.lumbars)))
+            pos_z_diff_std = np.zeros((len(self.times), len(self.lumbars)))
+            vel_x_diff_std = np.zeros((len(self.times), len(self.lumbars)))
+            vel_y_diff_std = np.zeros((len(self.times), len(self.lumbars)))
+            vel_z_diff_std = np.zeros((len(self.times), len(self.lumbars)))
+            acc_x_diff_std = np.zeros((len(self.times), len(self.lumbars)))
+            acc_y_diff_std = np.zeros((len(self.times), len(self.lumbars)))
+            acc_z_diff_std = np.zeros((len(self.times), len(self.lumbars)))
+            for itime, time in enumerate(self.times):
+                zipped = zip(self.lumbars, self.lumbar_colors, self.lumbar_shifts)
+                for ilumbar, (lumbar, color, shift) in enumerate(zipped):
+
+                    label = (f'perturbed_torque{self.torque}_time{time}'
+                             f'_rise{self.rise}_fall{self.fall}{subtalar}_{lumbar}')
+                    for isubj, subject in enumerate(self.subjects):
+                        com = com_dict[subject][label]
+
+                        # Compute the closet time index to the current peak 
+                        # perturbation time. 
+                        #
+                        # TODO: A given peak perturbation time (e.g 50% of the 
+                        # gait cycle) may not lie exactly on a time point of 
+                        # from the simulation. The interval between time points
+                        # is 5ms, meaning that the time index could be up to 2.5ms
+                        # away from the actual perturbation peak time. 
+                        timeVec = np.array(time_dict[subject])
+                        duration = timeVec[-1] - timeVec[0]
+                        time_at_peak = timeVec[0] + (duration * (time / 100.0))
+                        index = np.argmin(np.abs(timeVec - time_at_peak))
+
+                        pos_x_diff[isubj] = 100*com[index, 0]
+                        pos_y_diff[isubj] = 100*com[index, 1]
+                        pos_z_diff[isubj] = 100*com[index, 2]
+                        vel_x_diff[isubj] = com[index, 3]
+                        vel_y_diff[isubj] = com[index, 4]
+                        vel_z_diff[isubj] = com[index, 5]
+                        acc_x_diff[isubj] = com[index, 6]
+                        acc_y_diff[isubj] = com[index, 7]
+                        acc_z_diff[isubj] = com[index, 8]
+
+                    pos_x_diff_mean[itime, ilumbar] = np.mean(pos_x_diff)
+                    pos_y_diff_mean[itime, ilumbar] = np.mean(pos_y_diff)
+                    pos_z_diff_mean[itime, ilumbar] = np.mean(pos_z_diff)
+                    vel_x_diff_mean[itime, ilumbar] = np.mean(vel_x_diff)
+                    vel_y_diff_mean[itime, ilumbar] = np.mean(vel_y_diff)
+                    vel_z_diff_mean[itime, ilumbar] = np.mean(vel_z_diff)
+                    acc_x_diff_mean[itime, ilumbar] = np.mean(acc_x_diff)
+                    acc_y_diff_mean[itime, ilumbar] = np.mean(acc_y_diff)
+                    acc_z_diff_mean[itime, ilumbar] = np.mean(acc_z_diff)
+                    pos_x_diff_std[itime, ilumbar] = np.std(pos_x_diff)
+                    pos_y_diff_std[itime, ilumbar] = np.std(pos_y_diff)
+                    pos_z_diff_std[itime, ilumbar] = np.std(pos_z_diff)
+                    vel_x_diff_std[itime, ilumbar] = np.std(vel_x_diff)
+                    vel_y_diff_std[itime, ilumbar] = np.std(vel_y_diff)
+                    vel_z_diff_std[itime, ilumbar] = np.std(vel_z_diff)
+                    acc_x_diff_std[itime, ilumbar] = np.std(acc_x_diff)
+                    acc_y_diff_std[itime, ilumbar] = np.std(acc_y_diff)
+                    acc_z_diff_std[itime, ilumbar] = np.std(acc_z_diff)
+
+            pos_step = 0.2 # cm
+            vel_step = 0.02
+            acc_step = 0.1
+            pos_x_lim = [0.0, 0.0]
+            pos_y_lim = [0.0, 0.0]
+            pos_z_lim = [0.0, 0.0]
+            vel_x_lim = [0.0, 0.0]
+            vel_y_lim = [0.0, 0.0]
+            vel_z_lim = [0.0, 0.0]
+            acc_x_lim = [0.0, 0.0]
+            acc_y_lim = [0.0, 0.0]
+            acc_z_lim = [0.0, 0.0]
+            update_lims(pos_x_diff_mean-pos_x_diff_std, pos_step, pos_x_lim)
+            update_lims(pos_y_diff_mean-pos_y_diff_std, pos_step, pos_y_lim)
+            update_lims(pos_z_diff_mean-pos_z_diff_std, pos_step, pos_z_lim)
+            update_lims(vel_x_diff_mean-vel_x_diff_std, vel_step, vel_x_lim)
+            update_lims(vel_y_diff_mean-vel_y_diff_std, vel_step, vel_y_lim)
+            update_lims(vel_z_diff_mean-vel_z_diff_std, vel_step, vel_z_lim)
+            update_lims(acc_x_diff_mean-acc_x_diff_std, acc_step, acc_x_lim)
+            update_lims(acc_y_diff_mean-acc_y_diff_std, acc_step, acc_y_lim)
+            update_lims(acc_z_diff_mean-acc_z_diff_std, acc_step, acc_z_lim)        
+            update_lims(pos_x_diff_mean+pos_x_diff_std, pos_step, pos_x_lim)
+            update_lims(pos_y_diff_mean+pos_y_diff_std, pos_step, pos_y_lim)
+            update_lims(pos_z_diff_mean+pos_z_diff_std, pos_step, pos_z_lim)
+            update_lims(vel_x_diff_mean+vel_x_diff_std, vel_step, vel_x_lim)
+            update_lims(vel_y_diff_mean+vel_y_diff_std, vel_step, vel_y_lim)
+            update_lims(vel_z_diff_mean+vel_z_diff_std, vel_step, vel_z_lim)
+            update_lims(acc_x_diff_mean+acc_x_diff_std, acc_step, acc_x_lim)
+            update_lims(acc_y_diff_mean+acc_y_diff_std, acc_step, acc_y_lim)
+            update_lims(acc_z_diff_mean+acc_z_diff_std, acc_step, acc_z_lim)
+            for itime, time in enumerate(self.times):
+                zipped = zip(self.lumbars, self.lumbar_colors, self.lumbar_shifts)
+                for ilumbar, (lumbar, color, shift) in enumerate(zipped):
+
+                    # Set the x-position for these bar chart entries.
+                    x = itime + shift
+
+                    # Instantaneous positions
+                    # -----------------------
+                    plot_errorbar(axes[0][isubt], x, pos_x_diff_mean[itime, ilumbar], pos_x_diff_std[itime, ilumbar])
+                    axes[0][isubt].bar(x, pos_x_diff_mean[itime, ilumbar], self.width, color=color, clip_on=False)
+                    axes[0][isubt].set_ylabel(r'$\Delta$' + ' fore-aft position $[cm]$')
+                    
+                    plot_errorbar(axes[1][isubt], x, pos_y_diff_mean[itime, ilumbar], pos_y_diff_std[itime, ilumbar])
+                    axes[1][isubt].bar(x, pos_y_diff_mean[itime, ilumbar], self.width, color=color, clip_on=False)
+                    axes[1][isubt].set_ylabel(r'$\Delta$' + ' vertical position $[cm]$')
+
+                    plot_errorbar(axes[2][isubt], x, pos_z_diff_mean[itime, ilumbar], pos_z_diff_std[itime, ilumbar])
+                    axes[2][isubt].bar(x, pos_z_diff_mean[itime, ilumbar], self.width, color=color, clip_on=False)
+                    axes[2][isubt].set_ylabel(r'$\Delta$' + ' medio-lateral position $[cm]$')
+
+                    # Instantaneous velocities
+                    # ------------------------
+                    plot_errorbar(axes[3][isubt], x, vel_x_diff_mean[itime, ilumbar], vel_x_diff_std[itime, ilumbar])
+                    axes[3][isubt].bar(x, vel_x_diff_mean[itime, ilumbar], self.width, color=color, clip_on=False)
+                    axes[3][isubt].set_ylabel(r'$\Delta$' + ' fore-aft velocity $[m/s]$')
+
+                    plot_errorbar(axes[4][isubt], x, vel_y_diff_mean[itime, ilumbar], vel_y_diff_std[itime, ilumbar])
+                    axes[4][isubt].bar(x, vel_y_diff_mean[itime, ilumbar], self.width, color=color, clip_on=False)
+                    axes[4][isubt].set_ylabel(r'$\Delta$' + ' vertical velocity $[m/s]$')
+
+                    plot_errorbar(axes[5][isubt], x, vel_z_diff_mean[itime, ilumbar], vel_z_diff_std[itime, ilumbar])
+                    axes[5][isubt].bar(x, vel_z_diff_mean[itime, ilumbar], self.width, color=color, clip_on=False)
+                    axes[5][isubt].set_ylabel(r'$\Delta$' + ' medio-lateral velocity $[m/s]$')
+
+                    # Instantaneous accelerations
+                    # ---------------------------
+                    plot_errorbar(axes[6][isubt], x, acc_x_diff_mean[itime, ilumbar], acc_x_diff_std[itime, ilumbar])
+                    axes[6][isubt].bar(x, acc_x_diff_mean[itime, ilumbar], self.width, color=color, clip_on=False)
+                    axes[6][isubt].set_ylabel(r'$\Delta$' + ' fore-aft acceleration $[m/s^2]$')
+
+                    plot_errorbar(axes[7][isubt], x, acc_y_diff_mean[itime, ilumbar], acc_y_diff_std[itime, ilumbar])
+                    axes[7][isubt].bar(x, acc_y_diff_mean[itime, ilumbar], self.width, color=color, clip_on=False)
+                    axes[7][isubt].set_ylabel(r'$\Delta$' + ' vertical acceleration $[m/s^2]$')
+
+                    plot_errorbar(axes[8][isubt], x, acc_z_diff_mean[itime, ilumbar], acc_z_diff_std[itime, ilumbar])
+                    axes[8][isubt].bar(x, acc_z_diff_mean[itime, ilumbar], self.width, color=color, clip_on=False)
+                    axes[8][isubt].set_ylabel(r'$\Delta$' + ' medio-lateral acceleration $[m/s^2]$')
+
+            axes[0][isubt].set_ylim(pos_x_lim)
+            axes[0][isubt].set_yticks(get_ticks_from_lims(pos_x_lim, pos_step))
+            axes[1][isubt].set_ylim(pos_y_lim)
+            axes[1][isubt].set_yticks(get_ticks_from_lims(pos_y_lim, pos_step))
+            axes[2][isubt].set_ylim(pos_z_lim)
+            axes[2][isubt].set_yticks(get_ticks_from_lims(pos_z_lim, pos_step))
+            axes[3][isubt].set_ylim(vel_x_lim)
+            axes[3][isubt].set_yticks(get_ticks_from_lims(vel_x_lim, vel_step))
+            axes[4][isubt].set_ylim(vel_y_lim)
+            axes[4][isubt].set_yticks(get_ticks_from_lims(vel_y_lim, vel_step))
+            axes[5][isubt].set_ylim(vel_z_lim)
+            axes[5][isubt].set_yticks(get_ticks_from_lims(vel_z_lim, vel_step))
+            axes[6][isubt].set_ylim(acc_x_lim)
+            axes[6][isubt].set_yticks(get_ticks_from_lims(acc_x_lim, acc_step))
+            axes[7][isubt].set_ylim(acc_y_lim)
+            axes[7][isubt].set_yticks(get_ticks_from_lims(acc_y_lim, acc_step))
+            axes[8][isubt].set_ylim(acc_z_lim)
+            axes[8][isubt].set_yticks(get_ticks_from_lims(acc_z_lim, acc_step))
+
+        for these_axes in axes:
+            for ax in these_axes:
+                ax.axhline(y=0, color='black', linestyle='-',
+                        linewidth=0.1, alpha=1.0, zorder=-1)
+                ax.spines['bottom'].set_position(('outward', 10))
+                ax.spines['left'].set_position(('outward', 20))
+                ax.set_xticks(np.arange(len(self.times)))
+                ax.set_xlim(0, len(self.times)-1)
+                ax.set_xticklabels([f'{time}' for time in self.times])
+                ax.set_xlabel('peak perturbation time\n(% gait cycle)')
+                util.publication_spines(ax)
+
+        for ifig, fig in enumerate(figs):
+            fig.tight_layout()
+            fig.savefig(target[ifig], dpi=600)
+            plt.close()
+
+
+# Ground reaction forces
+# ----------------------
+
 class TaskPlotGroundReactions(osp.StudyTask):
     REGISTRY = []
     def __init__(self, study, subjects, time, rise, fall):
@@ -4909,161 +4994,230 @@ class TaskPlotInstantaneousGroundReactions(osp.StudyTask):
         max_width = -min_width
         self.shifts = np.linspace(min_width, max_width, N)
         self.legend_labels = ['eversion', 
-                              'ankle + eversion', 
-                              'ankle', 
-                              'ankle + inversion', 
+                              'plantarflexion + eversion', 
+                              'plantarflexion', 
+                              'plantarflexion + inversion', 
                               'inversion']
-        self.labels = list()
-        self.times_list = list()
 
-        self.labels.append('unperturbed')
-        self.times_list.append(100)
         deps = list()
-
+        self.label_dict = dict()
         self.models = list()
-
+        ilabel = 0
         for isubj, subject in enumerate(subjects):
+
             # Model
+            # -----
             self.models.append(os.path.join(
                 self.study.config['results_path'], 
                 'unperturbed', subject, 'model_unperturbed.osim'))
 
-            # Unperturbed grfs
-            deps.append(os.path.join(self.study.config['results_path'], 
-                'unperturbed', subject, 'unperturbed_grfs.sto'))
+            # Unperturbed solutions
+            # ---------------------
+            deps.append(
+                os.path.join(
+                    self.study.config['results_path'], 
+                    'unperturbed', subject,
+                    'unperturbed_grfs.sto'))
 
-            for time in self.times:
-                for torque, subtalar in zip(self.torques, self.subtalars):
-                    label = (f'torque{torque}_time{time}'
-                             f'_rise{self.rise}_fall{self.fall}{subtalar}')
+            self.label_dict[f'{subject}_unperturbed'] = ilabel
+            ilabel += 1
+
+            for actu in [False, True]:
+                torque_act = '_torque_actuators' if actu else ''
+                subpath = 'torque_actuators' if actu else 'perturbed'
+
+                for time in self.times:
+
+                    # Unperturbed time-stepping solutions
+                    # -----------------------------------
+                    label = (f'perturbed_torque0_time{time}'
+                             f'_rise{self.rise}_fall{self.fall}{torque_act}')
                     deps.append(
-                        os.path.join(self.study.config['results_path'], 
-                            'perturbed', f'perturbed_{label}', subject, 
-                            f'perturbed_{label}_grfs.sto'))
+                        os.path.join(
+                            self.study.config['results_path'], 
+                            subpath, label, subject,
+                            f'{label}_grfs.sto'))
 
-                    if not isubj:
-                        self.labels.append(label)
-                        self.times_list.append(time)
+                    self.label_dict[f'{subject}_unperturbed_time{time}{torque_act}'] = ilabel
+                    ilabel += 1
 
-        self.add_action(deps, 
-                        [os.path.join(self.analysis_path, 'instant_grfs')],
+                    for torque, subtalar in zip(self.torques, self.subtalars):
+
+                         # Perturbed solutions
+                         # -------------------
+                        label = (f'perturbed_torque{torque}_time{time}'
+                                f'_rise{self.rise}_fall{self.fall}{subtalar}{torque_act}')
+                        deps.append(
+                            os.path.join(
+                                self.study.config['results_path'], 
+                                subpath, label, subject,
+                                f'{label}_grfs.sto')
+                            )
+
+                        self.label_dict[f'{subject}_{label}'] = ilabel
+                        ilabel += 1
+
+        targets = list()
+        for actu in ['muscles', 'torques']:
+                targets += [os.path.join(self.analysis_path, 
+                            f'instant_grfs_{actu}.png')]
+
+        self.add_action(deps, targets,
                         self.plot_instantaneous_ground_reactions)
 
     def plot_instantaneous_ground_reactions(self, file_dep, target):
 
         # Initialize figures
         # ------------------
-        axes = list()
-        fig = plt.figure(figsize=(6, 9))
-        for idirec, direc in enumerate(['AP', 'SI', 'ML']):
-            ax = fig.add_subplot(3, 1, idirec + 1)
-            ax.axhline(y=0, color='black', linestyle='-',
-                    linewidth=0.1, alpha=1.0, zorder=-1)
-            ax.spines['left'].set_position(('outward', 30))
-            ax.set_xticks(np.arange(len(self.times)))
-            ax.set_xlim(0, len(self.times)-1)
-            util.publication_spines(ax)
+        from collections import defaultdict
+        figs = list()
+        axes = defaultdict(list)
+        for actu in ['muscles', 'torques']:
+            fig = plt.figure(figsize=(6, 9))
+            for idirec, direc in enumerate(['AP', 'SI', 'ML']):
+                ax = fig.add_subplot(3, 1, idirec + 1)
+                ax.axhline(y=0, color='black', linestyle='-',
+                        linewidth=0.1, alpha=1.0, zorder=-1)
+                ax.spines['left'].set_position(('outward', 30))
+                ax.set_xticks(np.arange(len(self.times)))
+                ax.set_xlim(0, len(self.times)-1)
+                util.publication_spines(ax)
 
-            if not direc == 'ML':
-                ax.spines['bottom'].set_visible(False)
-                ax.set_xticklabels([])
-                ax.xaxis.set_ticks_position('none')
-                ax.tick_params(axis='x', which='both', bottom=False, 
-                               top=False, labelbottom=False)
-            else:
-                ax.spines['bottom'].set_position(('outward', 10))
-                ax.set_xticklabels([f'{time}' for time in self.times])
-                ax.set_xlabel('peak perturbation time\n(% gait cycle)')
+                if not direc == 'ML':
+                    ax.spines['bottom'].set_visible(False)
+                    ax.set_xticklabels([])
+                    ax.xaxis.set_ticks_position('none')
+                    ax.tick_params(axis='x', which='both', bottom=False, 
+                                   top=False, labelbottom=False)
+                else:
+                    ax.spines['bottom'].set_position(('outward', 10))
+                    ax.set_xticklabels([f'{time}' for time in self.times])
+                    ax.set_xlabel('peak perturbation time\n(% gait cycle)')
 
-            axes.append(ax)
+                axes[actu].append(ax)
+            figs.append(fig)
 
         # Aggregate data
         # --------------
-        numLabels = len(self.labels)
         import collections
         grf_dict = collections.defaultdict(dict)
         time_dict = dict()
+        duration_dict = dict()
+
         for isubj, subject in enumerate(self.subjects):
+
+            # Model
+            # -----
             model = osim.Model(self.models[isubj])
             state = model.initSystem()
             mass = model.getTotalMass(state)
             BW = abs(model.getGravity()[1]) * mass
-            unpTable = osim.TimeSeriesTable(file_dep[isubj*numLabels])
-            unpTimeVec = unpTable.getIndependentColumn()
-            unpTable_np = np.zeros((len(unpTimeVec), 3))
-            rgrfx = unpTable.getDependentColumn('ground_force_r_vx').to_numpy() / BW
-            rgrfy = unpTable.getDependentColumn('ground_force_r_vy').to_numpy() / BW
-            rgrfz = unpTable.getDependentColumn('ground_force_r_vz').to_numpy() / BW
-            lgrfx = unpTable.getDependentColumn('ground_force_l_vx').to_numpy() / BW
-            lgrfy = unpTable.getDependentColumn('ground_force_l_vy').to_numpy() / BW
-            lgrfz = unpTable.getDependentColumn('ground_force_l_vz').to_numpy() / BW
 
-            time_dict[subject] = unpTimeVec
-            unpTable_np[:, 0] = rgrfx + lgrfx
-            unpTable_np[:, 1] = rgrfy + lgrfy
-            unpTable_np[:, 2] = rgrfz + lgrfz
+            # Unperturbed center-of-mass trajectory
+            # -------------------------------------
+            unperturb_index = self.label_dict[f'{subject}_unperturbed']
+            tableTemp = osim.TimeSeriesTable(file_dep[unperturb_index])
+            timeTemp = np.array(tableTemp.getIndependentColumn())
+            duration_dict[subject] = timeTemp[-1] - timeTemp[0]
+            time_dict[subject] = timeTemp
 
-            for ilabel, label in enumerate(self.labels):
-                table = osim.TimeSeriesTable(file_dep[ilabel + isubj*numLabels])
-                timeVec = table.getIndependentColumn()
-                N = len(timeVec)
-                table_np = np.zeros((N, 3))
-                rgrfx = table.getDependentColumn('ground_force_r_vx').to_numpy() / BW
-                rgrfy = table.getDependentColumn('ground_force_r_vy').to_numpy() / BW
-                rgrfz = table.getDependentColumn('ground_force_r_vz').to_numpy() / BW
-                lgrfx = table.getDependentColumn('ground_force_l_vx').to_numpy() / BW
-                lgrfy = table.getDependentColumn('ground_force_l_vy').to_numpy() / BW
-                lgrfz = table.getDependentColumn('ground_force_l_vz').to_numpy() / BW
+            for actu in [False, True]:
+                torque_act = '_torque_actuators' if actu else ''
 
-                table_np[:, 0] = rgrfx + lgrfx
-                table_np[:, 1] = rgrfy + lgrfy
-                table_np[:, 2] = rgrfz + lgrfz
-                grf_dict[subject][label] = table_np - unpTable_np[0:N, :]
+                for time in self.times:
+
+                    # Unperturbed center-of-mass trajectory
+                    # -------------------------------------
+                    unperturb_index = self.label_dict[f'{subject}_unperturbed_time{time}{torque_act}']
+                    unpTable = osim.TimeSeriesTable(file_dep[unperturb_index])
+                    unpTimeVec = unpTable.getIndependentColumn()
+                    unpTable_np = np.zeros((len(unpTimeVec), 3))
+                    rgrfx = unpTable.getDependentColumn('ground_force_r_vx').to_numpy() / BW
+                    rgrfy = unpTable.getDependentColumn('ground_force_r_vy').to_numpy() / BW
+                    rgrfz = unpTable.getDependentColumn('ground_force_r_vz').to_numpy() / BW
+                    lgrfx = unpTable.getDependentColumn('ground_force_l_vx').to_numpy() / BW
+                    lgrfy = unpTable.getDependentColumn('ground_force_l_vy').to_numpy() / BW
+                    lgrfz = unpTable.getDependentColumn('ground_force_l_vz').to_numpy() / BW
+                    unpTable_np[:, 0] = rgrfx + lgrfx
+                    unpTable_np[:, 1] = rgrfy + lgrfy
+                    unpTable_np[:, 2] = rgrfz + lgrfz
+
+                    for torque, subtalar in zip(self.torques, self.subtalars):
+
+                        # Perturbed center-of-mass trajectory
+                        # -----------------------------------
+                        label = (f'{subject}_perturbed_torque{torque}_time{time}'
+                                 f'_rise{self.rise}_fall{self.fall}{subtalar}{torque_act}')
+                        perturb_index = self.label_dict[label]
+                        table = osim.TimeSeriesTable(file_dep[perturb_index])
+                        timeVec = table.getIndependentColumn()
+                        N = len(timeVec)
+                        table_np = np.zeros((N, 3))
+                        rgrfx = table.getDependentColumn('ground_force_r_vx').to_numpy() / BW
+                        rgrfy = table.getDependentColumn('ground_force_r_vy').to_numpy() / BW
+                        rgrfz = table.getDependentColumn('ground_force_r_vz').to_numpy() / BW
+                        lgrfx = table.getDependentColumn('ground_force_l_vx').to_numpy() / BW
+                        lgrfy = table.getDependentColumn('ground_force_l_vy').to_numpy() / BW
+                        lgrfz = table.getDependentColumn('ground_force_l_vz').to_numpy() / BW
+
+                        table_np[:, 0] = rgrfx + lgrfx
+                        table_np[:, 1] = rgrfy + lgrfy
+                        table_np[:, 2] = rgrfz + lgrfz
+                        grf_dict[subject][label] = table_np - unpTable_np
 
         # Plotting
         # --------
         grf_x_diff = np.zeros(len(self.subjects))
         grf_y_diff = np.zeros(len(self.subjects))
         grf_z_diff = np.zeros(len(self.subjects))
-        grf_x_diff_mean = np.zeros((len(self.times), len(self.subtalars)))
-        grf_y_diff_mean = np.zeros((len(self.times), len(self.subtalars)))
-        grf_z_diff_mean = np.zeros((len(self.times), len(self.subtalars)))
-        grf_x_diff_std = np.zeros((len(self.times), len(self.subtalars)))
-        grf_y_diff_std = np.zeros((len(self.times), len(self.subtalars)))
-        grf_z_diff_std = np.zeros((len(self.times), len(self.subtalars)))
-        for itime, time in enumerate(self.times): 
-            zipped = zip(self.torques, self.subtalars, self.colors, self.shifts)
-            for isubt, (torque, subtalar, color, shift) in enumerate(zipped):
+        grf_x_diff_mean = dict()
+        grf_y_diff_mean = dict()
+        grf_z_diff_mean = dict()
+        grf_x_diff_std = dict()
+        grf_y_diff_std = dict()
+        grf_z_diff_std = dict()
+        for actu in [False, True]:
+            torque_act = '_torque_actuators' if actu else ''
+            actu_key = 'torques' if actu else 'muscles'
+            grf_x_diff_mean[actu_key] = np.zeros((len(self.times), len(self.subtalars)))
+            grf_y_diff_mean[actu_key] = np.zeros((len(self.times), len(self.subtalars)))
+            grf_z_diff_mean[actu_key] = np.zeros((len(self.times), len(self.subtalars)))
+            grf_x_diff_std[actu_key] = np.zeros((len(self.times), len(self.subtalars)))
+            grf_y_diff_std[actu_key] = np.zeros((len(self.times), len(self.subtalars)))
+            grf_z_diff_std[actu_key] = np.zeros((len(self.times), len(self.subtalars)))
 
-                label = (f'torque{torque}_time{time}'
-                         f'_rise{self.rise}_fall{self.fall}{subtalar}')
-                for isubj, subject in enumerate(self.subjects):
-                    grf = grf_dict[subject][label]
+            for itime, time in enumerate(self.times): 
+                zipped = zip(self.torques, self.subtalars, self.colors, self.shifts)
+                for isubt, (torque, subtalar, color, shift) in enumerate(zipped):
+                    for isubj, subject in enumerate(self.subjects):
+                        label = (f'{subject}_perturbed_torque{torque}_time{time}'
+                                 f'_rise{self.rise}_fall{self.fall}{subtalar}{torque_act}')
+                        grf = grf_dict[subject][label]
 
-                    # Compute the closet time index to the current peak 
-                    # perturbation time. 
-                    #
-                    # TODO: A given peak perturbation time (e.g 50% of the 
-                    # gait cycle) may not lie exactly on a time point of 
-                    # from the simulation. The interval between time points
-                    # is 5ms, meaning that the time index could be up to 2.5ms
-                    # away from the actual perturbation peak time. 
-                    timeVec = np.array(time_dict[subject])
-                    duration = timeVec[-1] - timeVec[0]
-                    time_at_peak = timeVec[0] + (duration * (time / 100.0))
-                    index = np.argmin(np.abs(timeVec - time_at_peak))
+                        # Compute the closet time index to the current peak 
+                        # perturbation time. 
+                        #
+                        # TODO: A given peak perturbation time (e.g 50% of the 
+                        # gait cycle) may not lie exactly on a time point of 
+                        # from the simulation. The interval between time points
+                        # is 5ms, meaning that the time index could be up to 2.5ms
+                        # away from the actual perturbation peak time. 
+                        timeVec = np.array(time_dict[subject])
+                        duration = timeVec[-1] - timeVec[0]
+                        time_at_peak = timeVec[0] + (duration * (time / 100.0))
+                        index = np.argmin(np.abs(timeVec - time_at_peak))
 
-                    grf_x_diff[isubj] = grf[index, 0]
-                    grf_y_diff[isubj] = grf[index, 1]
-                    grf_z_diff[isubj] = grf[index, 2]
+                        grf_x_diff[isubj] = grf[index, 0]
+                        grf_y_diff[isubj] = grf[index, 1]
+                        grf_z_diff[isubj] = grf[index, 2]
 
-                grf_x_diff_mean[itime, isubt] = np.mean(grf_x_diff)
-                grf_y_diff_mean[itime, isubt] = np.mean(grf_y_diff)
-                grf_z_diff_mean[itime, isubt] = np.mean(grf_z_diff)
+                    grf_x_diff_mean[actu_key][itime, isubt] = np.mean(grf_x_diff)
+                    grf_y_diff_mean[actu_key][itime, isubt] = np.mean(grf_y_diff)
+                    grf_z_diff_mean[actu_key][itime, isubt] = np.mean(grf_z_diff)
 
-                grf_x_diff_std[itime, isubt] = np.std(grf_x_diff)
-                grf_y_diff_std[itime, isubt] = np.std(grf_y_diff)
-                grf_z_diff_std[itime, isubt] = np.std(grf_z_diff)
+                    grf_x_diff_std[actu_key][itime, isubt] = np.std(grf_x_diff)
+                    grf_y_diff_std[actu_key][itime, isubt] = np.std(grf_y_diff)
+                    grf_z_diff_std[actu_key][itime, isubt] = np.std(grf_z_diff)
 
 
         grf_x_step = 0.01 # cm
@@ -5072,418 +5226,46 @@ class TaskPlotInstantaneousGroundReactions(osp.StudyTask):
         grf_x_lim = [0.0, 0.0]
         grf_y_lim = [0.0, 0.0]
         grf_z_lim = [0.0, 0.0]
-        update_lims(grf_x_diff_mean-grf_x_diff_std, grf_x_step, grf_x_lim, mirror=True)
-        update_lims(grf_x_diff_mean+grf_x_diff_std, grf_x_step, grf_x_lim, mirror=True)
-        update_lims(grf_y_diff_mean-grf_y_diff_std, grf_y_step, grf_y_lim)
-        update_lims(grf_y_diff_mean+grf_y_diff_std, grf_y_step, grf_y_lim)
-        update_lims(grf_z_diff_mean-grf_z_diff_std, grf_z_step, grf_z_lim)
-        update_lims(grf_z_diff_mean+grf_z_diff_std, grf_z_step, grf_z_lim)
-        handles = list()
-        for itime, time in enumerate(self.times):
-            zipped = zip(self.torques, self.subtalars, self.colors, self.shifts, self.hatches)
-            for isubt, (torque, subtalar, color, shift, hatch) in enumerate(zipped):
-
-                # Set the x-position for these bar chart entries.
-                x = itime + shift
-                lw = 0.2
-
-                plot_errorbar(axes[0], x, grf_x_diff_mean[itime, isubt], grf_x_diff_std[itime, isubt])
-                h = axes[0].bar(x, grf_x_diff_mean[itime, isubt], self.width, color=color, clip_on=False,
-                    hatch=hatch, edgecolor=self.edgecolor, lw=lw)
-                handles.append(h)
-                axes[0].set_ylabel(r'$\Delta$ fore-aft ground reaction $[BW]$')
-
-                plot_errorbar(axes[1], x, grf_y_diff_mean[itime, isubt], grf_y_diff_std[itime, isubt])
-                axes[1].bar(x, grf_y_diff_mean[itime, isubt], self.width, color=color, clip_on=False,
-                    hatch=hatch, edgecolor=self.edgecolor, lw=lw)
-                axes[1].set_ylabel(r'$\Delta$ vertical ground reaction $[BW]$')
-
-                plot_errorbar(axes[2], x, grf_z_diff_mean[itime, isubt], grf_z_diff_std[itime, isubt])
-                axes[2].bar(x, grf_z_diff_mean[itime, isubt], self.width, color=color, clip_on=False,
-                    hatch=hatch, edgecolor=self.edgecolor, lw=lw)
-                axes[2].set_ylabel(r'$\Delta$ medio-lateral ground reaction $[BW]$')
-
-        axes[0].set_ylim(grf_x_lim)
-        axes[0].set_yticks(get_ticks_from_lims(grf_x_lim, grf_x_step))
-        axes[0].legend(handles, self.legend_labels, loc='upper left', 
-            title='perturbation', frameon=True)
-        axes[1].set_ylim(grf_y_lim)
-        axes[1].set_yticks(get_ticks_from_lims(grf_y_lim, grf_y_step))
-        axes[2].set_ylim(grf_z_lim)
-        axes[2].set_yticks(get_ticks_from_lims(grf_z_lim, grf_z_step))
-
-        fig.tight_layout()
-        fig.savefig(target[0], dpi=600)
-        plt.close()
-
-
-class TaskPlotGroundReactionsVersusEffectiveForces(osp.StudyTask):
-    REGISTRY = []
-    def __init__(self, study, subjects, times, torque, rise, fall, subtalar, lumbar_stiffness=1.0):
-        super(TaskPlotGroundReactionsVersusEffectiveForces, self).__init__(study)
-        self.lumbar = ''
-        if not lumbar_stiffness == 1.0:
-            self.lumbar = f'_lumbar{lumbar_stiffness}'
-        self.subtalar = ''
-        if not subtalar == 0.0:
-            self.subtalar = f'_subtalar{subtalar}'
-
-        self.name = (f'plot_ground_reactions_versus_effective_forces_torque'
-                     f'{torque}_rise{rise}_fall{fall}{self.subtalar}{self.lumbar}')
-        self.results_path = os.path.join(study.config['results_path'], 
-            'experiments')
-        self.analysis_path = os.path.join(study.config['analysis_path'],
-            'ground_reactions_versus_effective_forces_instantaneous', 
-            f'torque{torque}_rise{rise}_fall{fall}{self.subtalar}{self.lumbar}')
-        if not os.path.exists(self.analysis_path): 
-            os.makedirs(self.analysis_path)
-
-        self.subjects = subjects
-        self.times = times
-        self.torque = torque
-        self.rise = rise
-        self.fall = fall
-        self.width = 0.25
-
-        deps = list()
-        self.models = list()
-        for isubj, subject in enumerate(subjects):
-            # Model
-            self.models.append(os.path.join(
-                self.study.config['results_path'], 
-                'unperturbed', subject, 'model_unperturbed.osim'))
-
-            # Unperturbed grfs
-            deps.append(os.path.join(self.study.config['results_path'], 
-                'unperturbed', subject, 'unperturbed_grfs.sto'))
-
-            # Unperturbed center-of-mass
-            deps.append(os.path.join(self.study.config['results_path'], 
-                'unperturbed', subject, 'center_of_mass_unperturbed.sto'))
-
-            for time in self.times:
-                label = (f'torque{self.torque}_time{time}'
-                         f'_rise{self.rise}_fall{self.fall}'
-                         f'{self.subtalar}{self.lumbar}')
-
-                # Perturbed grfs
-                deps.append(
-                    os.path.join(self.study.config['results_path'], 
-                        'perturbed', f'perturbed_{label}', subject, 
-                        f'perturbed_{label}_grfs.sto'))
-
-                # Perturbed center-of-mass
-                deps.append(
-                    os.path.join(self.study.config['results_path'], 
-                        'perturbed', f'perturbed_{label}', subject, 
-                        f'center_of_mass_perturbed_{label}.sto'))
-
-        targets = list()
-        for direc in ['AP', 'SI', 'ML']:
-            targets += [os.path.join(self.analysis_path, 
-                        f'instant_grfs_{direc}')]
-
-        self.add_action(deps, targets, 
-                        self.plot_instantaneous_ground_reactions)
-
-    def plot_instantaneous_ground_reactions(self, file_dep, target):
-
-        # Initialize figures
-        # ------------------
-        figs = list()
-        axes = list()
-        for direc in ['AP', 'SI', 'ML']:
-            fig = plt.figure(figsize=(4, 2.5))
-            ax = fig.add_subplot(1, 1, 1)
-            figs.append(fig)
-            axes.append(ax)
-
-        # Aggregate data
-        # --------------
-        numTimes = len(self.times)
-        import collections
-        grf_r_dict = collections.defaultdict(dict)
-        grf_l_dict = collections.defaultdict(dict)
-        com_dict = collections.defaultdict(dict)
-        grf_time_dict = dict()
-        com_time_dict = dict()
-        for isubj, subject in enumerate(self.subjects):
-            model = osim.Model(self.models[isubj])
-            state = model.initSystem()
-            mass = model.getTotalMass(state)
-            BW = abs(model.getGravity()[1]) * mass
-
-            index = isubj*2*(numTimes+1)
-
-            # Unperturbed GRFs
-            # ----------------
-            unpGRFTable = osim.TimeSeriesTable(file_dep[index])
-            unpGRFTimeVec = unpGRFTable.getIndependentColumn()
-            unpGRFTable_r_np = np.zeros((len(unpGRFTimeVec), 3))
-            unpGRFTable_l_np = np.zeros((len(unpGRFTimeVec), 3))
-
-            rgrfx = unpGRFTable.getDependentColumn('ground_force_r_vx').to_numpy() / BW
-            rgrfy = unpGRFTable.getDependentColumn('ground_force_r_vy').to_numpy() / BW
-            rgrfz = unpGRFTable.getDependentColumn('ground_force_r_vz').to_numpy() / BW
-            lgrfx = unpGRFTable.getDependentColumn('ground_force_l_vx').to_numpy() / BW
-            lgrfy = unpGRFTable.getDependentColumn('ground_force_l_vy').to_numpy() / BW
-            lgrfz = unpGRFTable.getDependentColumn('ground_force_l_vz').to_numpy() / BW
-
-            grf_time_dict[subject] = unpGRFTimeVec
-            unpGRFTable_r_np[:, 0] = rgrfx
-            unpGRFTable_r_np[:, 1] = rgrfy
-            unpGRFTable_r_np[:, 2] = rgrfz
-            unpGRFTable_l_np[:, 0] = lgrfx
-            unpGRFTable_l_np[:, 1] = lgrfy
-            unpGRFTable_l_np[:, 2] = lgrfz
-
-            # Unperturbed center-of-mass trajectories
-            # ---------------------------------------
-            unpCOMTable = osim.TimeSeriesTable(file_dep[index + 1])
-            unpCOMTimeVec = unpCOMTable.getIndependentColumn()
-            unpCOMTable_np = np.zeros((len(unpCOMTimeVec), 3))
-            unpCOMTable_np[:, 0] = unpCOMTable.getDependentColumn(
-                '/|com_acceleration_x').to_numpy()
-            unpCOMTable_np[:, 1] = unpCOMTable.getDependentColumn(
-                '/|com_acceleration_y').to_numpy()
-            unpCOMTable_np[:, 2] = unpCOMTable.getDependentColumn(
-                '/|com_acceleration_z').to_numpy()
-
-            unpCOMTable_np[:, 0] *= mass 
-            unpCOMTable_np[:, 1] *= mass 
-            unpCOMTable_np[:, 2] *= mass
-            unpCOMTable_np[:, 0] /= BW
-            unpCOMTable_np[:, 1] /= BW
-            unpCOMTable_np[:, 2] /= BW 
-
-            com_time_dict[subject] = unpCOMTimeVec
-
+        for actu in ['muscles', 'torques']:
+            update_lims(grf_x_diff_mean[actu]-grf_x_diff_std[actu], grf_x_step, grf_x_lim, mirror=True)
+            update_lims(grf_x_diff_mean[actu]+grf_x_diff_std[actu], grf_x_step, grf_x_lim, mirror=True)
+            update_lims(grf_y_diff_mean[actu]-grf_y_diff_std[actu], grf_y_step, grf_y_lim)
+            update_lims(grf_y_diff_mean[actu]+grf_y_diff_std[actu], grf_y_step, grf_y_lim)
+            update_lims(grf_z_diff_mean[actu]-grf_z_diff_std[actu], grf_z_step, grf_z_lim)
+            update_lims(grf_z_diff_mean[actu]+grf_z_diff_std[actu], grf_z_step, grf_z_lim)
+            handles = list()
             for itime, time in enumerate(self.times):
+                zipped = zip(self.torques, self.subtalars, self.colors, self.shifts, self.hatches)
+                for isubt, (torque, subtalar, color, shift, hatch) in enumerate(zipped):
 
-                label = (f'torque{self.torque}_time{time}'
-                         f'_rise{self.rise}_fall{self.fall}'
-                         f'{self.subtalar}{self.lumbar}')
+                    # Set the x-position for these bar chart entries.
+                    x = itime + shift
+                    lw = 0.1
 
-                # Perturbed GRFs
-                # ----------------
-                perturbGRFTable = osim.TimeSeriesTable(file_dep[index + 2 + 2*itime])
-                perturbGRFTimeVec = perturbGRFTable.getIndependentColumn()
-                perturbGRFTable_r_np = np.zeros((len(perturbGRFTimeVec), 3))
-                perturbGRFTable_l_np = np.zeros((len(perturbGRFTimeVec), 3))
+                    plot_errorbar(axes[actu][0], x, grf_x_diff_mean[actu][itime, isubt], grf_x_diff_std[actu][itime, isubt])
+                    h = axes[actu][0].bar(x, grf_x_diff_mean[actu][itime, isubt], self.width, color=color, clip_on=False,
+                        hatch=hatch, edgecolor=self.edgecolor, lw=lw)
+                    handles.append(h)
+                    axes[actu][0].set_ylabel(r'$\Delta$ fore-aft ground reaction $[BW]$')
 
-                rgrfx = perturbGRFTable.getDependentColumn('ground_force_r_vx').to_numpy() / BW
-                rgrfy = perturbGRFTable.getDependentColumn('ground_force_r_vy').to_numpy() / BW
-                rgrfz = perturbGRFTable.getDependentColumn('ground_force_r_vz').to_numpy() / BW
-                lgrfx = perturbGRFTable.getDependentColumn('ground_force_l_vx').to_numpy() / BW
-                lgrfy = perturbGRFTable.getDependentColumn('ground_force_l_vy').to_numpy() / BW
-                lgrfz = perturbGRFTable.getDependentColumn('ground_force_l_vz').to_numpy() / BW
+                    plot_errorbar(axes[actu][1], x, grf_y_diff_mean[actu][itime, isubt], grf_y_diff_std[actu][itime, isubt])
+                    axes[actu][1].bar(x, grf_y_diff_mean[actu][itime, isubt], self.width, color=color, clip_on=False,
+                        hatch=hatch, edgecolor=self.edgecolor, lw=lw)
+                    axes[actu][1].set_ylabel(r'$\Delta$ vertical ground reaction $[BW]$')
 
-                perturbGRFTable_r_np[:, 0] = rgrfx
-                perturbGRFTable_r_np[:, 1] = rgrfy
-                perturbGRFTable_r_np[:, 2] = rgrfz
-                perturbGRFTable_l_np[:, 0] = lgrfx
-                perturbGRFTable_l_np[:, 1] = lgrfy
-                perturbGRFTable_l_np[:, 2] = lgrfz
+                    plot_errorbar(axes[actu][2], x, grf_z_diff_mean[actu][itime, isubt], grf_z_diff_std[actu][itime, isubt])
+                    axes[actu][2].bar(x, grf_z_diff_mean[actu][itime, isubt], self.width, color=color, clip_on=False,
+                        hatch=hatch, edgecolor=self.edgecolor, lw=lw)
+                    axes[actu][2].set_ylabel(r'$\Delta$ medio-lateral ground reaction $[BW]$')
 
-                grf_r_dict[subject][label] = perturbGRFTable_r_np - unpGRFTable_r_np[0:len(perturbGRFTimeVec), :]
-                grf_l_dict[subject][label] = perturbGRFTable_l_np - unpGRFTable_l_np[0:len(perturbGRFTimeVec), :]
-
-                # Perturbed center-of-mass trajectories
-                # -------------------------------------
-                perturbCOMTable = osim.TimeSeriesTable(file_dep[index + 2 + 2*itime + 1])
-                perturbCOMTimeVec = perturbCOMTable.getIndependentColumn()
-                perturbCOMTable_np = np.zeros((len(perturbCOMTimeVec), 3))
-                perturbCOMTable_np[:, 0] = perturbCOMTable.getDependentColumn(
-                    '/|com_acceleration_x').to_numpy()
-                perturbCOMTable_np[:, 1] = perturbCOMTable.getDependentColumn(
-                    '/|com_acceleration_y').to_numpy()
-                perturbCOMTable_np[:, 2] = perturbCOMTable.getDependentColumn(
-                    '/|com_acceleration_z').to_numpy()
-
-                perturbCOMTable_np[:, 0] *= mass 
-                perturbCOMTable_np[:, 1] *= mass 
-                perturbCOMTable_np[:, 2] *= mass
-                perturbCOMTable_np[:, 0] /= BW
-                perturbCOMTable_np[:, 1] /= BW
-                perturbCOMTable_np[:, 2] /= BW 
-
-                com_dict[subject][label] = perturbCOMTable_np - unpCOMTable_np[0:len(perturbCOMTimeVec), :]
-
-        # Plotting
-        # --------
-        grfr_x_diff = np.zeros(len(self.subjects))
-        grfr_y_diff = np.zeros(len(self.subjects))
-        grfr_z_diff = np.zeros(len(self.subjects))
-        grfr_x_diff_mean = np.zeros(len(self.times))
-        grfr_y_diff_mean = np.zeros(len(self.times))
-        grfr_z_diff_mean = np.zeros(len(self.times))
-        grfr_x_diff_std = np.zeros(len(self.times))
-        grfr_y_diff_std = np.zeros(len(self.times))
-        grfr_z_diff_std = np.zeros(len(self.times))
-        grfl_x_diff = np.zeros(len(self.subjects))
-        grfl_y_diff = np.zeros(len(self.subjects))
-        grfl_z_diff = np.zeros(len(self.subjects))
-        grfl_x_diff_mean = np.zeros(len(self.times))
-        grfl_y_diff_mean = np.zeros(len(self.times))
-        grfl_z_diff_mean = np.zeros(len(self.times))
-        grfl_x_diff_std = np.zeros(len(self.times))
-        grfl_y_diff_std = np.zeros(len(self.times))
-        grfl_z_diff_std = np.zeros(len(self.times))
-        com_x_diff = np.zeros(len(self.subjects))
-        com_y_diff = np.zeros(len(self.subjects))
-        com_z_diff = np.zeros(len(self.subjects))
-        com_x_diff_mean = np.zeros(len(self.times))
-        com_y_diff_mean = np.zeros(len(self.times))
-        com_z_diff_mean = np.zeros(len(self.times))
-        com_x_diff_std = np.zeros(len(self.times))
-        com_y_diff_std = np.zeros(len(self.times))
-        com_z_diff_std = np.zeros(len(self.times))
-        for itime, time in enumerate(self.times): 
-            label = (f'torque{self.torque}_time{time}'
-                     f'_rise{self.rise}_fall{self.fall}'
-                     f'{self.subtalar}{self.lumbar}')
-            for isubj, subject in enumerate(self.subjects):
-                grfr = grf_r_dict[subject][label]
-                grfl = grf_l_dict[subject][label]
-
-                # Compute the closet time index to the current peak 
-                # perturbation time. 
-                #
-                # TODO: A given peak perturbation time (e.g 50% of the 
-                # gait cycle) may not lie exactly on a time point of 
-                # from the simulation. The interval between time points
-                # is 5ms, meaning that the time index could be up to 2.5ms
-                # away from the actual perturbation peak time. 
-                timeVec = np.array(grf_time_dict[subject])
-                duration = timeVec[-1] - timeVec[0]
-                time_at_peak = timeVec[0] + (duration * (time / 100.0))
-                index = np.argmin(np.abs(timeVec - time_at_peak))
-
-                grfr_x_diff[isubj] = grfr[index, 0]
-                grfr_y_diff[isubj] = grfr[index, 1]
-                grfr_z_diff[isubj] = grfr[index, 2]
-                grfl_x_diff[isubj] = grfl[index, 0]
-                grfl_y_diff[isubj] = grfl[index, 1]
-                grfl_z_diff[isubj] = grfl[index, 2]
-
-                com = com_dict[subject][label]
-                timeVec = np.array(com_time_dict[subject])
-                duration = timeVec[-1] - timeVec[0]
-                time_at_peak = timeVec[0] + (duration * (time / 100.0))
-                index = np.argmin(np.abs(timeVec - time_at_peak))
-
-                com_x_diff[isubj] = com[index, 0]
-                com_y_diff[isubj] = com[index, 1]
-                com_z_diff[isubj] = com[index, 2]
-
-            grfr_x_diff_mean[itime] = np.mean(grfr_x_diff)
-            grfr_y_diff_mean[itime] = np.mean(grfr_y_diff)
-            grfr_z_diff_mean[itime] = np.mean(grfr_z_diff)
-
-            grfr_x_diff_std[itime] = np.std(grfr_x_diff)
-            grfr_y_diff_std[itime] = np.std(grfr_y_diff)
-            grfr_z_diff_std[itime] = np.std(grfr_z_diff)
-
-            grfl_x_diff_mean[itime] = np.mean(grfl_x_diff)
-            grfl_y_diff_mean[itime] = np.mean(grfl_y_diff)
-            grfl_z_diff_mean[itime] = np.mean(grfl_z_diff)
-
-            grfl_x_diff_std[itime] = np.std(grfl_x_diff)
-            grfl_y_diff_std[itime] = np.std(grfl_y_diff)
-            grfl_z_diff_std[itime] = np.std(grfl_z_diff)
-
-            com_x_diff_mean[itime] = np.mean(com_x_diff)
-            com_y_diff_mean[itime] = np.mean(com_y_diff)
-            com_z_diff_mean[itime] = np.mean(com_z_diff)
-
-            com_x_diff_std[itime] = np.std(com_x_diff)
-            com_y_diff_std[itime] = np.std(com_y_diff)
-            com_z_diff_std[itime] = np.std(com_z_diff)
-
-
-        x_step = 0.05
-        y_step = 0.1
-        z_step = 0.01
-        x_lim = [0.0, 0.0]
-        y_lim = [0.0, 0.0]
-        z_lim = [0.0, 0.0]
-        update_lims(grfr_x_diff_mean-grfr_x_diff_std, x_step, x_lim)
-        update_lims(grfr_x_diff_mean+grfr_x_diff_std, x_step, x_lim)
-        update_lims(grfr_y_diff_mean-grfr_y_diff_std, y_step, y_lim)
-        update_lims(grfr_y_diff_mean+grfr_y_diff_std, y_step, y_lim)
-        update_lims(grfr_z_diff_mean-grfr_z_diff_std, z_step, z_lim)
-        update_lims(grfr_z_diff_mean+grfr_z_diff_std, z_step, z_lim)
-        update_lims(grfl_x_diff_mean-grfl_x_diff_std, x_step, x_lim)
-        update_lims(grfl_x_diff_mean+grfl_x_diff_std, x_step, x_lim)
-        update_lims(grfl_y_diff_mean-grfl_y_diff_std, y_step, y_lim)
-        update_lims(grfl_y_diff_mean+grfl_y_diff_std, y_step, y_lim)
-        update_lims(grfl_z_diff_mean-grfl_z_diff_std, z_step, z_lim)
-        update_lims(grfl_z_diff_mean+grfl_z_diff_std, z_step, z_lim)
-        update_lims(com_x_diff_mean-com_x_diff_std, x_step, x_lim)
-        update_lims(com_x_diff_mean+com_x_diff_std, x_step, x_lim)
-        update_lims(com_y_diff_mean-com_y_diff_std, y_step, y_lim)
-        update_lims(com_y_diff_mean+com_y_diff_std, y_step, y_lim)
-        update_lims(com_z_diff_mean-com_z_diff_std, z_step, z_lim)
-        update_lims(com_z_diff_mean+com_z_diff_std, z_step, z_lim)
-        for itime, time in enumerate(self.times):
-
-            grf_color = 'orange'
-            igrf = itime - self.width
-            plot_errorbar(axes[0], igrf, grfr_x_diff_mean[itime], grfr_x_diff_std[itime], grf_color)
-            h_grfrx = axes[0].bar(igrf, grfr_x_diff_mean[itime], self.width, color=grf_color, clip_on=False)
-            axes[0].set_ylabel(r'$\Delta$ fore-aft force $[BW]$')
-
-            plot_errorbar(axes[1], igrf, grfr_y_diff_mean[itime], grfr_y_diff_std[itime], grf_color)
-            h_grfry = axes[1].bar(igrf, grfr_y_diff_mean[itime], self.width, color=grf_color, clip_on=False)
-            axes[1].set_ylabel(r'$\Delta$ vertical force $[BW]$')
-
-            plot_errorbar(axes[2], igrf, grfr_z_diff_mean[itime], grfr_z_diff_std[itime], grf_color)
-            h_grfrz = axes[2].bar(igrf, grfr_z_diff_mean[itime], self.width, color=grf_color, clip_on=False)
-            axes[2].set_ylabel(r'$\Delta$ medio-lateral force $[BW]$')
-
-            grf_color = 'blue'
-            igrf = itime
-            h_grflx = plot_errorbar(axes[0], igrf, grfl_x_diff_mean[itime], grfl_x_diff_std[itime], grf_color)
-            axes[0].bar(igrf, grfl_x_diff_mean[itime], self.width, color=grf_color, clip_on=False)
-
-            h_grfly = plot_errorbar(axes[1], igrf, grfl_y_diff_mean[itime], grfl_y_diff_std[itime], grf_color)
-            axes[1].bar(igrf, grfl_y_diff_mean[itime], self.width, color=grf_color, clip_on=False)
-
-            h_grflz = plot_errorbar(axes[2], igrf, grfl_z_diff_mean[itime], grfl_z_diff_std[itime], grf_color)
-            axes[2].bar(igrf, grfl_z_diff_mean[itime], self.width, color=grf_color, clip_on=False)
-
-            com_color = 'green'
-            icom = itime + self.width
-            h_comx = plot_errorbar(axes[0], icom, com_x_diff_mean[itime], com_x_diff_std[itime], com_color)
-            axes[0].bar(icom, com_x_diff_mean[itime], self.width, color=com_color, clip_on=False)
-
-            h_comy = plot_errorbar(axes[1], icom, com_y_diff_mean[itime], com_y_diff_std[itime], com_color)
-            axes[1].bar(icom, com_y_diff_mean[itime], self.width, color=com_color, clip_on=False)
-
-            h_comz = plot_errorbar(axes[2], icom, com_z_diff_mean[itime], com_z_diff_std[itime], com_color)
-            axes[2].bar(icom, com_z_diff_mean[itime], self.width, color=com_color, clip_on=False)
-
-        labels = ['right GRF', 'left GRF', 'COM accel']
-        axes[0].set_ylim(x_lim)
-        axes[0].set_yticks(get_ticks_from_lims(x_lim, x_step))
-        # axes[0].legend([h_grfrx, h_grflx, h_comx], labels)
-        axes[1].set_ylim(y_lim)
-        axes[1].set_yticks(get_ticks_from_lims(y_lim, y_step))
-        # axes[1].legend([h_grfry, h_grfly, h_comy], labels)
-        axes[2].set_ylim(z_lim)
-        axes[2].set_yticks(get_ticks_from_lims(z_lim, z_step))
-        # axes[2].legend([h_grfrz, h_grflz, h_comz], labels)
-
-        for ax in axes:
-            ax.axhline(y=0, color='black', linestyle='-',
-                    linewidth=0.1, alpha=1.0, zorder=-1)
-            ax.spines['bottom'].set_position(('outward', 10))
-            ax.spines['left'].set_position(('outward', 25))
-            ax.set_xticks(np.arange(len(self.times)))
-            ax.set_xlim(0, len(self.times)-1)
-            ax.set_xticklabels([f'{time}' for time in self.times])
-            ax.set_xlabel('peak perturbation time\n(% gait cycle)')
-            util.publication_spines(ax)
+            axes[actu][0].set_ylim(grf_x_lim)
+            axes[actu][0].set_yticks(get_ticks_from_lims(grf_x_lim, grf_x_step))
+            axes[actu][0].legend(handles, self.legend_labels, loc='upper left', 
+                title='perturbation', frameon=True)
+            axes[actu][1].set_ylim(grf_y_lim)
+            axes[actu][1].set_yticks(get_ticks_from_lims(grf_y_lim, grf_y_step))
+            axes[actu][2].set_ylim(grf_z_lim)
+            axes[actu][2].set_yticks(get_ticks_from_lims(grf_z_lim, grf_z_step))
 
         for ifig, fig in enumerate(figs):
             fig.tight_layout()
@@ -5743,200 +5525,3 @@ class TaskPlotGroundReactionBreakdown(osp.StudyTask):
         fig2.savefig(target[2], dpi=600)
         plt.close()
 
-
-class TaskPlotBodyAccelerations(osp.StudyTask):
-    REGISTRY = []
-    def __init__(self, study, subjects, time, rise, fall):
-        super(TaskPlotBodyAccelerations, self).__init__(study)
-        self.name = f'plot_body_accelerations_time{time}_rise{rise}_fall{fall}'
-        self.results_path = os.path.join(study.config['results_path'], 
-            'experiments')
-        self.analysis_path = os.path.join(study.config['analysis_path'],
-            'body_accelerations',  f'time{time}_rise{rise}_fall{fall}')
-        if not os.path.exists(self.analysis_path): 
-            os.makedirs(self.analysis_path)
-        self.subjects = subjects
-        self.time = time
-        self.rise = rise
-        self.fall = fall
-        self.torques = study.plot_torques
-        self.subtalars = study.plot_subtalars
-        self.colors = study.plot_colors
-        self.bodies = ['toes_r', 'talus_r', 'calcn_r', 'tibia_r', 'femur_r', 'pelvis', 'torso']
-        self.body_names = ['toes', 'talus', 'calcaneus', 'shank', 'thigh', 'pelvis', 'torso']
-
-
-        self.hatches = [None, None, None, None, None]
-        self.edgecolor = 'black'
-        self.width = 0.12
-        N = len(self.subtalars)
-        min_width = -self.width*((N-1)/2)
-        max_width = -min_width
-        self.shifts = np.linspace(min_width, max_width, N)
-        self.legend_labels = ['eversion', 
-                              'plantarflexion + eversion', 
-                              'plantarflexion', 
-                              'plantarflexion + inversion', 
-                              'inversion']
-        self.labels = list()
-        self.times_list = list()
-
-        self.labels.append('unperturbed')
-        self.times_list.append(100)
-        deps = list()
-
-        for isubj, subject in enumerate(subjects):
-            # Unperturbed solution
-            deps.append(
-                os.path.join(
-                    self.study.config['results_path'], 
-                    'unperturbed', subject,
-                    'center_of_mass_unperturbed.sto'))
-
-            # Perturbed solutions
-            for torque, subtalar in zip(self.torques, self.subtalars):
-                label = (f'perturbed_torque{torque}_time{self.time}'
-                        f'_rise{self.rise}_fall{self.fall}{subtalar}')
-                deps.append(
-                    os.path.join(
-                        self.study.config['results_path'], 
-                        'perturbed', label, subject,
-                        f'center_of_mass_{label}.sto')
-                    )
-
-                if not isubj:
-                    self.labels.append(
-                        (f'torque{torque}_time{self.time}'
-                         f'_rise{self.rise}_fall{self.fall}{subtalar}'))
-                    self.times_list.append(self.time)
-
-        self.add_action(deps, 
-            [os.path.join(self.analysis_path, 'body_accelerations.png')], 
-            self.plot_body_accelerations)
-
-    def plot_body_accelerations(self, file_dep, target):
-
-        # Initialize figures
-        # ------------------
-        figs = list()
-        axes = list()
-        scale = 1.4
-        fig = plt.figure(figsize=(4*scale, 3*scale))
-        ax = fig.add_subplot(1, 1, 1)
-
-        ax.axvline(x=0, color='gray', linestyle='-',
-                linewidth=0.5, alpha=0.75, zorder=-1)
-        ax.set_yticks(np.arange(len(self.bodies)))
-        ax.set_ylim(0, len(self.bodies)-1)
-        util.publication_spines(ax)
-
-        ax.spines['left'].set_position(('outward', 10))
-        ax.set_yticklabels([f'{body}' for body in self.body_names])
-        # ax.set_ylabel(r'body')
-
-        ax.spines['bottom'].set_position(('outward', 30))
-        # ax.xaxis.set_minor_locator(AutoMinorLocator(2))
-        # ax.tick_params(which='minor', axis='x', direction='in')
-
-        axes.append(ax)
-        figs.append(fig)
-
-        # Aggregate data
-        # --------------
-        numLabels = len(self.labels)
-        import collections
-        com_dict = collections.defaultdict(dict)
-        time_dict = dict()
-        for isubj, subject in enumerate(self.subjects):
-            # Unperturbed center-of-mass trajectories
-            unpTable = osim.TimeSeriesTable(file_dep[isubj*numLabels])
-            unpTimeVec = unpTable.getIndependentColumn()
-            unpTable_np = np.zeros((len(unpTimeVec), len(self.bodies)))
-
-            for ibody, body in enumerate(self.bodies):
-                unpTable_np[:, ibody] = unpTable.getDependentColumn(
-                    f'/bodyset/{body}|linear_acceleration_z').to_numpy() 
-
-            time_dict[subject] = unpTimeVec
-
-            for ilabel, label in enumerate(self.labels):
-                # Perturbed center-of-mass trajectories
-                table = osim.TimeSeriesTable(file_dep[ilabel + isubj*numLabels])
-                timeVec = table.getIndependentColumn()
-                N = len(timeVec)
-                table_np = np.zeros((N, len(self.bodies)))
-
-                for ibody, body in enumerate(self.bodies):
-                    table_np[:, ibody] = table.getDependentColumn(
-                        f'/bodyset/{body}|linear_acceleration_z').to_numpy() 
-
-                # Compute difference between perturbed and unperturbed
-                # trajectories for this subject. We don't need to interpolate
-                # here since the perturbed and unperturbed trajectories contain
-                # the same time points (up until the end of the perturbation).
-                com_dict[subject][label] = table_np - unpTable_np[0:N, :]
-
-        # Plotting
-        # --------
-        body_acc_diff = np.zeros((len(self.bodies), len(self.subjects)))
-        body_acc_diff_mean = np.zeros((len(self.bodies), len(self.subtalars)))
-        body_acc_diff_std = np.zeros((len(self.bodies), len(self.subtalars)))
-        zipped = zip(self.torques, self.subtalars, self.colors, self.shifts)
-        for isubt, (torque, subtalar, color, shift) in enumerate(zipped):
-
-            label = (f'torque{torque}_time{self.time}'
-                     f'_rise{self.rise}_fall{self.fall}{subtalar}')
-            for isubj, subject in enumerate(self.subjects):
-                body_acc = com_dict[subject][label]
-
-                # Compute the closet time index to the current peak 
-                # perturbation time. 
-                #
-                # TODO: A given peak perturbation time (e.g 50% of the 
-                # gait cycle) may not lie exactly on a time point of 
-                # from the simulation. The interval between time points
-                # is 5ms, meaning that the time index could be up to 2.5ms
-                # away from the actual perturbation peak time. 
-                timeVec = np.array(time_dict[subject])
-                duration = timeVec[-1] - timeVec[0]
-                time_at_peak = timeVec[0] + (duration * (self.time / 100.0))
-                index = np.argmin(np.abs(timeVec - time_at_peak))
-
-                for ibody, body in enumerate(self.bodies):
-                    body_acc_diff[ibody, isubj] = body_acc[index, ibody]
-
-
-            for ibody, body in enumerate(self.bodies):
-                body_acc_diff_mean[ibody, isubt] = np.mean(body_acc_diff[ibody, :])
-                body_acc_diff_std[ibody, isubt] = np.std(body_acc_diff[ibody, :])
-
-        body_acc_step = 0.5
-        body_acc_lim = [0.0, 0.0]
-        update_lims(body_acc_diff_mean-body_acc_diff_std, body_acc_step, body_acc_lim, mirror=False)       
-        update_lims(body_acc_diff_mean+body_acc_diff_std, body_acc_step, body_acc_lim, mirror=False)
-        handles = list()
-        for ibody, body in enumerate(self.bodies):
-            zipped = zip(self.torques, self.subtalars, self.colors, self.shifts, self.hatches)
-            for isubt, (torque, subtalar, color, shift, hatch) in enumerate(zipped):
-
-                # Set the x-position for these bar chart entries.
-                y = ibody + shift
-                lw = 0.1
-
-                # Medio-lateral body accelerations
-                # --------------------------------
-                plot_errorbarh(axes[0], y, body_acc_diff_mean[ibody, isubt], body_acc_diff_std[ibody, isubt])
-                h = axes[0].barh(y, body_acc_diff_mean[ibody, isubt], self.width, color=color, clip_on=False, 
-                    hatch=hatch, edgecolor=self.edgecolor, lw=lw)
-                handles.append(h)
-                
-
-        axes[0].set_xlabel(r'$\Delta$' + ' medio-lateral acceleration $[m/s^2]$')
-        axes[0].set_xlim(body_acc_lim)
-        axes[0].set_xticks(get_ticks_from_lims(body_acc_lim, body_acc_step))
-        axes[0].legend(handles, self.legend_labels, loc='upper right', 
-            title='perturbation', frameon=True)
-   
-        fig.tight_layout()
-        fig.savefig(target[0], dpi=600)
-        plt.close()

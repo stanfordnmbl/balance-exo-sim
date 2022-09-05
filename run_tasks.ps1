@@ -9,9 +9,9 @@
 
 # Model scaling
 # -------------
-doit subject*_scale_setup
-doit subject*_scale
-doit subject*_scale_max_force
+# doit subject*_scale_setup
+# doit subject*_scale
+# doit subject*_scale_max_force
 
 # Inverse kinematics and inverse dynamics
 # ---------------------------------------   
@@ -23,52 +23,38 @@ doit subject*_scale_max_force
 # doit subject*_walk2_joint_angle_standard_deviations
 # doit subject*_walk2_trim_tracking_data
 
-# Sensitivity analysis
-# --------------------
-# doit subject01_moco_sensitivity_tol1000.0
-# doit subject01_moco_sensitivity_tol100.0
-# doit subject01_moco_sensitivity_tol10.0
-# doit subject01_moco_sensitivity_tol1.0
-# doit subject01_moco_sensitivity_tol0.1
-# doit subject01_moco_sensitivity_tol0.01
-# doit subject01_moco_sensitivity_tol0.001
-# doit subject01_moco_sensitivity_tol0.0001
-
-# doit subject02_moco_sensitivity*
-# doit subject04_moco_sensitivity*
-# doit subject18_moco_sensitivity*
-# doit subject19_moco_sensitivity*
-
 # Generate results
 # ----------------
-# doit subject01_moco_unperturbed_guess_mesh0.05_scale0.001_reserve1000
-# doit subject01_moco_unperturbed_guess_mesh0.04_scale0.1_reserve100
+# doit subject01_moco_unperturbed_guess_mesh0.04_scale0.1_reserve200
+# doit subject01_moco_unperturbed_guess_mesh0.03_scale0.5_reserve20_periodic
 # doit subject01_moco_unperturbed_guess_mesh0.02_scale1.0_reserve0_periodic
 doit subject01_moco_unperturbed
-# doit subject01_moco_perturbed*
+doit subject01_moco_perturbed*
 
-# doit subject02_moco_unperturbed_guess_mesh0.05_scale0.001_reserve1000
-# doit subject02_moco_unperturbed_guess_mesh0.04_scale0.1_reserve100
+# doit subject02_moco_unperturbed_guess_mesh0.04_scale0.1_reserve200
+# doit subject02_moco_unperturbed_guess_mesh0.03_scale0.5_reserve20_periodic
 # doit subject02_moco_unperturbed_guess_mesh0.02_scale1.0_reserve0_periodic
-# doit subject02_moco_unperturbed
-# doit subject02_moco_perturbed*
+doit subject02_moco_unperturbed
+doit subject02_moco_perturbed*
 
-# doit subject04_moco_unperturbed_guess_mesh0.05_scale0.001_reserve1000
-# doit subject04_moco_unperturbed_guess_mesh0.04_scale0.1_reserve100
+# doit subject04_moco_unperturbed_guess_mesh0.04_scale0.1_reserve200
+# doit subject04_moco_unperturbed_guess_mesh0.03_scale0.5_reserve20_periodic
 # doit subject04_moco_unperturbed_guess_mesh0.02_scale1.0_reserve0_periodic
-# doit subject04_moco_unperturbed
-# doit subject04_moco_perturbed*
+doit subject04_moco_unperturbed
+doit subject04_moco_perturbed*
 
-# doit subject18_moco_unperturbed_guess_mesh0.05_scale0.1_reserve1000
-# doit subject18_moco_unperturbed_guess_mesh0.04_scale1.0_reserve100
-# doit subject18_moco_unperturbed_guess_mesh0.02_scale1.0_reserve0_periodic
-# doit subject18_moco_unperturbed
-# doit subject18_moco_perturbed*
+# doit subject18_moco_unperturbed_guess_mesh0.04_scale0.1_reserve200
+# doit subject18_moco_unperturbed_guess_mesh0.03_scale0.5_reserve20_periodic
+doit subject18_moco_unperturbed_guess_mesh0.02_scale1.0_reserve0_periodic
+doit subject18_moco_unperturbed
+doit subject18_moco_perturbed*
 
-# doit subject19_moco_unperturbed_guess_mesh0.05_scale0.001_reserve1000
-# doit subject19_moco_unperturbed_guess_mesh0.04_scale0.1_reserve100
+# doit subject19_moco_unperturbed_guess_mesh0.04_scale0.1_reserve200
+# doit subject19_moco_unperturbed_guess_mesh0.03_scale0.5_reserve20_periodic
 # doit subject19_moco_unperturbed_guess_mesh0.02_scale1.0_reserve0_periodic
-# doit subject19_moco_unperturbed
-# doit subject19_moco_perturbed*
+doit subject19_moco_unperturbed
+doit subject19_moco_perturbed*
 
-# doit plot_unperturbed_results
+doit plot_unperturbed_results
+
+
