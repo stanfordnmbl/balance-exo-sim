@@ -872,7 +872,9 @@ class TaskPlotUnperturbedResults(osp.StudyTask):
 
         self.add_action(unperturbed_fpaths, 
                         [os.path.join(self.validate_path, 
-                            f'{self.config_name}_step_widths.png')], 
+                            f'{self.config_name}_step_widths.png'),
+                         os.path.join(self.validate_path, 
+                            f'{self.config_name}_step_widths.txt')], 
                         self.plot_unperturbed_step_widths)
 
         self.add_action(unperturbed_fpaths, 
@@ -885,17 +887,25 @@ class TaskPlotUnperturbedResults(osp.StudyTask):
         numSubjects = len(self.subjects)
         N = 100
         pgc = np.linspace(0, 100, N)
-        labels = ['hip flexion', 'hip adduction', 'knee flexion', 'ankle dorsiflexion', 
-                  'subtalar inversion', 'toe dorsiflexion']
-        coordinates = ['hip_flexion', 'hip_adduction', 'knee_angle', 'ankle_angle',
-                       'subtalar_angle', 'mtp_angle']
-        joints = ['hip', 'hip', 'walker_knee', 'ankle', 'subtalar', 'mtp']
-        bounds = [[-20, 40],
-                  [-20, 10],
+        labels = ['hip flexion', 'hip adduction', 'hip rotation', 'knee flexion', 
+                  'ankle dorsiflexion', 'subtalar inversion', 'toe extension']
+        coordinates = ['hip_flexion', 'hip_adduction', 'hip_rotation', 'knee_angle', 
+                       'ankle_angle', 'subtalar_angle', 'mtp_angle']
+        joints = ['hip', 'hip', 'hip', 'walker_knee', 'ankle', 'subtalar', 'mtp']
+        bounds = [[-40, 40],
+                  [-15, 10],
+                  [-15, 10],
                   [0, 80],
-                  [-20, 30],
-                  [-10, 20],
-                  [0, 30]]
+                  [-20, 20],
+                  [-10, 10],
+                  [0, 40]]
+        yticks = [[-40, -30, -20, -10, 0, 10, 20, 30, 40],
+                  [-15, -10, -5, 0, 5, 10],
+                  [-15, -10, -5, 0, 5, 10],
+                  [0, 20, 40, 60, 80],
+                  [-20, -10, 0, 10, 20],
+                  [-10, -5, 0, 5, 10],
+                  [0, 10, 20, 30, 40]]
         unperturbed_dict = dict()
         experiment_dict = dict()
         for ic, coord in enumerate(coordinates):
@@ -927,7 +937,7 @@ class TaskPlotUnperturbedResults(osp.StudyTask):
                         etime_interp, etime[istart:iend+1], experiment_col)
 
         import matplotlib.gridspec as gridspec
-        fig = plt.figure(figsize=(5, 12))
+        fig = plt.figure(figsize=(6, 10))
         gs = gridspec.GridSpec(len(coordinates), 2)
         for ic, coord in enumerate(coordinates):
             for iside, side in enumerate(['l','r']):
@@ -938,14 +948,17 @@ class TaskPlotUnperturbedResults(osp.StudyTask):
                 unp_mean = np.mean(unperturbed_dict[key], axis=1)
                 unp_std = np.std(unperturbed_dict[key], axis=1)
 
-                h_exp, = ax.plot(pgc, exp_mean, color=self.exp_color, lw=2.5)
-                ax.fill_between(pgc, exp_mean + exp_std, exp_mean - exp_std, color=self.exp_color,
-                    alpha=0.3, linewidth=0.0, edgecolor='none')
+                if (not 'subtalar' in coord) and (not 'mtp' in coord):
+                    h_exp, = ax.plot(pgc, exp_mean, color=self.exp_color, lw=2.5)
+                    ax.fill_between(pgc, exp_mean + exp_std, exp_mean - exp_std, color=self.exp_color,
+                        alpha=0.3, linewidth=0.0, edgecolor='none')
                 h_unp, = ax.plot(pgc, unp_mean, color=self.unp_color, lw=2)
                 ax.fill_between(pgc, unp_mean + unp_std, unp_mean - unp_std, color=self.unp_color,
                     alpha=0.3, linewidth=0.0, edgecolor='none')
-                # ax.axhline(y=0, color='black', alpha=0.4, linestyle='--', zorder=0, lw=0.75)
+                if (not 'knee' in coord) and (not 'mtp' in coord):
+                    ax.axhline(y=0, color='black', linestyle='-', zorder=0, lw=0.5)
                 ax.set_ylim(bounds[ic][0], bounds[ic][1])
+                ax.set_yticks(yticks[ic])
                 ax.set_xlim(0, 100)
                 ax.grid(color='black', zorder=0, alpha=0.2, lw=0.5, ls='--', clip_on=False)
                 util.publication_spines(ax)
@@ -955,7 +968,7 @@ class TaskPlotUnperturbedResults(osp.StudyTask):
                         fancybox=False, frameon=True)
 
                 if ic == len(coordinates)-1:
-                    ax.set_xlabel('time (% gait cycle)')
+                    ax.set_xlabel('time [% gait cycle]')
                     ax.spines['bottom'].set_position(('outward', 10))
                 else:
                     ax.spines['bottom'].set_visible(False)
@@ -965,7 +978,7 @@ class TaskPlotUnperturbedResults(osp.StudyTask):
 
                 if not iside:
                     ax.spines['left'].set_position(('outward', 10))
-                    ax.set_ylabel(f'{labels[ic]} (deg)')
+                    ax.set_ylabel(f'{labels[ic]} ' + r'$[^\circ]$')
                 else:
                     ax.spines['left'].set_visible(False)
                     ax.set_yticklabels([])
@@ -988,7 +1001,7 @@ class TaskPlotUnperturbedResults(osp.StudyTask):
         pgc = np.linspace(0, 100, N)
         labels = ['anterior-posterior', 'vertical', 'medio-lateral']
         forces = ['vx', 'vy', 'vz']
-        bounds = [[-0.2, 0.2],
+        bounds = [[-0.25, 0.25],
                   [0, 1.25],
                   [-0.1, 0.1]]
         tick_intervals = [0.1, 0.25, 0.05]
@@ -1041,7 +1054,8 @@ class TaskPlotUnperturbedResults(osp.StudyTask):
                 h_unp, = ax.plot(pgc, unp_mean, color=self.unp_color, lw=2)
                 ax.fill_between(pgc, unp_mean + unp_std, unp_mean - unp_std, color=self.unp_color,
                     alpha=0.3, linewidth=0.0, edgecolor='none')
-                # ax.axhline(y=0, color='black', alpha=0.4, linestyle='--', zorder=0, lw=0.75)
+                if not 'vy' in force:
+                    ax.axhline(y=0, color='black', linestyle='-', zorder=0, lw=0.5)
                 ax.set_ylim(bounds[iforce][0], bounds[iforce][1])
                 ax.set_yticks(np.linspace(bounds[iforce][0], bounds[iforce][1], 
                     int((bounds[iforce][1] - bounds[iforce][0]) / tick_intervals[iforce]) + 1))
@@ -1064,7 +1078,7 @@ class TaskPlotUnperturbedResults(osp.StudyTask):
 
                 if not iside:
                     ax.spines['left'].set_position(('outward', 10))
-                    ax.set_ylabel(f'{labels[iforce]} (BW)')
+                    ax.set_ylabel(f'{labels[iforce]} ' + r'$[BW]$')
                 else:
                     ax.spines['left'].set_visible(False)
                     ax.set_yticklabels([])
@@ -1259,8 +1273,8 @@ class TaskPlotUnperturbedResults(osp.StudyTask):
             fancybox=False, frameon=True)
         ax.spines['bottom'].set_position(('outward', 10))
         ax.spines['left'].set_position(('outward', 10))
-        ax.set_xlabel('medio-lateral position (m)')
-        ax.set_ylabel('anterior-posterior position (m)')
+        ax.set_xlabel(r'medio-lateral position $[m]$')
+        ax.set_ylabel(r'anterior-posterior position $[m]$')
 
         fig.tight_layout()
         fig.savefig(target[0], dpi=600)
@@ -1298,6 +1312,7 @@ class TaskPlotUnperturbedResults(osp.StudyTask):
 
         fig = plt.figure(figsize=(3, 5))
         ax = fig.add_subplot(1,1,1)
+        step_widths = list()
         for i in np.arange(numSubjects):
 
             time_r = 22
@@ -1305,6 +1320,7 @@ class TaskPlotUnperturbedResults(osp.StudyTask):
             pos_z_r = unperturbed_dict['pos_z_r'][time_r, i]
             pos_z_l = unperturbed_dict['pos_z_l'][time_l, i]
             width = pos_z_r - pos_z_l
+            step_widths.append(width)
 
             h_unp, = ax.bar(i+1, width, color=self.unp_color, zorder=2)
             util.publication_spines(ax)
@@ -1331,6 +1347,11 @@ class TaskPlotUnperturbedResults(osp.StudyTask):
         fig.tight_layout()
         fig.savefig(target[0], dpi=600)
         plt.close()
+
+        with open(target[1], 'w') as f:
+            f.write('Step widths (meters), mean +/- std across subjects\n')
+            f.write('\n')
+            f.write(f'Step widths: {np.mean(step_widths):.2f} +/- {np.std(step_widths):.2f} m\n')
 
     def compute_unperturbed_gait_landmarks(self, file_dep, target):
 
@@ -2053,7 +2074,7 @@ def plot_errorbar(ax, x, y, yerr):
     ple, cle, ble = ax.errorbar(x, y, yerr=yerr, 
         fmt='none', ecolor='black', 
         capsize=0, solid_capstyle='projecting', lw=0.25, 
-        zorder=0, clip_on=False, lolims=lolims, uplims=uplims,
+        zorder=2.5, clip_on=False, lolims=lolims, uplims=uplims,
         elinewidth=0.4, markeredgewidth=0.4)
     for cl in cle:
         cl.set_marker('_')
@@ -2068,7 +2089,7 @@ def plot_errorbarh(ax, y, x, xerr):
     ple, cle, ble = ax.errorbar(x, y, xerr=xerr, 
         fmt='none', ecolor='black', capsize=0, 
         solid_capstyle='projecting', lw=0.25, 
-        zorder=0, clip_on=False, xlolims=xlolims, xuplims=xuplims,
+        zorder=2.5, clip_on=False, xlolims=xlolims, xuplims=xuplims,
         elinewidth=0.4, markeredgewidth=0.4)
     for cl in cle:
         cl.set_marker('|')
@@ -2079,7 +2100,7 @@ def plot_errorbarh(ax, y, x, xerr):
 
 class TaskPlotMethodsFigure(osp.StudyTask):
     REGISTRY = []
-    def __init__(self, study, subjects):
+    def __init__(self, study, subjects, times):
         super(TaskPlotMethodsFigure, self).__init__(study)
         self.name = 'plot_methods_figure'
         self.results_path = os.path.join(study.config['results_path'], 
@@ -2090,6 +2111,7 @@ class TaskPlotMethodsFigure(osp.StudyTask):
             os.makedirs(self.analysis_path)
 
         self.subjects = subjects
+        self.times = times
         self.time = 35
         self.rise = study.rise
         self.fall = study.fall
@@ -2125,9 +2147,14 @@ class TaskPlotMethodsFigure(osp.StudyTask):
         self.add_action(deps, 
                         [os.path.join(self.analysis_path, 
                             'methods_figure.png')], 
-                        self.plot_center_of_mass)
+                        self.plot_methods_figure)
 
-    def plot_center_of_mass(self, file_dep, target):
+        self.add_action([],
+                        [os.path.join(self.analysis_path, 
+                            'perturbation_time_axis.png')],
+                        self.plot_perturbation_times_axis)
+
+    def plot_methods_figure(self, file_dep, target):
 
         # Initialize figures
         # ------------------
@@ -2291,9 +2318,9 @@ class TaskPlotMethodsFigure(osp.StudyTask):
 
 
         # Plot decorations
-        ax_acc.text(self.time-6.5, -0.195, 'unperturbed', fontsize=6,
+        ax_acc.text(self.time-6.5, -0.25, 'unperturbed', fontsize=6,
             color=self.colors[0], fontweight='bold')
-        ax_acc.text(self.time-3.5, -0.475, 'perturbed', fontsize=6,
+        ax_acc.text(self.time-3.5, -0.485, 'perturbed', fontsize=6,
             color=self.colors[1], fontweight='bold')
 
         index = np.argmin(np.abs(pgc-self.time))
@@ -2304,186 +2331,55 @@ class TaskPlotMethodsFigure(osp.StudyTask):
         set_arrow_patch_vertical(ax_vel, self.time+self.fall, 
             vel_mean[index, 0], vel_mean[index, 1])
 
-        ax_acc.text(self.time+0.25, -0.21, r'$\Delta a_{COM}$', fontsize=7,
-            color='black', fontweight='bold')
+        # ax_acc.text(self.time-2.75, -0.35, r'$\Delta a_{COM}$', fontsize=8,
+        #     color='black', fontweight='bold')
 
         vloc = (vel_mean[index, 0] + vel_mean[index, 1]) / 2.0
-        ax_vel.text(self.time+self.fall-2.5, vloc, r'$\Delta v_{COM}$', fontsize=7,
-            color='black', fontweight='bold')
+        # ax_vel.text(self.time+self.fall-2.75, vloc, r'$\Delta v_{COM}$', fontsize=8,
+        #     color='black', fontweight='bold')
 
         set_arrow_patch_horizontal(ax_vel, vloc-0.022, 
             self.time-self.rise, self.time)
         set_arrow_patch_horizontal(ax_vel, vloc-0.022, 
             self.time, self.time+self.fall)
 
-        ax_vel.text(self.time-5, vloc-0.02, '10% gait cycle', fontsize=4,
-            color='black', fontstyle='italic', ha='center')
-        ax_vel.text(self.time+2.5, vloc-0.02, '5% gait cycle', fontsize=4,
-            color='black', fontstyle='italic', ha='center')
+        ax_vel.text(self.time-5, vloc-0.02, '10% gait cycle', fontsize=5,
+            color='black', ha='center')
+        ax_vel.text(self.time+2.5, vloc-0.02, '5% gait cycle', fontsize=5,
+            color='black', ha='center')
 
         fig0.tight_layout()
         fig0.savefig(target[0], dpi=600)
         plt.close()
 
+    def plot_perturbation_times_axis(self, file_dep, target):
 
-# Device torques and powers
-# -------------------------
+        fig = plt.figure(figsize=(5, 1))
+        ax = fig.add_subplot(111)
+        ax.set_xticks(np.arange(len(self.times)))
+        ax.set_xlim(0, len(self.times)-1)
+        ax.set_xticklabels([f'{time}' for time in self.times],
+            fontsize=6)
+        util.publication_spines(ax)
 
-class TaskPlotAnkleTorquesAndPowers(osp.StudyTask):
-    REGISTRY = []
-    def __init__(self, study, subject, times, torque, subtalar, rise, fall):
-        super(TaskPlotAnkleTorquesAndPowers, self).__init__(study)
-        self.subject = subject
-        self.times = times
-        self.torque = torque
-        self.rise = rise
-        self.fall = fall
-
-        suffix = f'torque{torque}_rise{rise}_fall{fall}'
-        self.subtalar = f'_subtalar{subtalar}' if subtalar else ''
-        suffix += self.subtalar
-
-        self.name = f'plot_ankle_torques_and_powers_{suffix}'
-        self.results_path = os.path.join(study.config['results_path'], 
-            'experiments')
-        self.analysis_path = os.path.join(study.config['analysis_path'],
-            'perturbation_torques_and_powers', suffix)
-        if not os.path.exists(self.analysis_path): 
-            os.makedirs(self.analysis_path)
-
-        deps = list()
-
-        for time in self.times:
-            label = (f'torque{self.torque}_time{time}'
-                     f'_rise{self.rise}_fall{self.fall}{self.subtalar}')
-            deps.append(
-                os.path.join(self.study.config['results_path'], 
-                    'perturbed', f'perturbed_{label}', subject, 
-                    f'perturbed_{label}.sto'))
-            deps.append(
-                os.path.join(self.study.config['results_path'], 
-                    'perturbed', f'perturbed_{label}', subject, 
-                    'ankle_perturbation_curve.sto'))
-
-        # Model 
-        self.model = os.path.join(self.study.config['results_path'], 
-            'unperturbed', subject, 'model_unperturbed.osim')
-
-        self.add_action(deps, 
-                        [os.path.join(self.analysis_path, 
-                            'ankle_perturbation_torques.png')], 
-                        self.plot_ankle_torques_and_powers)
-
-    def plot_ankle_torques_and_powers(self, file_dep, target):
-
-        fig = plt.figure(figsize=(2*len(self.times), 8))
-        gs = fig.add_gridspec(3, len(self.times))
-        torque_axes = list()
-        speed_axes = list()
-        power_axes = list()
-
-        for itime in range(len(self.times)):
-            torque_axes.append(fig.add_subplot(gs[0, itime]))
-            speed_axes.append(fig.add_subplot(gs[1, itime]))
-            power_axes.append(fig.add_subplot(gs[2, itime]))
-
-        lw = 2.5
-
-        zipped = zip(self.times, torque_axes, speed_axes, power_axes)
-        for itime, (time, ax_t, ax_s, ax_p) in enumerate(zipped):
-            # Perturbation torque
-            # -------------------
-            perturbation = osim.TimeSeriesTable(file_dep[2*itime + 1])
-        
-            timeVec = np.array(perturbation.getIndependentColumn())
-            pgc = 100 * (timeVec - timeVec[0]) / (timeVec[-1] - timeVec[0])
-            onset_time = time - 10
-            offset_time = time + 5
-            istart = np.argmin(np.abs(pgc - onset_time))
-            iend = np.argmin(np.abs(pgc - offset_time))
-
-            torque = perturbation.getDependentColumn(
-                '/forceset/perturbation_ankle_angle_r').to_numpy()
-
-            ax_t.plot(pgc[istart:iend], -torque[istart:iend], color='black', 
-                linewidth=lw, clip_on=False,
-                solid_capstyle='round')
-            ax_t.set_ylim([0.0, 0.2])
-            ax_t.set_yticks([0.0, 0.1, 0.2])
-            ax_t.set_xlim(onset_time, offset_time)
-            
-            # Ankle speed
-            # -----------
-            solution = osim.TimeSeriesTable(file_dep[2*itime])
-            speed = solution.getDependentColumn(
-                '/jointset/ankle_r/ankle_angle_r/speed').to_numpy()
-            timeVecSol = np.array(solution.getIndependentColumn())
-            pgc = offset_time * (timeVecSol - timeVecSol[0]) / (timeVecSol[-1] - timeVecSol[0])
-            istart = np.argmin(np.abs(pgc - onset_time))
-            iend = np.argmin(np.abs(pgc - offset_time))
-            ax_s.plot(pgc[istart:iend], -speed[istart:iend], color='black', 
-                linewidth=lw, clip_on=False,
-                solid_capstyle='round')
-            ax_s.set_ylim([-2, 6])
-            ax_s.set_yticks([-2, 0, 2, 4, 6])
-            ax_s.set_xlim(onset_time, offset_time)
-
-            # Perturbation power
-            # ------------------
-            from scipy.interpolate import interp1d
-            torque_interp = interp1d(timeVec, torque)
-            torque_sampled = torque_interp(timeVecSol)
-
-            power = np.multiply(speed, torque_sampled)
-
-            ax_p.plot(pgc[istart:iend], power[istart:iend], color='black', 
-                linewidth=lw, clip_on=False,
-                solid_capstyle='round')
-            ax_p.set_ylim([-0.1, 0.5])
-            ax_p.set_yticks([-0.1, 0.0, 0.1, 0.2, 0.3, 0.4, 0.5])
-            ax_p.set_xlim(onset_time, offset_time)
-
-            if not itime:
-                ax_t.set_ylabel('torque (N-m/kg)')
-                ax_s.set_ylabel('ankle speed (rad/s)')
-                ax_p.set_ylabel('power (W/kg)')
-
-            util.publication_spines(ax_t, True)
-            util.publication_spines(ax_s, True)
-            util.publication_spines(ax_p, True)
-
-            ax_t.set_title(f'peak time: {time}%')
-            ax_p.set_xlabel('time (% gait cycle)')
-
-            for x in [onset_time, time - 5, time, offset_time]:
-                for ax in [ax_t, ax_s, ax_p]:
-                    ax.axvline(x, color='gray', 
-                      alpha=0.5, linewidth=0.5, 
-                      zorder=0, clip_on=False, linestyle='--')
-
-            for ax in [ax_t, ax_s, ax_p]:
-                ax.axhline(0, color='gray', linewidth=0.5,
-                    zorder=0, clip_on=False, linestyle='--')
-
-        # ax_r.spines['right'].set_visible(False)
-        # ax_r.spines['top'].set_visible(False)
-        # ax_r.spines['bottom'].set_visible(False)
-        # ax_r.spines['left'].set_visible(False)
-        # ax_r.tick_params(axis='x', which='both', bottom=False, 
-        #                  top=False, labelbottom=False)
-        # ax_r.tick_params(axis='y', which='both', left=False, 
-        #                  top=False, labelleft=False)
+        ax.spines['bottom'].set_position(('outward', 10))
+        ax.spines['left'].set_visible(False)
+        ax.set_yticklabels([])
+        ax.yaxis.set_ticks_position('none')
+        ax.tick_params(axis='y', which='both', bottom=False, 
+                       top=False, labelbottom=False)
+        ax.set_xlabel('perturbation time\n(% gait cycle)')
 
         fig.tight_layout()
         fig.savefig(target[0], dpi=600)
-        plt.close()
 
+# Device torques and powers
+# -------------------------
 
 class TaskCreatePerturbationPowersTable(osp.StudyTask):
     REGISTRY = []
     def __init__(self, study, subjects, torque_actuators=False):
         super(TaskCreatePerturbationPowersTable, self).__init__(study)
-        self.name = 'create_perturbation_powers_table'
         self.subjects = subjects
         self.times = study.times
         self.torques = study.plot_torques
@@ -2492,6 +2388,8 @@ class TaskCreatePerturbationPowersTable(osp.StudyTask):
         self.fall = study.fall
         self.actu = '_torque_actuators' if torque_actuators else ''
         self.subdir = 'torque_actuators' if torque_actuators else 'perturbed'
+        self.suffix = '_torques' if torque_actuators else '_muscles'
+        self.name = f'create_perturbation_powers_table{self.suffix}'
 
         self.results_path = os.path.join(study.config['results_path'], 
             'experiments')
@@ -2545,9 +2443,9 @@ class TaskCreatePerturbationPowersTable(osp.StudyTask):
 
         self.add_action(deps, 
                         [os.path.join(self.analysis_path, 
-                            f'perturbation_powers_mean{self.actu}.csv'),
+                            f'perturbation_powers_mean{self.suffix}.csv'),
                         os.path.join(self.analysis_path, 
-                            f'perturbation_powers_std{self.actu}.csv')], 
+                            f'perturbation_powers_std{self.suffix}.csv')], 
                         self.create_perturbation_powers_table)
 
     def create_perturbation_powers_table(self, file_dep, target):
@@ -2724,6 +2622,7 @@ class TaskPlotPerturbationPowers(osp.StudyTask):
         self.torques = study.plot_torques
         self.subtalars = study.plot_subtalars
         self.colors = study.plot_colors
+        self.edgecolor = 'black'
         self.legend_labels = ['eversion', 
                               'plantarflexion + eversion', 
                               'plantarflexion', 
@@ -2741,151 +2640,238 @@ class TaskPlotPerturbationPowers(osp.StudyTask):
             os.makedirs(self.analysis_path)
 
         self.add_action([os.path.join(self.analysis_path,
-                                'perturbation_powers_mean.csv'),
+                                'perturbation_powers_mean_muscles.csv'),
                          os.path.join(self.analysis_path, 
-                                'perturbation_powers_std.csv')],
+                                'perturbation_powers_std_muscles.csv'),
+                         os.path.join(self.analysis_path,
+                                'perturbation_powers_mean_torques.csv'),
+                         os.path.join(self.analysis_path, 
+                                'perturbation_powers_std_torques.csv')],
                         [os.path.join(self.analysis_path, 
-                                'perturbation_powers.png')],
+                                'ankle_perturbation_powers.png'),
+                         os.path.join(self.analysis_path, 
+                                'subtalar_perturbation_powers.png')],
                         self.plot_perturbation_powers)
 
     def plot_perturbation_powers(self, file_dep, target):
 
         # Initialize figures
         # ------------------
-        axes = list()
-        fig = plt.figure(figsize=(8, 6))
-        iplot = 1
-        for ipower, power in enumerate(['positive', 'negative']):
-            for icoord, coord in enumerate(['ankle', 'subtalar']):
-                ax = fig.add_subplot(2, 2, iplot)
-                # ax.axhline(y=0, color='black', linestyle='-',
-                #         linewidth=0.1, alpha=1.0, zorder=-1)
-                ax.spines['left'].set_position(('outward', 15))
-                ax.set_xticks(np.arange(len(self.times)))
-                ax.set_xlim(0, len(self.times)-1)
-                ax.grid(color='gray', linestyle='--', linewidth=0.25,
-                    clip_on=False, alpha=0.75)
-                util.publication_spines(ax)
+        figs = list()
+        import collections
+        axes = collections.defaultdict(list)
+        for icoord, coord in enumerate(['ankle', 'subtalar']):
+            fig = plt.figure(figsize=(6, 6))
+            iplot = 1
+            for ipower, power in enumerate(['positive', 'negative']):
+                for iactu, actu in enumerate(['muscles', 'torques']):
+                    ax = fig.add_subplot(2, 2, iplot)
+                    ax.grid(color='gray', linestyle='--', linewidth=0.5,
+                            clip_on=False, alpha=1.0, zorder=0)
+                    ax.set_xticks(np.arange(len(self.times)))
+                    ax.set_xlim(0, len(self.times)-1)
+                    ax.grid(color='gray', linestyle='--', linewidth=0.25,
+                        clip_on=False, alpha=0.75, zorder=0)
+                    ax.axhline(y=0, color='black', linestyle='-',
+                            linewidth=0.1, alpha=1.0, zorder=2.5)
+                    util.publication_spines(ax)
 
-                if power == 'positive':
-                    ax.spines['bottom'].set_visible(False)
-                    ax.set_xticklabels([])
-                    ax.xaxis.set_ticks_position('none')
-                    ax.tick_params(axis='x', which='both', bottom=False, 
-                                   top=False, labelbottom=False)
-                    ax.set_ylim(0, 0.12)
-                    ax.set_yticks([0, 0.02, 0.04, 0.06, 0.08, 0.1, 0.12])
+                    if power == 'positive':
+                        ax.spines['bottom'].set_visible(False)
+                        ax.set_xticklabels([])
+                        ax.xaxis.set_ticks_position('none')
+                        ax.tick_params(axis='x', which='both', bottom=False, 
+                                       top=False, labelbottom=False)
+                        if coord == 'ankle':
+                            ax.set_ylim(0, 0.35)
+                            ax.set_yticks([0, 0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35])
+                        else:
+                            ax.set_ylim(0, 0.2)
+                            ax.set_yticks([0, 0.05, 0.1, 0.15, 0.2])
 
-                    if coord == 'ankle': 
-                        ax.set_title('ankle perturbation power')
-                        ax.set_ylabel(r'peak positive power $[W/kg]$')
-                    elif coord == 'subtalar':
-                        ax.set_title('subtalar perturbation power')
+                        if actu == 'muscles': 
+                            ax.set_ylabel(r'peak positive power $[W/kg]$')
+            
+                    else:
+                        ax.spines['bottom'].set_position(('outward', 10))
+                        ax.set_xticklabels([f'{time}' for time in self.times])
+                        ax.set_xlabel('peak perturbation time\n(% gait cycle)')
+                        if coord == 'ankle':
+                            ax.set_ylim(-0.08, 0)
+                            ax.set_yticks([-0.08, -0.06, -0.04, -0.02, 0])
+                        else:
+                            ax.set_ylim(-0.03, 0)
+                            ax.set_yticks([-0.03, -0.025, -0.02, -0.015, -0.01, -0.005, 0])
 
-                else:
-                    ax.spines['bottom'].set_position(('outward', 10))
-                    ax.set_xticklabels([f'{time}' for time in self.times])
-                    ax.set_xlabel('peak perturbation time\n(% gait cycle)')
+                        if actu == 'muscles': 
+                            ax.set_ylabel(r'peak negative power $[W/kg]$')   
 
-                    ax.set_ylim(-0.025, 0)
-                    ax.set_yticks([-0.025, -0.02, -0.015, -0.01, -0.005, 0])
+                    if actu == 'torques':
+                        ax.spines['left'].set_visible(False)
+                        ax.set_yticklabels([])
+                        ax.yaxis.set_ticks_position('none')
+                        ax.tick_params(axis='y', which='both', left=False, 
+                                       right=False, labelleft=False)
+                    else:
+                        ax.spines['left'].set_position(('outward', 20))
 
-                    if coord == 'ankle': 
-                        ax.set_ylabel(r'peak negative power $[W/kg]$')   
+                    axes[coord].append(ax)
+                    iplot += 1
 
-                if coord == 'subtalar':
-                    ax.spines['left'].set_visible(False)
-                    ax.set_yticklabels([])
-                    ax.yaxis.set_ticks_position('none')
-                    ax.tick_params(axis='y', which='both', left=False, 
-                                   right=False, labelleft=False)
-                axes.append(ax)
-                iplot += 1
+            figs.append(fig)
 
-        # Load powers
-        # -----------
-        df_powers_mean = pd.read_csv(file_dep[0], index_col=[0, 1], 
-            header=[0,1], skiprows=1)
-        df_powers_std = pd.read_csv(file_dep[1], index_col=[0, 1], 
-            header=[0,1], skiprows=1)
+        # Plotting
+        # --------
+        lw = 0.2
+        for iactu, actu in enumerate(['muscles', 'torques']):
+            df_powers_mean = pd.read_csv(file_dep[0 + 2*iactu], index_col=[0, 1], 
+                header=[0,1], skiprows=1)
+            df_powers_std = pd.read_csv(file_dep[1 + 2*iactu], index_col=[0, 1], 
+                header=[0,1], skiprows=1)
 
-        ankle_indices = [1, 2, 3]
-        subtalar_indices = [0, 1, 3, 4]
+            ankle_indices = [1, 2, 3]
+            ankle_labels = [self.legend_labels[i] for i in ankle_indices]
+            subtalar_indices = [0, 1, 3, 4]
+            subtalar_labels = [self.legend_labels[i] for i in subtalar_indices]
 
-        ax_pos_ankle = axes[0]
-        ax_neg_ankle = axes[2]
-        df_ankle_pos_powers_mean = df_powers_mean['peak positive']['ankle']
-        df_ankle_pos_powers_std = df_powers_std['peak positive']['ankle']
-        df_ankle_neg_powers_mean = df_powers_mean['peak negative']['ankle']
-        df_ankle_neg_powers_std = df_powers_std['peak negative']['ankle']
-        for iankle in ankle_indices:
-            perturb = self.perturb_labels[iankle]
-            color = self.colors[iankle]
-            x = np.arange(len(self.times))
+            ax_pos_ankle = axes['ankle'][0 + iactu]
+            ax_neg_ankle = axes['ankle'][2 + iactu]
+            df_ankle_pos_powers_mean = df_powers_mean['peak positive']['ankle']
+            df_ankle_pos_powers_std = df_powers_std['peak positive']['ankle']
+            df_ankle_neg_powers_mean = df_powers_mean['peak negative']['ankle']
+            df_ankle_neg_powers_std = df_powers_std['peak negative']['ankle']
+            width = 0.25
+            N = len(ankle_indices)
+            min_width = -width*((N-1)/2)
+            max_width = -min_width
+            offsets = np.linspace(min_width, max_width, N)
+            handles = list()
+            for iankle, offset in zip(ankle_indices, offsets):
+                perturb = self.perturb_labels[iankle]
+                color = self.colors[iankle]
+                x = np.arange(len(self.times)) + offset
 
-            df_this_ankle_pos_powers_mean = df_ankle_pos_powers_mean.xs(
-                perturb, level=1, drop_level=False)
-            df_this_ankle_pos_powers_std = df_ankle_pos_powers_std.xs(
-                perturb, level=1, drop_level=False)
+                df_this_ankle_pos_powers_mean = df_ankle_pos_powers_mean.xs(
+                    perturb, level=1, drop_level=False)
+                df_this_ankle_pos_powers_std = df_ankle_pos_powers_std.xs(
+                    perturb, level=1, drop_level=False)
 
-            ax_pos_ankle.plot(x, df_this_ankle_pos_powers_mean, 'o-', color=color,
-                clip_on=False)
-            # ple, cle, ble = ax_ankle.errorbar(x, df_this_ankle_powers_mean, 
-            #     yerr=df_this_ankle_powers_std, 
-            #     fmt='none', ecolor='black', color='black', 
-            #     solid_capstyle='projecting',
-            #     lw=0.25, clip_on=False,
-            #     elinewidth=0.4, markeredgewidth=0.4)
-            # for cl in cle:
-            #     cl.set_marker('_')
-            #     cl.set_markersize(4)
+                h = ax_pos_ankle.bar(x, df_this_ankle_pos_powers_mean, width, color=color,
+                    clip_on=False, zorder=2.5, edgecolor=self.edgecolor, lw=lw)
+                handles.append(h)
+                plot_errorbar(ax_pos_ankle, x, df_this_ankle_pos_powers_mean,
+                    df_this_ankle_pos_powers_std)
 
-            df_this_ankle_neg_powers_mean = df_ankle_neg_powers_mean.xs(
-                perturb, level=1, drop_level=False)
-            df_this_ankle_neg_powers_std = df_ankle_neg_powers_std.xs(
-                perturb, level=1, drop_level=False)
+                df_this_ankle_neg_powers_mean = df_ankle_neg_powers_mean.xs(
+                    perturb, level=1, drop_level=False)
+                df_this_ankle_neg_powers_std = df_ankle_neg_powers_std.xs(
+                    perturb, level=1, drop_level=False)
 
-            ax_neg_ankle.plot(x, df_this_ankle_neg_powers_mean, 'o-', color=color,
-                clip_on=False)
+                ax_neg_ankle.bar(x, df_this_ankle_neg_powers_mean, width, color=color,
+                    clip_on=False, zorder=2.5, edgecolor=self.edgecolor, lw=lw)
+                plot_errorbar(ax_neg_ankle, x, df_this_ankle_neg_powers_mean,
+                    df_this_ankle_neg_powers_std)
 
-        ax_pos_subtalar = axes[1]
-        ax_neg_subtalar = axes[3]
-        df_subtalar_pos_powers_mean = df_powers_mean['peak positive']['subtalar']
-        df_subtalar_pos_powers_std = df_powers_std['peak positive']['subtalar']
-        df_subtalar_neg_powers_mean = df_powers_mean['peak negative']['subtalar']
-        df_subtalar_neg_powers_std = df_powers_std['peak negative']['subtalar']
-        for isubtalar in subtalar_indices:
-            perturb = self.perturb_labels[isubtalar]
-            color = self.colors[isubtalar]
-            x = np.arange(len(self.times))
+            if actu == 'muscles':
+                axes['ankle'][0].legend(handles, ankle_labels, 
+                    loc='upper left', frameon=True, fontsize=8) 
 
-            df_this_subtalar_pos_powers_mean = df_subtalar_pos_powers_mean.xs(
-                perturb, level=1, drop_level=False)
-            df_this_subtalar_pos_powers_std = df_subtalar_pos_powers_std.xs(
-                perturb, level=1, drop_level=False)
+            ax_pos_subtalar = axes['subtalar'][0 + iactu]
+            ax_neg_subtalar = axes['subtalar'][2 + iactu]
+            df_subtalar_pos_powers_mean = df_powers_mean['peak positive']['subtalar']
+            df_subtalar_pos_powers_std = df_powers_std['peak positive']['subtalar']
+            df_subtalar_neg_powers_mean = df_powers_mean['peak negative']['subtalar']
+            df_subtalar_neg_powers_std = df_powers_std['peak negative']['subtalar']
+            width = 0.2
+            N = len(subtalar_indices)
+            min_width = -width*((N-1)/2)
+            max_width = -min_width
+            offsets = np.linspace(min_width, max_width, N)
+            handles = list()
+            for isubtalar, offset in zip(subtalar_indices, offsets):
+                perturb = self.perturb_labels[isubtalar]
+                color = self.colors[isubtalar]
+                x = np.arange(len(self.times)) + offset
 
-            ax_pos_subtalar.plot(x, df_this_subtalar_pos_powers_mean, 'o-', color=color,
-                clip_on=False)
-            # ple, cle, ble = ax_subtalar.errorbar(x, df_this_subtalar_powers_mean, 
-            #     yerr=df_this_subtalar_powers_std, 
-            #     fmt='none', ecolor='black', color='black', 
-            #     solid_capstyle='projecting',
-            #     lw=0.25, clip_on=False,
-            #     elinewidth=0.4, markeredgewidth=0.4)
-            # for cl in cle:
-            #     cl.set_marker('_')
-            #     cl.set_markersize(4)
+                df_this_subtalar_pos_powers_mean = df_subtalar_pos_powers_mean.xs(
+                    perturb, level=1, drop_level=False)
+                df_this_subtalar_pos_powers_std = df_subtalar_pos_powers_std.xs(
+                    perturb, level=1, drop_level=False)
 
-            df_this_subtalar_neg_powers_mean = df_subtalar_neg_powers_mean.xs(
-                perturb, level=1, drop_level=False)
-            df_this_subtalar_neg_powers_std = df_subtalar_neg_powers_std.xs(
-                perturb, level=1, drop_level=False)
+                h = ax_pos_subtalar.bar(x, df_this_subtalar_pos_powers_mean, width, color=color,
+                    clip_on=False, zorder=2.5, edgecolor=self.edgecolor, lw=lw)
+                handles.append(h)
+                plot_errorbar(ax_pos_subtalar, x, df_this_subtalar_pos_powers_mean,
+                    df_this_subtalar_pos_powers_std)
 
-            ax_neg_subtalar.plot(x, df_this_subtalar_neg_powers_mean, 'o-', color=color,
-                clip_on=False)
+                df_this_subtalar_neg_powers_mean = df_subtalar_neg_powers_mean.xs(
+                    perturb, level=1, drop_level=False)
+                df_this_subtalar_neg_powers_std = df_subtalar_neg_powers_std.xs(
+                    perturb, level=1, drop_level=False)
 
-        fig.tight_layout()
-        fig.savefig(target[0], dpi=600)
+                ax_neg_subtalar.bar(x, df_this_subtalar_neg_powers_mean, width, color=color,
+                    clip_on=False, zorder=2.5, edgecolor=self.edgecolor, lw=lw)
+                plot_errorbar(ax_neg_subtalar, x, df_this_subtalar_neg_powers_mean,
+                    df_this_subtalar_neg_powers_std)
+
+            if actu == 'muscles':
+                axes['subtalar'][0].legend(handles, subtalar_labels, 
+                    loc='upper left', frameon=True, fontsize=8) 
+
+        import cv2
+        def add_muscles_image(fig):
+            side = 0.175
+            l = 0.245
+            b = 0.81
+            w = side
+            h = side
+            ax = fig.add_axes([l, b, w, h], projection=None, polar=False)
+            image = cv2.imread(
+                os.path.join(self.study.config['figures_path'], 'images',
+                    'sagittal_muscles.tiff'))[..., ::-1]
+            ax.imshow(image, interpolation='none', aspect='equal')
+
+            ax.spines['top'].set_visible(False)
+            ax.spines['bottom'].set_visible(False)
+            ax.spines['left'].set_visible(False)
+            ax.spines['right'].set_visible(False)
+            ax.set_yticklabels([])
+            ax.xaxis.set_ticks_position('none')
+            ax.yaxis.set_ticks_position('none')
+            ax.tick_params(axis='x', which='both', bottom=False, 
+                           top=False, labelbottom=False)
+            ax.tick_params(axis='y', which='both', bottom=False, 
+                           top=False, labelbottom=False)
+
+        def add_torques_image(fig):
+            side = 0.175
+            l = 0.680
+            b = 0.81
+            w = side
+            h = side
+            ax = fig.add_axes([l, b, w, h], projection=None, polar=False)
+            image = cv2.imread(
+                os.path.join(self.study.config['figures_path'], 'images',
+                    'sagittal_torques.tiff'))[..., ::-1]
+            ax.imshow(image, interpolation='none', aspect='equal')
+
+            ax.spines['top'].set_visible(False)
+            ax.spines['bottom'].set_visible(False)
+            ax.spines['left'].set_visible(False)
+            ax.spines['right'].set_visible(False)
+            ax.set_yticklabels([])
+            ax.xaxis.set_ticks_position('none')
+            ax.yaxis.set_ticks_position('none')
+            ax.tick_params(axis='x', which='both', bottom=False, 
+                           top=False, labelbottom=False)
+            ax.tick_params(axis='y', which='both', bottom=False, 
+                           top=False, labelbottom=False)
+
+        for ifig, fig in enumerate(figs):
+            fig.subplots_adjust(left=0.15, right=0.95, bottom=0.1, top=0.8, hspace=0.2)
+            add_muscles_image(fig)
+            add_torques_image(fig)
+            fig.savefig(target[ifig], dpi=600)
         plt.close()
 
 
@@ -2987,7 +2973,7 @@ class TaskPlotCenterOfMassVector(osp.StudyTask):
 
         # Globals
         # -------
-        tick_fs = 7
+        tick_fs = 6
 
         # Initialize figures
         # ------------------
@@ -2996,9 +2982,11 @@ class TaskPlotCenterOfMassVector(osp.StudyTask):
         for kin in self.kinematic_levels:
             for iplane, plane in enumerate(self.planes):
                 these_axes = list()
+
                 if plane == 'transverse':
-                    fig = plt.figure(figsize=(7, 5))
+                    fig = plt.figure(figsize=(7, 7))
                     for itorque, torque in enumerate(self.torques):
+        
                         ax = fig.add_subplot(1, len(self.torques), itorque + 1)
                         ax.grid(axis='y', color='gray', alpha=0.5, linewidth=0.5, 
                                 zorder=-10, clip_on=False)
@@ -3024,13 +3012,13 @@ class TaskPlotCenterOfMassVector(osp.StudyTask):
                                            top=False, labelbottom=False)
 
                         ax.spines['bottom'].set_position(('outward', 40))
-                        ax.set_title(self.legend_labels[itorque], pad=25, fontsize=8)
+                        ax.set_title(self.legend_labels[itorque], pad=30, fontsize=8)
                         ax.xaxis.set_minor_locator(AutoMinorLocator(2))
                         ax.tick_params(which='minor', axis='x', direction='in')
                         these_axes.append(ax)
 
                 elif plane == 'sagittal':
-                    fig = plt.figure(figsize=(5, 7))
+                    fig = plt.figure(figsize=(7, 7))
                     for itorque, torque in enumerate(self.torques):
                         ax = fig.add_subplot(len(self.torques), 1, itorque + 1)
                         ax_r = ax.twinx()
@@ -3175,7 +3163,7 @@ class TaskPlotCenterOfMassVector(osp.StudyTask):
 
         # Plot helper functions
         # ---------------------
-        def set_arrow_patch_sagittal(ax, x, y, dx, dy, actu):
+        def set_arrow_patch_sagittal(ax, x, y, dx, dy, actu, color):
             point1 = ax.transData.transform((x, y))
             point2 = ax.transData.transform((x + dy, y + dy))
             delta = point2 - point1
@@ -3194,8 +3182,9 @@ class TaskPlotCenterOfMassVector(osp.StudyTask):
                     capstyle='round', joinstyle='miter', 
                     color=color, clip_on=False, zorder=2.5, lw=lw)
             ax.add_patch(arrow)
+            return arrow
 
-        def set_arrow_patch_coronal(ax, x, y, dx, dy, actu):
+        def set_arrow_patch_coronal(ax, x, y, dx, dy, actu, color):
             point1 = ax.transData.transform((x, y))
             point2 = ax.transData.transform((x + dx, y + dx))
             delta = point2 - point1
@@ -3214,6 +3203,7 @@ class TaskPlotCenterOfMassVector(osp.StudyTask):
                     capstyle='round', joinstyle='miter', 
                     color=color, clip_on=False, zorder=2.5, lw=lw)
             ax.add_patch(arrow)
+            return arrow
 
         # Compute changes in center-of-mass kinematics
         # --------------------------------------------
@@ -3273,9 +3263,9 @@ class TaskPlotCenterOfMassVector(osp.StudyTask):
 
                         l_max = com_height_dict[subject]
                         v_max = np.sqrt(self.gravity * l_max)
-                        pos_x_diff[isubj] = com[index_fall, 0] / l_max
-                        pos_y_diff[isubj] = com[index_fall, 1] / l_max
-                        pos_z_diff[isubj] = com[index_fall, 2] / l_max
+                        pos_x_diff[isubj] = com[index_fall, 0] * 100.0 # cm
+                        pos_y_diff[isubj] = com[index_fall, 1] * 100.0 # cm
+                        pos_z_diff[isubj] = com[index_fall, 2] * 100.0 # cm
                         vel_x_diff[isubj] = com[index_fall, 3] / v_max
                         vel_y_diff[isubj] = com[index_fall, 4] / v_max
                         vel_z_diff[isubj] = com[index_fall, 5] / v_max
@@ -3293,25 +3283,24 @@ class TaskPlotCenterOfMassVector(osp.StudyTask):
                     acc_y_diff_mean[actu_key][itime, iperturb] = np.mean(acc_y_diff)
                     acc_z_diff_mean[actu_key][itime, iperturb] = np.mean(acc_z_diff)
 
-
         # Set plot limits and labels
         # --------------------------
         for iperturb in np.arange(len(self.subtalars)):
 
             # Sagittal position
-            scale = 0.005
+            scale = 0.5
             axes[0][iperturb].set_ylim(-scale, scale)
             axes[0][iperturb].set_yticks([-scale, 0, scale])
             axes[0][iperturb].set_yticklabels([-scale, 0, scale], fontsize=tick_fs)
-            axes[0][2].set_ylabel(r'$\Delta$' + ' center-of-mass position $[-]$')
+            axes[0][2].set_ylabel(r'$\Delta$' + ' center-of-mass position $[cm]$')
             axes[0][4].set_xlabel('perturbation offset time\n(% gait cycle)')
 
             # Transverse position
-            scale = 0.002
+            scale = 0.1
             axes[1][iperturb].set_xlim(-scale, scale)
             axes[1][iperturb].set_xticks([-scale, 0, scale])
             axes[1][iperturb].set_xticklabels([-scale, 0, scale], fontsize=tick_fs-1)
-            axes[1][2].set_xlabel(r'$\Delta$' + ' center-of-mass position $[-]$')
+            axes[1][2].set_xlabel(r'$\Delta$' + ' center-of-mass position $[cm]$')
             axes[1][0].set_ylabel('perturbation offset time\n(% gait cycle)')
 
             # Sagittal velocity
@@ -3323,7 +3312,7 @@ class TaskPlotCenterOfMassVector(osp.StudyTask):
             axes[2][4].set_xlabel('perturbation offset time\n(% gait cycle)')
 
             # Transverse velocity
-            scale = 0.01
+            scale = 0.0075
             axes[3][iperturb].set_xlim(-scale, scale)
             axes[3][iperturb].set_xticks([-scale, 0, scale])
             axes[3][iperturb].set_xticklabels([-scale, 0, scale], fontsize=tick_fs-1)
@@ -3339,14 +3328,24 @@ class TaskPlotCenterOfMassVector(osp.StudyTask):
             axes[4][4].set_xlabel('perturbation peak time\n(% gait cycle)')
 
             # Transverse acceleration
-            scale = 0.03
+            scale = 0.025
             axes[5][iperturb].set_xlim(-scale, scale)
             axes[5][iperturb].set_xticks([-scale, 0, scale])
             axes[5][iperturb].set_xticklabels([-scale, 0, scale], fontsize=tick_fs-1)
             axes[5][2].set_xlabel(r'$\Delta$' + ' center-of-mass acceleration $[-]$')
             axes[5][0].set_ylabel('perturbation peak time\n(% gait cycle)')
         
-        scale = 0.01
+        # Position
+        scale = 0.1
+        axes[0][0].set_ylim(-scale, scale)
+        axes[0][4].set_ylim(-scale, scale)
+        axes[0][0].set_yticks([-scale, 0, scale])
+        axes[0][4].set_yticks([-scale, 0, scale])
+        axes[0][0].set_yticklabels([-scale, 0, scale], fontsize=tick_fs)
+        axes[0][4].set_yticklabels([-scale, 0, scale], fontsize=tick_fs)
+
+        # Velocity
+        scale = 0.0075
         axes[2][0].set_ylim(-scale, scale)
         axes[2][4].set_ylim(-scale, scale)
         axes[2][0].set_yticks([-scale, 0, scale])
@@ -3354,6 +3353,7 @@ class TaskPlotCenterOfMassVector(osp.StudyTask):
         axes[2][0].set_yticklabels([-scale, 0, scale], fontsize=tick_fs)
         axes[2][4].set_yticklabels([-scale, 0, scale], fontsize=tick_fs)
 
+        # Acceleration
         scale = 0.025
         axes[4][0].set_ylim(-scale, scale)
         axes[4][4].set_ylim(-scale, scale)
@@ -3362,7 +3362,6 @@ class TaskPlotCenterOfMassVector(osp.StudyTask):
         axes[4][0].set_yticklabels([-scale, 0, scale], fontsize=tick_fs)
         axes[4][4].set_yticklabels([-scale, 0, scale], fontsize=tick_fs)
             
-
         # Plot results
         # ------------
         for actu in [True, False]:
@@ -3378,43 +3377,137 @@ class TaskPlotCenterOfMassVector(osp.StudyTask):
                     pos_x_diff = pos_x_diff_mean[actu_key][itime, iperturb]
                     pos_y_diff = pos_y_diff_mean[actu_key][itime, iperturb]
                     pos_z_diff = pos_z_diff_mean[actu_key][itime, iperturb]
-                    set_arrow_patch_sagittal(axes[0][iperturb], itime, 0, pos_x_diff, pos_y_diff, actu_key)
-                    set_arrow_patch_coronal(axes[1][iperturb], 0, itime, pos_z_diff, pos_x_diff, actu_key)
+                    set_arrow_patch_sagittal(axes[0][iperturb], itime, 0, pos_x_diff, pos_y_diff, actu_key, color)
+                    set_arrow_patch_coronal(axes[1][iperturb], 0, itime, pos_z_diff, pos_x_diff, actu_key, color)
 
                     # Velocity vectors
                     # ----------------
                     vel_x_diff = vel_x_diff_mean[actu_key][itime, iperturb]
                     vel_y_diff = vel_y_diff_mean[actu_key][itime, iperturb]
                     vel_z_diff = vel_z_diff_mean[actu_key][itime, iperturb]
-                    set_arrow_patch_sagittal(axes[2][iperturb], itime, 0, vel_x_diff, vel_y_diff, actu_key)
-                    set_arrow_patch_coronal(axes[3][iperturb], 0, itime, vel_z_diff, vel_x_diff, actu_key)
+                    set_arrow_patch_sagittal(axes[2][iperturb], itime, 0, vel_x_diff, vel_y_diff, actu_key, color)
+                    set_arrow_patch_coronal(axes[3][iperturb], 0, itime, vel_z_diff, vel_x_diff, actu_key, color)
 
                     # Acceleration vectors
                     # --------------------
                     acc_x_diff = acc_x_diff_mean[actu_key][itime, iperturb]
                     acc_y_diff = acc_y_diff_mean[actu_key][itime, iperturb]
                     acc_z_diff = acc_z_diff_mean[actu_key][itime, iperturb]
-                    set_arrow_patch_sagittal(axes[4][iperturb], itime, 0, acc_x_diff, acc_y_diff, actu_key)
-                    set_arrow_patch_coronal(axes[5][iperturb], 0, itime, acc_z_diff, acc_x_diff, actu_key)
+                    set_arrow_patch_sagittal(axes[4][iperturb], itime, 0, acc_x_diff, acc_y_diff, actu_key, color)
+                    set_arrow_patch_coronal(axes[5][iperturb], 0, itime, acc_z_diff, acc_x_diff, actu_key, color)
 
 
-        figs[0].subplots_adjust(left=0.2, right=0.85, bottom=0.1, top=0.95, hspace=0.3)
-        figs[0].savefig(target[0], dpi=600)
+        left = 0.475
+        right = 0.9
+        bottom = 0.1
+        top = 0.95
+        hspace = 0.3
+        figs[0].subplots_adjust(left=left, right=right, bottom=bottom, top=top, hspace=hspace)
+        figs[2].subplots_adjust(left=left, right=right, bottom=bottom, top=top, hspace=hspace)
+        figs[4].subplots_adjust(left=left, right=right, bottom=bottom, top=top, hspace=hspace)
 
-        figs[1].subplots_adjust(left=0.1, right=0.95, bottom=0.2, top=0.8, wspace=0.3)
-        figs[1].savefig(target[1], dpi=600)
+        left = 0.1
+        right = 0.95
+        bottom = 0.475
+        top = 0.88
+        wspace = 0.3
+        figs[1].subplots_adjust(left=left, right=right, bottom=bottom, top=top, wspace=wspace)
+        figs[3].subplots_adjust(left=left, right=right, bottom=bottom, top=top, wspace=wspace)
+        figs[5].subplots_adjust(left=left, right=right, bottom=bottom, top=top, wspace=wspace)
 
-        figs[2].subplots_adjust(left=0.2, right=0.85, bottom=0.1, top=0.95, hspace=0.3)
-        figs[2].savefig(target[2], dpi=600)
+        import cv2
+        def add_sagittal_image(fig):
+            side = 0.35
+            offset = 0.01
+            l = 0.01
+            b = ((1.0 - side) / 2.0) + offset
+            w = side
+            h = side
+            ax = fig.add_axes([l, b, w, h], projection=None, polar=False)
+            image = cv2.imread(
+                os.path.join(self.study.config['figures_path'], 'images',
+                    'sagittal_with_arrows.tiff'))[..., ::-1]
+            ax.imshow(image, interpolation='none', aspect='equal')
 
-        figs[3].subplots_adjust(left=0.1, right=0.95, bottom=0.2, top=0.8, wspace=0.3)
-        figs[3].savefig(target[3], dpi=600)
+            ax.spines['top'].set_visible(False)
+            ax.spines['bottom'].set_visible(False)
+            ax.spines['left'].set_visible(False)
+            ax.spines['right'].set_visible(False)
+            ax.set_yticklabels([])
+            ax.xaxis.set_ticks_position('none')
+            ax.yaxis.set_ticks_position('none')
+            ax.tick_params(axis='x', which='both', bottom=False, 
+                           top=False, labelbottom=False)
+            ax.tick_params(axis='y', which='both', bottom=False, 
+                           top=False, labelbottom=False)
 
-        figs[4].subplots_adjust(left=0.2, right=0.85, bottom=0.1, top=0.95, hspace=0.3)
-        figs[4].savefig(target[4], dpi=600)
+        def add_transverse_image(fig):
+            side = 0.35
+            offset = 0.02 
+            l = ((1.0 - side) / 2.0) + offset
+            b = 0.0
+            w = side
+            h = side
+            ax = fig.add_axes([l, b, w, h], projection=None, polar=False)
+            image = cv2.imread(
+                os.path.join(self.study.config['figures_path'], 'images',
+                    'transverse_with_arrows.tiff'))[..., ::-1]
+            ax.imshow(image, interpolation='none', aspect='equal')
 
-        figs[5].subplots_adjust(left=0.1, right=0.95, bottom=0.2, top=0.8, wspace=0.3)
-        figs[5].savefig(target[5], dpi=600)
+            ax.spines['top'].set_visible(False)
+            ax.spines['bottom'].set_visible(False)
+            ax.spines['left'].set_visible(False)
+            ax.spines['right'].set_visible(False)
+            ax.set_yticklabels([])
+            ax.xaxis.set_ticks_position('none')
+            ax.yaxis.set_ticks_position('none')
+            ax.tick_params(axis='x', which='both', bottom=False, 
+                           top=False, labelbottom=False)
+            ax.tick_params(axis='y', which='both', bottom=False, 
+                           top=False, labelbottom=False)
+
+        def add_legend(fig, x, y):
+            w = 0.1
+            h = 0.02
+            ax = fig.add_axes([x, y, w, h], projection=None, polar=False)
+
+            ax.spines['top'].set_visible(False)
+            ax.spines['bottom'].set_visible(False)
+            ax.spines['left'].set_visible(False)
+            ax.spines['right'].set_visible(False)
+            ax.set_yticklabels([])
+            ax.xaxis.set_ticks_position('none')
+            ax.yaxis.set_ticks_position('none')
+            ax.tick_params(axis='x', which='both', bottom=False, 
+                           top=False, labelbottom=False)
+            ax.tick_params(axis='y', which='both', bottom=False, 
+                           top=False, labelbottom=False)
+
+            set_arrow_patch_coronal(ax, 0, 1.25, 0.5, 0, 'muscles', 'black')
+            ax.text(0.6, 1.1, 'muscle-driven model')
+            set_arrow_patch_coronal(ax, 0, 0, 0.5, 0, 'torques', 'black')
+            ax.text(0.6, -0.15, 'torque-driven model')
+
+        add_sagittal_image(figs[0])
+        add_sagittal_image(figs[2])
+        add_sagittal_image(figs[4])
+        x = 0.1
+        y = 0.15
+        add_legend(figs[0], x, y)
+        add_legend(figs[2], x, y)
+        add_legend(figs[4], x, y)
+
+        add_transverse_image(figs[1])
+        add_transverse_image(figs[3])
+        add_transverse_image(figs[5])
+        x = 0.675
+        y = 0.275
+        add_legend(figs[1], x, y)
+        add_legend(figs[3], x, y)
+        add_legend(figs[5], x, y)
+
+        for ifig, fig in enumerate(figs):
+            fig.savefig(target[ifig], dpi=600)
  
         plt.close()
 
@@ -3743,10 +3836,9 @@ class TaskPlotInstantaneousCenterOfMass(osp.StudyTask):
                         ilabel += 1
 
         targets = list()
-        for actu in ['muscles', 'torques']:
-            for kin in ['pos', 'vel', 'acc']:
-                targets += [os.path.join(self.analysis_path, 
-                            f'instant_com_{kin}_{actu}.png')]
+        for kin in ['pos', 'vel', 'acc']:
+            targets += [os.path.join(self.analysis_path, 
+                        f'instant_com_{kin}.png')]
 
         self.add_action(deps, targets, self.plot_instantaneous_com)
 
@@ -3757,16 +3849,19 @@ class TaskPlotInstantaneousCenterOfMass(osp.StudyTask):
         from collections import defaultdict
         figs = list()
         axes = defaultdict(list)
-        for actu in ['muscles', 'torques']:
-            for kin in ['pos', 'vel', 'acc']:
-                fig = plt.figure(figsize=(6, 9))
+        for kin in ['pos', 'vel', 'acc']:
+            fig = plt.figure(figsize=(9, 10))
+            for iactu, actu in enumerate(['muscles', 'torques']):
                 for idirec, direc in enumerate(['AP', 'SI', 'ML']):
-                    ax = fig.add_subplot(3, 1, idirec + 1)
+                    index = 2*idirec + iactu + 1 
+                    ax = fig.add_subplot(3, 2, index)
                     ax.axhline(y=0, color='black', linestyle='-',
-                            linewidth=0.1, alpha=1.0, zorder=-1)
+                            linewidth=0.1, alpha=1.0, zorder=2.5)
                     ax.spines['left'].set_position(('outward', 30))
                     ax.set_xticks(np.arange(len(self.times)))
                     ax.set_xlim(0, len(self.times)-1)
+                    ax.grid(color='gray', linestyle='--', linewidth=0.4,
+                        clip_on=False, alpha=0.75, zorder=0)
                     util.publication_spines(ax)
 
                     if not direc == 'ML':
@@ -3780,8 +3875,17 @@ class TaskPlotInstantaneousCenterOfMass(osp.StudyTask):
                         ax.set_xticklabels([f'{time}' for time in self.times])
                         ax.set_xlabel('peak perturbation time\n(% gait cycle)')
 
+                    if actu == 'torques':
+                        ax.spines['left'].set_visible(False)
+                        ax.set_yticklabels([])
+                        ax.yaxis.set_ticks_position('none')
+                        ax.tick_params(axis='y', which='both', left=False, 
+                                       right=False, labelleft=False)
+
+
                     axes[actu].append(ax)
-                figs.append(fig)
+
+            figs.append(fig)
 
         # Aggregate data
         # --------------
@@ -3980,14 +4084,14 @@ class TaskPlotInstantaneousCenterOfMass(osp.StudyTask):
                     acc_z_diff_std[actu_key][itime, isubt] = np.std(acc_z_diff)
 
 
-        pos_x_step = 0.0002
-        pos_y_step = 0.0005
-        pos_z_step = 0.0002
+        pos_x_step = 0.001
+        pos_y_step = 0.001
+        pos_z_step = 0.0005
         vel_x_step = 0.005
         vel_y_step = 0.01
-        vel_z_step = 0.005
-        acc_x_step = 0.01
-        acc_y_step = 0.01
+        vel_z_step = 0.002
+        acc_x_step = 0.02
+        acc_y_step = 0.02
         acc_z_step = 0.01
         pos_x_lim = [0.0, 0.0]
         pos_y_lim = [0.0, 0.0]
@@ -4018,6 +4122,7 @@ class TaskPlotInstantaneousCenterOfMass(osp.StudyTask):
             update_lims(acc_y_diff_mean[actu]+acc_y_diff_std[actu], acc_y_step, acc_y_lim)
             update_lims(acc_z_diff_mean[actu]+acc_z_diff_std[actu], acc_z_step, acc_z_lim)
         
+        for actu in ['muscles', 'torques']:
             handles_pos = list()
             handles_vel = list()
             handles_acc = list()
@@ -4027,89 +4132,143 @@ class TaskPlotInstantaneousCenterOfMass(osp.StudyTask):
 
                     # Set the x-position for these bar chart entries.
                     x = itime + shift
-                    lw = 0.1
+                    lw = 0.2
 
                     # Instantaneous positions
                     # -----------------------
                     plot_errorbar(axes[actu][0], x, pos_x_diff_mean[actu][itime, isubt], pos_x_diff_std[actu][itime, isubt])
                     h_pos = axes[actu][0].bar(x, pos_x_diff_mean[actu][itime, isubt], self.width, color=color, clip_on=False, 
-                        hatch=hatch, edgecolor=self.edgecolor, lw=lw)
+                        hatch=hatch, edgecolor=self.edgecolor, lw=lw, zorder=2.5)
                     handles_pos.append(h_pos)
-                    axes[actu][0].set_ylabel(r'$\Delta$' + ' fore-aft position $[-]$')
                     
                     plot_errorbar(axes[actu][1], x, pos_y_diff_mean[actu][itime, isubt], pos_y_diff_std[actu][itime, isubt])
                     axes[actu][1].bar(x, pos_y_diff_mean[actu][itime, isubt], self.width, color=color, clip_on=False, 
-                        hatch=hatch, edgecolor=self.edgecolor , lw=lw)
-                    axes[actu][1].set_ylabel(r'$\Delta$' + ' vertical position $[-]$')
+                        hatch=hatch, edgecolor=self.edgecolor , lw=lw, zorder=2.5)
 
                     plot_errorbar(axes[actu][2], x, pos_z_diff_mean[actu][itime, isubt], pos_z_diff_std[actu][itime, isubt])
                     axes[actu][2].bar(x, pos_z_diff_mean[actu][itime, isubt], self.width, color=color, clip_on=False, 
-                        hatch=hatch, edgecolor=self.edgecolor , lw=lw)
-                    axes[actu][2].set_ylabel(r'$\Delta$' + ' medio-lateral position $[-]$')
-
+                        hatch=hatch, edgecolor=self.edgecolor , lw=lw, zorder=2.5)
+                    
                     # Instantaneous velocities
                     # ------------------------
                     plot_errorbar(axes[actu][3], x, vel_x_diff_mean[actu][itime, isubt], vel_x_diff_std[actu][itime, isubt])
                     h_vel = axes[actu][3].bar(x, vel_x_diff_mean[actu][itime, isubt], self.width, color=color, clip_on=False, 
-                        hatch=hatch, edgecolor=self.edgecolor, lw=lw)
+                        hatch=hatch, edgecolor=self.edgecolor, lw=lw, zorder=2.5)
                     handles_vel.append(h_vel)
-                    axes[actu][3].set_ylabel(r'$\Delta$' + ' fore-aft velocity $[-]$')
 
                     plot_errorbar(axes[actu][4], x, vel_y_diff_mean[actu][itime, isubt], vel_y_diff_std[actu][itime, isubt])
                     axes[actu][4].bar(x, vel_y_diff_mean[actu][itime, isubt], self.width, color=color, clip_on=False, 
-                        hatch=hatch, edgecolor=self.edgecolor, lw=lw)
-                    axes[actu][4].set_ylabel(r'$\Delta$' + ' vertical velocity $[-]$')
+                        hatch=hatch, edgecolor=self.edgecolor, lw=lw, zorder=2.5)
 
                     plot_errorbar(axes[actu][5], x, vel_z_diff_mean[actu][itime, isubt], vel_z_diff_std[actu][itime, isubt])
                     axes[actu][5].bar(x, vel_z_diff_mean[actu][itime, isubt], self.width, color=color, clip_on=False, 
-                        hatch=hatch, edgecolor=self.edgecolor, lw=lw)
-                    axes[actu][5].set_ylabel(r'$\Delta$' + ' medio-lateral velocity $[-]$')
+                        hatch=hatch, edgecolor=self.edgecolor, lw=lw, zorder=2.5)     
 
                     # Instantaneous accelerations
                     # ---------------------------
                     plot_errorbar(axes[actu][6], x, acc_x_diff_mean[actu][itime, isubt], acc_x_diff_std[actu][itime, isubt])
                     h_acc = axes[actu][6].bar(x, acc_x_diff_mean[actu][itime, isubt], self.width, color=color, clip_on=False, 
-                        hatch=hatch, edgecolor=self.edgecolor, lw=lw)
+                        hatch=hatch, edgecolor=self.edgecolor, lw=lw, zorder=2.5)
                     handles_acc.append(h_acc)
-                    axes[actu][6].set_ylabel(r'$\Delta$' + ' fore-aft acceleration $[-]$')
-
+                    
                     plot_errorbar(axes[actu][7], x, acc_y_diff_mean[actu][itime, isubt], acc_y_diff_std[actu][itime, isubt])
                     axes[actu][7].bar(x, acc_y_diff_mean[actu][itime, isubt], self.width, color=color, clip_on=False,
-                        hatch=hatch, edgecolor=self.edgecolor, lw=lw)
-                    axes[actu][7].set_ylabel(r'$\Delta$' + ' vertical acceleration $[-]$')
-
+                        hatch=hatch, edgecolor=self.edgecolor, lw=lw, zorder=2.5)
+                    
                     plot_errorbar(axes[actu][8], x, acc_z_diff_mean[actu][itime, isubt], acc_z_diff_std[actu][itime, isubt])
                     axes[actu][8].bar(x, acc_z_diff_mean[actu][itime, isubt], self.width, color=color, clip_on=False, 
-                        hatch=hatch, edgecolor=self.edgecolor, lw=lw)
-                    axes[actu][8].set_ylabel(r'$\Delta$' + ' medio-lateral acceleration $[-]$')
+                        hatch=hatch, edgecolor=self.edgecolor, lw=lw, zorder=2.5)      
 
             axes[actu][0].set_ylim(pos_x_lim)
             axes[actu][0].set_yticks(get_ticks_from_lims(pos_x_lim, pos_x_step))
-            axes[actu][0].legend(handles_pos, self.legend_labels, loc='upper left', 
-                title='perturbation', frameon=True)
             axes[actu][1].set_ylim(pos_y_lim)
             axes[actu][1].set_yticks(get_ticks_from_lims(pos_y_lim, pos_y_step))
             axes[actu][2].set_ylim(pos_z_lim)
             axes[actu][2].set_yticks(get_ticks_from_lims(pos_z_lim, pos_z_step))
             axes[actu][3].set_ylim(vel_x_lim)
             axes[actu][3].set_yticks(get_ticks_from_lims(vel_x_lim, vel_x_step))
-            axes[actu][3].legend(handles_vel, self.legend_labels, loc='upper left', 
-                title='perturbation', frameon=True)
             axes[actu][4].set_ylim(vel_y_lim)
             axes[actu][4].set_yticks(get_ticks_from_lims(vel_y_lim, vel_y_step))
             axes[actu][5].set_ylim(vel_z_lim)
             axes[actu][5].set_yticks(get_ticks_from_lims(vel_z_lim, vel_z_step))
             axes[actu][6].set_ylim(acc_x_lim)
             axes[actu][6].set_yticks(get_ticks_from_lims(acc_x_lim, acc_x_step))
-            axes[actu][6].legend(handles_acc, self.legend_labels, loc='upper left', 
-                title='perturbation', frameon=True)
             axes[actu][7].set_ylim(acc_y_lim)
             axes[actu][7].set_yticks(get_ticks_from_lims(acc_y_lim, acc_y_step))
             axes[actu][8].set_ylim(acc_z_lim)
-            axes[actu][8].set_yticks(get_ticks_from_lims(acc_z_lim, acc_z_step))      
+            axes[actu][8].set_yticks(get_ticks_from_lims(acc_z_lim, acc_z_step))   
+
+            if 'muscles' in actu:
+                axes[actu][0].legend(handles_pos, self.legend_labels, loc='upper left', 
+                    frameon=True, fontsize=8)   
+                axes[actu][3].legend(handles_vel, self.legend_labels, loc='upper left', 
+                    frameon=True, fontsize=8)
+                axes[actu][6].legend(handles_acc, self.legend_labels, loc='upper left', 
+                    frameon=True, fontsize=8)
+                axes[actu][0].set_ylabel(r'$\Delta$' + ' fore-aft position $[-]$')
+                axes[actu][1].set_ylabel(r'$\Delta$' + ' vertical position $[-]$')
+                axes[actu][2].set_ylabel(r'$\Delta$' + ' medio-lateral position $[-]$')
+                axes[actu][3].set_ylabel(r'$\Delta$' + ' fore-aft velocity $[-]$')
+                axes[actu][4].set_ylabel(r'$\Delta$' + ' vertical velocity $[-]$')
+                axes[actu][5].set_ylabel(r'$\Delta$' + ' medio-lateral velocity $[-]$')
+                axes[actu][6].set_ylabel(r'$\Delta$' + ' fore-aft acceleration $[-]$')
+                axes[actu][7].set_ylabel(r'$\Delta$' + ' vertical acceleration $[-]$')
+                axes[actu][8].set_ylabel(r'$\Delta$' + ' medio-lateral acceleration $[-]$')
+
+
+        import cv2
+        def add_muscles_image(fig):
+            side = 0.175
+            l = 0.23
+            b = 0.81
+            w = side
+            h = side
+            ax = fig.add_axes([l, b, w, h], projection=None, polar=False)
+            image = cv2.imread(
+                os.path.join(self.study.config['figures_path'], 'images',
+                    'sagittal_muscles.tiff'))[..., ::-1]
+            ax.imshow(image, interpolation='none', aspect='equal')
+
+            ax.spines['top'].set_visible(False)
+            ax.spines['bottom'].set_visible(False)
+            ax.spines['left'].set_visible(False)
+            ax.spines['right'].set_visible(False)
+            ax.set_yticklabels([])
+            ax.xaxis.set_ticks_position('none')
+            ax.yaxis.set_ticks_position('none')
+            ax.tick_params(axis='x', which='both', bottom=False, 
+                           top=False, labelbottom=False)
+            ax.tick_params(axis='y', which='both', bottom=False, 
+                           top=False, labelbottom=False)
+
+        def add_torques_image(fig):
+            side = 0.175
+            l = 0.680
+            b = 0.81
+            w = side
+            h = side
+            ax = fig.add_axes([l, b, w, h], projection=None, polar=False)
+            image = cv2.imread(
+                os.path.join(self.study.config['figures_path'], 'images',
+                    'sagittal_torques.tiff'))[..., ::-1]
+            ax.imshow(image, interpolation='none', aspect='equal')
+
+            ax.spines['top'].set_visible(False)
+            ax.spines['bottom'].set_visible(False)
+            ax.spines['left'].set_visible(False)
+            ax.spines['right'].set_visible(False)
+            ax.set_yticklabels([])
+            ax.xaxis.set_ticks_position('none')
+            ax.yaxis.set_ticks_position('none')
+            ax.tick_params(axis='x', which='both', bottom=False, 
+                           top=False, labelbottom=False)
+            ax.tick_params(axis='y', which='both', bottom=False, 
+                           top=False, labelbottom=False)
 
         for ifig, fig in enumerate(figs):
-            fig.tight_layout()
+            fig.subplots_adjust(left=0.125, right=0.95, bottom=0.075, top=0.8, wspace=0.2)
+            add_muscles_image(fig)
+            add_torques_image(fig)
             fig.savefig(target[ifig], dpi=600)
             plt.close()
 
@@ -5058,9 +5217,8 @@ class TaskPlotInstantaneousGroundReactions(osp.StudyTask):
                         ilabel += 1
 
         targets = list()
-        for actu in ['muscles', 'torques']:
-                targets += [os.path.join(self.analysis_path, 
-                            f'instant_grfs_{actu}.png')]
+        targets += [os.path.join(self.analysis_path, 
+                    f'instant_grfs.png')]
 
         self.add_action(deps, targets,
                         self.plot_instantaneous_ground_reactions)
@@ -5070,17 +5228,19 @@ class TaskPlotInstantaneousGroundReactions(osp.StudyTask):
         # Initialize figures
         # ------------------
         from collections import defaultdict
-        figs = list()
         axes = defaultdict(list)
-        for actu in ['muscles', 'torques']:
-            fig = plt.figure(figsize=(6, 9))
+        fig = plt.figure(figsize=(9, 10))
+        for iactu, actu in enumerate(['muscles', 'torques']):
             for idirec, direc in enumerate(['AP', 'SI', 'ML']):
-                ax = fig.add_subplot(3, 1, idirec + 1)
+                index = 2*idirec + iactu + 1 
+                ax = fig.add_subplot(3, 2, index)
                 ax.axhline(y=0, color='black', linestyle='-',
-                        linewidth=0.1, alpha=1.0, zorder=-1)
+                        linewidth=0.1, alpha=1.0, zorder=2.5)
                 ax.spines['left'].set_position(('outward', 30))
                 ax.set_xticks(np.arange(len(self.times)))
                 ax.set_xlim(0, len(self.times)-1)
+                ax.grid(color='gray', linestyle='--', linewidth=0.4,
+                        clip_on=False, alpha=0.75, zorder=0)
                 util.publication_spines(ax)
 
                 if not direc == 'ML':
@@ -5094,8 +5254,14 @@ class TaskPlotInstantaneousGroundReactions(osp.StudyTask):
                     ax.set_xticklabels([f'{time}' for time in self.times])
                     ax.set_xlabel('peak perturbation time\n(% gait cycle)')
 
+                if actu == 'torques':
+                    ax.spines['left'].set_visible(False)
+                    ax.set_yticklabels([])
+                    ax.yaxis.set_ticks_position('none')
+                    ax.tick_params(axis='y', which='both', left=False, 
+                                   right=False, labelleft=False)
+
                 axes[actu].append(ax)
-            figs.append(fig)
 
         # Aggregate data
         # --------------
@@ -5220,8 +5386,8 @@ class TaskPlotInstantaneousGroundReactions(osp.StudyTask):
                     grf_z_diff_std[actu_key][itime, isubt] = np.std(grf_z_diff)
 
 
-        grf_x_step = 0.01 # cm
-        grf_y_step = 0.01
+        grf_x_step = 0.01
+        grf_y_step = 0.02
         grf_z_step = 0.01
         grf_x_lim = [0.0, 0.0]
         grf_y_lim = [0.0, 0.0]
@@ -5233,6 +5399,8 @@ class TaskPlotInstantaneousGroundReactions(osp.StudyTask):
             update_lims(grf_y_diff_mean[actu]+grf_y_diff_std[actu], grf_y_step, grf_y_lim)
             update_lims(grf_z_diff_mean[actu]-grf_z_diff_std[actu], grf_z_step, grf_z_lim)
             update_lims(grf_z_diff_mean[actu]+grf_z_diff_std[actu], grf_z_step, grf_z_lim)
+
+        for actu in ['muscles', 'torques']:
             handles = list()
             for itime, time in enumerate(self.times):
                 zipped = zip(self.torques, self.subtalars, self.colors, self.shifts, self.hatches)
@@ -5240,37 +5408,89 @@ class TaskPlotInstantaneousGroundReactions(osp.StudyTask):
 
                     # Set the x-position for these bar chart entries.
                     x = itime + shift
-                    lw = 0.1
+                    lw = 0.2
 
                     plot_errorbar(axes[actu][0], x, grf_x_diff_mean[actu][itime, isubt], grf_x_diff_std[actu][itime, isubt])
                     h = axes[actu][0].bar(x, grf_x_diff_mean[actu][itime, isubt], self.width, color=color, clip_on=False,
-                        hatch=hatch, edgecolor=self.edgecolor, lw=lw)
+                        hatch=hatch, edgecolor=self.edgecolor, lw=lw, zorder=2.5)
                     handles.append(h)
-                    axes[actu][0].set_ylabel(r'$\Delta$ fore-aft ground reaction $[BW]$')
 
                     plot_errorbar(axes[actu][1], x, grf_y_diff_mean[actu][itime, isubt], grf_y_diff_std[actu][itime, isubt])
                     axes[actu][1].bar(x, grf_y_diff_mean[actu][itime, isubt], self.width, color=color, clip_on=False,
-                        hatch=hatch, edgecolor=self.edgecolor, lw=lw)
-                    axes[actu][1].set_ylabel(r'$\Delta$ vertical ground reaction $[BW]$')
+                        hatch=hatch, edgecolor=self.edgecolor, lw=lw, zorder=2.5)
 
                     plot_errorbar(axes[actu][2], x, grf_z_diff_mean[actu][itime, isubt], grf_z_diff_std[actu][itime, isubt])
                     axes[actu][2].bar(x, grf_z_diff_mean[actu][itime, isubt], self.width, color=color, clip_on=False,
-                        hatch=hatch, edgecolor=self.edgecolor, lw=lw)
-                    axes[actu][2].set_ylabel(r'$\Delta$ medio-lateral ground reaction $[BW]$')
+                        hatch=hatch, edgecolor=self.edgecolor, lw=lw, zorder=2.5)
 
             axes[actu][0].set_ylim(grf_x_lim)
             axes[actu][0].set_yticks(get_ticks_from_lims(grf_x_lim, grf_x_step))
-            axes[actu][0].legend(handles, self.legend_labels, loc='upper left', 
-                title='perturbation', frameon=True)
             axes[actu][1].set_ylim(grf_y_lim)
             axes[actu][1].set_yticks(get_ticks_from_lims(grf_y_lim, grf_y_step))
             axes[actu][2].set_ylim(grf_z_lim)
             axes[actu][2].set_yticks(get_ticks_from_lims(grf_z_lim, grf_z_step))
 
-        for ifig, fig in enumerate(figs):
-            fig.tight_layout()
-            fig.savefig(target[ifig], dpi=600)
-            plt.close()
+            if 'muscles' in actu:
+                axes[actu][0].legend(handles, self.legend_labels, loc='upper left', 
+                    frameon=True, fontsize=8)
+                axes[actu][0].set_ylabel(r'$\Delta$ fore-aft ground reaction $[BW]$')
+                axes[actu][1].set_ylabel(r'$\Delta$ vertical ground reaction $[BW]$')
+                axes[actu][2].set_ylabel(r'$\Delta$ medio-lateral ground reaction $[BW]$')
+
+        import cv2
+        def add_muscles_image(fig):
+            side = 0.175
+            l = 0.23
+            b = 0.81
+            w = side
+            h = side
+            ax = fig.add_axes([l, b, w, h], projection=None, polar=False)
+            image = cv2.imread(
+                os.path.join(self.study.config['figures_path'], 'images',
+                    'sagittal_muscles.tiff'))[..., ::-1]
+            ax.imshow(image, interpolation='none', aspect='equal')
+
+            ax.spines['top'].set_visible(False)
+            ax.spines['bottom'].set_visible(False)
+            ax.spines['left'].set_visible(False)
+            ax.spines['right'].set_visible(False)
+            ax.set_yticklabels([])
+            ax.xaxis.set_ticks_position('none')
+            ax.yaxis.set_ticks_position('none')
+            ax.tick_params(axis='x', which='both', bottom=False, 
+                           top=False, labelbottom=False)
+            ax.tick_params(axis='y', which='both', bottom=False, 
+                           top=False, labelbottom=False)
+
+        def add_torques_image(fig):
+            side = 0.175
+            l = 0.680
+            b = 0.81
+            w = side
+            h = side
+            ax = fig.add_axes([l, b, w, h], projection=None, polar=False)
+            image = cv2.imread(
+                os.path.join(self.study.config['figures_path'], 'images',
+                    'sagittal_torques.tiff'))[..., ::-1]
+            ax.imshow(image, interpolation='none', aspect='equal')
+
+            ax.spines['top'].set_visible(False)
+            ax.spines['bottom'].set_visible(False)
+            ax.spines['left'].set_visible(False)
+            ax.spines['right'].set_visible(False)
+            ax.set_yticklabels([])
+            ax.xaxis.set_ticks_position('none')
+            ax.yaxis.set_ticks_position('none')
+            ax.tick_params(axis='x', which='both', bottom=False, 
+                           top=False, labelbottom=False)
+            ax.tick_params(axis='y', which='both', bottom=False, 
+                           top=False, labelbottom=False)
+
+        fig.subplots_adjust(left=0.125, right=0.95, bottom=0.075, top=0.8, wspace=0.2)
+        add_muscles_image(fig)
+        add_torques_image(fig)
+        fig.savefig(target[0], dpi=600)
+        plt.close()
 
 
 class TaskPlotGroundReactionBreakdown(osp.StudyTask):

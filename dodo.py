@@ -76,7 +76,8 @@ study.convergence_tolerance = 1e-2
 
 # Maximum perturbation torque
 study.torques = [0, 10]
-study.times = [20, 25, 30, 35, 40, 45, 50, 55, 60]
+study.times = [20, 25, 30, 35, 40, 45, 50, 55, 60] 
+# study.times = [55, 56, 57, 58, 59, 60, 61, 62, 63]
 study.rise = 10
 study.fall = 5
 study.subtalar_peak_torques = [-10, 0, 10]
@@ -140,16 +141,20 @@ plot_subtalars.extend(study.subtalar_suffixes)
 plot_subtalars.append(study.subtalar_suffixes[-1])
 study.plot_subtalars = plot_subtalars
 
-study.plot_colors = [pp.adjust_lightness('orange', amount=1.25),
-                     pp.adjust_lightness('saddlebrown', amount=1.25),
+lightorange = [c / 255.0 for c in [253,141,60]]
+orange =      [c / 255.0 for c in [217,71,1]]
+blue =        [c / 255.0 for c in [33,113,181]]
+lightblue =   [c / 255.0 for c in [107,174,214]]
+study.plot_colors = [pp.adjust_lightness(lightorange, amount=1.0),
+                     pp.adjust_lightness(orange, amount=1.0),
                      'black',
-                     pp.adjust_lightness('navy', amount=1.5),
-                     pp.adjust_lightness('blue', amount=1.5)
+                     pp.adjust_lightness(blue, amount=1.0),
+                     pp.adjust_lightness(lightblue, amount=1.0)
                     ]
 
 # Methods figure
 # --------------
-study.add_task(TaskPlotMethodsFigure, subjects)
+study.add_task(TaskPlotMethodsFigure, subjects, study.times)
 
 # Validate
 # --------
@@ -167,19 +172,19 @@ study.add_task(TaskPlotInstantaneousCenterOfMass, subjects,
     study.times, study.rise, study.fall)
 study.add_task(TaskCreateCenterOfMassStatisticsTables, subjects,
     study.times, study.rise, study.fall)
-for time in study.times:
-    study.add_task(TaskPlotCenterOfMass, subjects, time, study.rise, study.fall)
+# for time in study.times:
+#     study.add_task(TaskPlotCenterOfMass, subjects, time, study.rise, study.fall)
 
 # Ground reactions analysis
 # -------------------------
 study.add_task(TaskPlotInstantaneousGroundReactions, subjects, 
     study.times, study.rise, study.fall)
-for time in study.times:
-    study.add_task(TaskPlotGroundReactions, subjects, time, study.rise, study.fall)
+# for time in study.times:
+#     study.add_task(TaskPlotGroundReactions, subjects, time, study.rise, study.fall)
 
 # Device powers
 # -------------
-study.add_task(TaskPlotAnkleTorquesAndPowers, 
-    subjects[0], [20, 30, 40, 50, 55, 60], 10, 0, study.rise, study.fall)
 study.add_task(TaskCreatePerturbationPowersTable, subjects)
+study.add_task(TaskCreatePerturbationPowersTable, subjects,
+    torque_actuators=True)
 study.add_task(TaskPlotPerturbationPowers, subjects)
