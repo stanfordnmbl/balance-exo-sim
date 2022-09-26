@@ -163,24 +163,30 @@ study.add_task(TaskPlotUnperturbedResults, subjects, masses,
 study.add_task(TaskValidateTrackingErrors, subjects, masses,
     study.times)
 study.add_task(TaskValidateMarkerErrors)
+study.add_task(TaskComputeCenterOfMassTimesteppingError,
+    subjects, study.times, study.rise, study.fall)
 
 # Center-of-mass analysis
 # -----------------------
 study.add_task(TaskPlotCenterOfMassVector, subjects,
     study.times, study.rise, study.fall)
-study.add_task(TaskPlotInstantaneousCenterOfMass, subjects, 
-    study.times, study.rise, study.fall)
 study.add_task(TaskCreateCenterOfMassStatisticsTables, subjects,
     study.times, study.rise, study.fall)
-# for time in study.times:
-#     study.add_task(TaskPlotCenterOfMass, subjects, time, study.rise, study.fall)
-
-# Ground reactions analysis
-# -------------------------
-study.add_task(TaskPlotInstantaneousGroundReactions, subjects, 
+study.add_task(TaskAggregateCenterOfMassStatistics,
     study.times, study.rise, study.fall)
-# for time in study.times:
-#     study.add_task(TaskPlotGroundReactions, subjects, time, study.rise, study.fall)
+study.add_task(TaskPlotInstantaneousCenterOfMass, subjects, 
+    study.times, study.rise, study.fall)
+
+# Center-of-pressure analysis
+# ---------------------------
+study.add_task(TaskPlotCenterOfPressureVector, subjects,
+    study.times, study.rise, study.fall)
+study.add_task(TaskCreateCenterOfPressureStatisticsTables, subjects,
+    study.times, study.rise, study.fall)
+study.add_task(TaskAggregateCenterOfPressureStatistics,
+    study.times, study.rise, study.fall)
+study.add_task(TaskPlotInstantaneousCenterOfPressure, subjects, 
+    study.times, study.rise, study.fall)
 
 # Device powers
 # -------------
