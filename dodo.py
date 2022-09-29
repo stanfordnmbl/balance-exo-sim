@@ -165,6 +165,7 @@ study.add_task(TaskValidateTrackingErrors, subjects, masses,
 study.add_task(TaskValidateMarkerErrors)
 study.add_task(TaskComputeCenterOfMassTimesteppingError,
     subjects, study.times, study.rise, study.fall)
+study.add_task(TaskValidateMuscleActivity, subjects)
 
 # Center-of-mass analysis
 # -----------------------

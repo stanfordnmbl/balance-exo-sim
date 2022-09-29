@@ -1447,8 +1447,8 @@ class TaskPlotUnperturbedResults(osp.StudyTask):
             f.write(f'Toe-off time: {np.mean(toeOffs):.1f} +/- {np.std(toeOffs):.1f} %\n')
 
 
-# Validate inverse kinematics
-# ---------------------------
+# Validation
+# ----------
 
 class TaskValidateMarkerErrors(osp.StudyTask):
     REGISTRY = []
@@ -1661,6 +1661,173 @@ class TaskValidateTrackingErrors(osp.StudyTask):
             f.write('------------------------------------------------------\n')
             for key, value in rmse_dict.items():
                 f.write(f' -- {key}: {np.mean(value):.2f} +/- {np.std(value):.2f} [N] \n')
+
+
+class TaskValidateMuscleActivity(osp.StudyTask):
+    REGISTRY = []
+    def __init__(self, study, subjects):
+        super(TaskValidateMuscleActivity, self).__init__(study)
+        self.name = 'validate_muscle_activity'
+        self.doc = 'Plot muscle activity from simulation against EMG data.'
+        self.validate_path = os.path.join(study.config['validate_path'], 
+            'muscle_activity')
+        if not os.path.isdir(self.validate_path): os.mkdir(self.validate_path)
+        self.subjects = subjects
+        self.emg_names = ['bflh_r', 'gaslat_r', 'gasmed_r', 'glmax1_r', 
+                        'glmax2_r', 'glmax3_r', 'glmed1_r', 'glmed2_r', 
+                        'glmed3_r', 'recfem_r', 'semimem_r', 'semiten_r', 
+                        'soleus_r', 'tibant_r', 'vaslat_r','vasmed_r']
+
+        emg_fpaths = list()
+        solution_fpaths = list()
+        for subject in self.subjects:
+            solution_fpaths.append(os.path.join(
+                study.config['results_path'], 'unperturbed', 
+                subject,'unperturbed.sto'))
+            emg_fpaths.append(os.path.join(
+                study.config['results_path'], 'experiments',
+                subject, 'walk2', 'expdata', 'emg.sto'))
+   
+        self.add_action(emg_fpaths + solution_fpaths,
+                        [os.path.join(self.validate_path, 
+                            'muscle_activity.txt')],
+                        self.validate_muscle_activity)
+
+    def validate_muscle_activity(self, file_dep, target):
+
+        def calc_rms_error(vec1, vec2):
+            N = len(vec1)
+            errors = vec1 - vec2
+            sq_errors = np.square(errors)
+            sumsq_errors = np.sum(sq_errors)
+            return np.sqrt(sumsq_errors / N)
+
+        numSubjects = len(self.subjects)
+        numEMG = len(self.emg_names)
+
+        emg_fpaths = file_dep[0:numSubjects]
+        solution_fpaths = file_dep[numSubjects:]
+        fpaths = zip(emg_fpaths, solution_fpaths)
+
+        shape = (numEMG, numSubjects)
+        act_peak_times = np.zeros(shape)
+        act_peak_values = np.zeros(shape)
+        emg_peak_times = np.zeros(shape)
+        emg_peak_values = np.zeros(shape)
+        onset_percent_errors = np.zeros(shape)
+        # meansq_errors = np.zeros(shape)
+        rms_errors = np.zeros(shape)
+        for isubj, (emg_fpath, solution_fpath) in enumerate(fpaths):
+
+            from collections import deque
+
+            emg = util.storage2numpy(emg_fpath)
+            time = emg['time']
+            pgc = np.linspace(0, 100, 201)
+
+            def min_index(vals):
+                idx, val = min(enumerate(vals), key=lambda p: p[1])
+                return idx
+
+            muscle_array = list()
+            emg_data = list()
+            act_data = list()
+
+            solution = osim.TimeSeriesTable(solution_fpath)
+            solTime = np.array(solution.getIndependentColumn())
+            start_idx = min_index(abs(time-solTime[0]))
+            end_idx = min_index(abs(time-solTime[-1]))
+            duration = solTime[-1] - solTime[0]
+            elecmech_delay = 0.075 # ms
+            elecmech_percent_delay = elecmech_delay / duration
+
+            for emg_name in self.emg_names:
+                emg_interp = np.interp(pgc, 
+                    np.linspace(0, 100, len(time[start_idx:end_idx])), 
+                    emg[emg_name][start_idx:end_idx])
+                emg_peak = max(emg_interp)
+                scale = emg_peak / (emg_peak - 0.05);
+                emg_interp_rescaled = scale * (emg_interp - 0.05);
+                emg_data.append(emg_interp_rescaled)
+
+                act = solution.getDependentColumn(
+                    f'/forceset/{emg_name}/activation').to_numpy()
+                act_interp = np.interp(pgc,
+                    np.linspace(0, 100, len(solTime)), 
+                    act)
+                act_data.append(act_interp)
+
+                muscle_array.append(emg_name)
+
+            # Convert from n_muscles x n_times
+            #         to   n_times x n_muscles
+            emg_data_array = np.array(emg_data).transpose()
+            act_data_array = np.array(act_data).transpose()
+            columns = pd.MultiIndex.from_arrays([muscle_array], names=['muscle'])
+            df_emg = pd.DataFrame(emg_data_array, columns=columns, index=pgc)
+            df_act = pd.DataFrame(act_data_array, columns=columns, index=pgc)
+
+            for iemg, emg_name in enumerate(self.emg_names):
+
+                emg_values = df_emg[emg_name]
+                act_values = df_act[emg_name]
+
+                emg_peak_idx = np.argmax(emg_values.values)
+                emg_peak_times[iemg, isubj] = emg_values.index[emg_peak_idx]
+                emg_peak_values[iemg, isubj] = emg_values.values[emg_peak_idx]
+
+                act_peak_idx = np.argmax(act_values.values)
+                act_peak_times[iemg, isubj] = act_values.index[act_peak_idx]
+                act_peak_values[iemg, isubj] = act_values.values[act_peak_idx]
+
+                threshold = 0.05
+                this_emg = np.array(emg_values.values.transpose()[0])
+                this_act = np.array(act_values.values.transpose()[0])
+                emg_bool = this_emg > threshold
+                act_bool = this_act > threshold
+
+                shift_nodes = int(elecmech_percent_delay * len(emg_bool))
+                emg_deque = deque(emg_bool)
+                emg_deque.rotate(shift_nodes)
+                emg_bool = np.array(emg_deque)
+                
+                onset_diff = emg_bool.astype(int) - act_bool.astype(int)
+                percent_error = np.abs(onset_diff).sum() / float(len(onset_diff))
+                onset_percent_errors[iemg, isubj] = percent_error
+
+                rms_errors[iemg, isubj] = calc_rms_error(this_emg, this_act)
+                
+        act_peak_times_mean = np.mean(act_peak_times, axis=1)
+        act_peak_values_mean = np.mean(act_peak_values, axis=1)
+        emg_peak_times_mean = np.mean(emg_peak_times, axis=1)
+        emg_peak_values_mean = np.mean(emg_peak_values, axis=1)
+        diff_peak_times = act_peak_times - emg_peak_times
+        diff_peak_values = act_peak_values - emg_peak_values
+        diff_peak_times_mean = np.mean(diff_peak_times, axis=1)
+        diff_peak_values_mean = np.mean(diff_peak_values, axis=1)
+        onset_percent_errors_mean = np.mean(onset_percent_errors, axis=1)
+        rms_errors_mean = np.mean(rms_errors, axis=1)
+
+        with open(target[0], 'w') as f:
+            f.write('EMG versus simulation peak values: \n')
+            for iemg, emg_name in enumerate(self.emg_names):
+                f.write(f'{emg_name}: {emg_peak_values_mean[iemg]:.2f}, '
+                        f'{emg_name}: {act_peak_values_mean[iemg]:.2f}, '
+                        f'diff: {diff_peak_values_mean[iemg]:.2f}\n')
+            f.write('\n')
+            f.write('EMG versus simulation peak times: \n')
+            for iemg, emg_name in enumerate(self.emg_names):
+                f.write(f'{emg_name}: {emg_peak_times_mean[iemg]:.2f}, '
+                        f'{emg_name}: {act_peak_times_mean[iemg]:.2f}, '
+                        f'diff: {diff_peak_times_mean[iemg]:.2f}\n')
+            f.write('\n')
+            f.write('Mean onset-offset percent errors: \n')
+            for iemg, emg_name in enumerate(self.emg_names):
+                f.write(f'{emg_name}: {onset_percent_errors_mean[iemg]:.2f}\n')
+            f.write('\n')
+            f.write('RMS errors: \n')
+            for iemg, emg_name in enumerate(self.emg_names):
+                f.write(f'{emg_name}: {rms_errors_mean[iemg]:.2f}\n')
 
 
 # Perturbed walking
@@ -2409,13 +2576,13 @@ class TaskPlotMethodsFigure(osp.StudyTask):
             h, = ax_vel.plot(pgc, vel_mean[:, ilabel], label=label, color=color, 
                 linewidth=lw, clip_on=False, solid_capstyle='round')
             handles.append(h)
-            ax_vel.set_ylabel('center-of-mass\nvelocity', fontsize=yfs)
+            ax_vel.set_ylabel('center-of-mass\nvelocity, position', fontsize=yfs)
             ax_vel.set_ylim(vel_lim)
             ax_vel.set_yticks(get_ticks_from_lims(vel_lim, vel_step))
                 
             ax_acc.plot(pgc, acc_mean[:, ilabel], label=label, color=color, 
                 linewidth=lw, clip_on=False, solid_capstyle='round')
-            ax_acc.set_ylabel('center-of-mass\nacceleration', fontsize=yfs)
+            ax_acc.set_ylabel('center-of-mass acceleration, \ncenter-of-pressure', fontsize=yfs)
             ax_acc.set_ylim(acc_lim)
             ax_acc.set_yticks(get_ticks_from_lims(acc_lim, acc_step))
 
@@ -4212,8 +4379,12 @@ class TaskPlotInstantaneousCenterOfMass(osp.StudyTask):
                                        top=False, labelbottom=False)
                     else:
                         ax.spines['bottom'].set_position(('outward', 10))
-                        ax.set_xticklabels([f'{time}' for time in self.times])
-                        ax.set_xlabel('peak perturbation time\n(% gait cycle)')
+                        if kin == 'pos' or kin == 'vel':
+                            ax.set_xticklabels([f'{time + 5}' for time in self.times])
+                            ax.set_xlabel('perturbation offset time\n(% gait cycle)')
+                        else:
+                            ax.set_xticklabels([f'{time}' for time in self.times])
+                            ax.set_xlabel('peak perturbation time\n(% gait cycle)')
 
                     if actu == 'torques':
                         ax.spines['left'].set_visible(False)
@@ -4481,15 +4652,15 @@ class TaskPlotInstantaneousCenterOfMass(osp.StudyTask):
             update_lims(acc_y_diff_mean[actu]+acc_y_diff_std[actu], acc_y_step, acc_y_lim)
             update_lims(acc_z_diff_mean[actu]+acc_z_diff_std[actu], acc_z_step, acc_z_lim)
 
-        diff_stats_pos_x = pd.read_csv(file_dep[self.label_dict[f'com_stats_pos_x_diff']], index_col=[0, 1])
-        diff_stats_pos_y = pd.read_csv(file_dep[self.label_dict[f'com_stats_pos_y_diff']], index_col=[0, 1])
-        diff_stats_pos_z = pd.read_csv(file_dep[self.label_dict[f'com_stats_pos_z_diff']], index_col=[0, 1])
-        diff_stats_vel_x = pd.read_csv(file_dep[self.label_dict[f'com_stats_vel_x_diff']], index_col=[0, 1])
-        diff_stats_vel_y = pd.read_csv(file_dep[self.label_dict[f'com_stats_vel_y_diff']], index_col=[0, 1])
-        diff_stats_vel_z = pd.read_csv(file_dep[self.label_dict[f'com_stats_vel_z_diff']], index_col=[0, 1])
-        diff_stats_acc_x = pd.read_csv(file_dep[self.label_dict[f'com_stats_acc_x_diff']], index_col=[0, 1])
-        diff_stats_acc_y = pd.read_csv(file_dep[self.label_dict[f'com_stats_acc_y_diff']], index_col=[0, 1])
-        diff_stats_acc_z = pd.read_csv(file_dep[self.label_dict[f'com_stats_acc_z_diff']], index_col=[0, 1])       
+        diff_stats_pos_x = pd.read_csv(file_dep[self.label_dict['com_stats_pos_x_diff']], index_col=[0, 1])
+        diff_stats_pos_y = pd.read_csv(file_dep[self.label_dict['com_stats_pos_y_diff']], index_col=[0, 1])
+        diff_stats_pos_z = pd.read_csv(file_dep[self.label_dict['com_stats_pos_z_diff']], index_col=[0, 1])
+        diff_stats_vel_x = pd.read_csv(file_dep[self.label_dict['com_stats_vel_x_diff']], index_col=[0, 1])
+        diff_stats_vel_y = pd.read_csv(file_dep[self.label_dict['com_stats_vel_y_diff']], index_col=[0, 1])
+        diff_stats_vel_z = pd.read_csv(file_dep[self.label_dict['com_stats_vel_z_diff']], index_col=[0, 1])
+        diff_stats_acc_x = pd.read_csv(file_dep[self.label_dict['com_stats_acc_x_diff']], index_col=[0, 1])
+        diff_stats_acc_y = pd.read_csv(file_dep[self.label_dict['com_stats_acc_y_diff']], index_col=[0, 1])
+        diff_stats_acc_z = pd.read_csv(file_dep[self.label_dict['com_stats_acc_z_diff']], index_col=[0, 1])       
         for actu in ['muscles', 'torques']:
             stats_pos_x = pd.read_csv(file_dep[self.label_dict[f'com_stats_pos_x_{actu}']], index_col=[0, 1])
             stats_pos_y = pd.read_csv(file_dep[self.label_dict[f'com_stats_pos_y_{actu}']], index_col=[0, 1])
@@ -4539,8 +4710,8 @@ class TaskPlotInstantaneousCenterOfMass(osp.StudyTask):
                         hatch=hatch, edgecolor=self.edgecolor, lw=lw, zorder=2.5)
                     if stats_pos_x.loc[(time, perturbation)]['significant']:
                         axes[actu][0].text(x, pos_x_offsets[isubt], '*', ha='center', fontsize=10)
-                    if (actu == 'torques') and diff_stats_pos_x.loc[(time, perturbation)]['significant']:
-                        axes[actu][0].text(x, diff_pos_x_offsets[isubt], r'$ \diamond $', ha='center', fontsize=8)
+                        if (actu == 'torques') and diff_stats_pos_x.loc[(time, perturbation)]['significant']:
+                            axes[actu][0].text(x, diff_pos_x_offsets[isubt], r'$ \diamond $', ha='center', fontsize=8)
                     handles_pos.append(h_pos)
                     
                     plot_errorbar(axes[actu][1], x, pos_y_diff_mean[actu][itime, isubt], pos_y_diff_std[actu][itime, isubt])
@@ -4548,17 +4719,17 @@ class TaskPlotInstantaneousCenterOfMass(osp.StudyTask):
                         hatch=hatch, edgecolor=self.edgecolor , lw=lw, zorder=2.5)
                     if stats_pos_y.loc[(time, perturbation)]['significant']:
                         axes[actu][1].text(x, pos_y_offsets[isubt], '*', ha='center', fontsize=10)
-                    if (actu == 'torques') and diff_stats_pos_y.loc[(time, perturbation)]['significant']:
-                        axes[actu][1].text(x, diff_pos_y_offsets[isubt], r'$ \diamond $', ha='center', fontsize=8)
+                        if (actu == 'torques') and diff_stats_pos_y.loc[(time, perturbation)]['significant']:
+                            axes[actu][1].text(x, diff_pos_y_offsets[isubt], r'$ \diamond $', ha='center', fontsize=8)
 
                     plot_errorbar(axes[actu][2], x, pos_z_diff_mean[actu][itime, isubt], pos_z_diff_std[actu][itime, isubt])
                     axes[actu][2].bar(x, pos_z_diff_mean[actu][itime, isubt], self.width, color=color, clip_on=False, 
                         hatch=hatch, edgecolor=self.edgecolor , lw=lw, zorder=2.5)
                     if stats_pos_z.loc[(time, perturbation)]['significant']:
                         axes[actu][2].text(x, pos_z_offsets[isubt], '*', ha='center', fontsize=10)
-                    if (actu == 'torques') and diff_stats_pos_z.loc[(time, perturbation)]['significant']:
-                        axes[actu][2].text(x, diff_pos_z_offsets[isubt], r'$ \diamond $', ha='center', fontsize=8)
-                    
+                        if (actu == 'torques') and diff_stats_pos_z.loc[(time, perturbation)]['significant']:
+                            axes[actu][2].text(x, diff_pos_z_offsets[isubt], r'$ \diamond $', ha='center', fontsize=8)
+                        
                     # Instantaneous velocities
                     # ------------------------
                     plot_errorbar(axes[actu][3], x, vel_x_diff_mean[actu][itime, isubt], vel_x_diff_std[actu][itime, isubt])
@@ -4566,8 +4737,8 @@ class TaskPlotInstantaneousCenterOfMass(osp.StudyTask):
                         hatch=hatch, edgecolor=self.edgecolor, lw=lw, zorder=2.5)
                     if stats_vel_x.loc[(time, perturbation)]['significant']:
                         axes[actu][3].text(x, vel_x_offsets[isubt], '*', ha='center', fontsize=10)
-                    if (actu == 'torques') and diff_stats_vel_x.loc[(time, perturbation)]['significant']:
-                        axes[actu][3].text(x, diff_vel_x_offsets[isubt], r'$ \diamond $', ha='center', fontsize=8)
+                        if (actu == 'torques') and diff_stats_vel_x.loc[(time, perturbation)]['significant']:
+                            axes[actu][3].text(x, diff_vel_x_offsets[isubt], r'$ \diamond $', ha='center', fontsize=8)
                     handles_vel.append(h_vel)
 
                     plot_errorbar(axes[actu][4], x, vel_y_diff_mean[actu][itime, isubt], vel_y_diff_std[actu][itime, isubt])
@@ -4575,16 +4746,16 @@ class TaskPlotInstantaneousCenterOfMass(osp.StudyTask):
                         hatch=hatch, edgecolor=self.edgecolor, lw=lw, zorder=2.5)
                     if stats_vel_y.loc[(time, perturbation)]['significant']:
                         axes[actu][4].text(x, vel_y_offsets[isubt], '*', ha='center', fontsize=10)
-                    if (actu == 'torques') and diff_stats_vel_y.loc[(time, perturbation)]['significant']:
-                        axes[actu][4].text(x, diff_vel_y_offsets[isubt], r'$ \diamond $', ha='center', fontsize=8)
+                        if (actu == 'torques') and diff_stats_vel_y.loc[(time, perturbation)]['significant']:
+                            axes[actu][4].text(x, diff_vel_y_offsets[isubt], r'$ \diamond $', ha='center', fontsize=8)
 
                     plot_errorbar(axes[actu][5], x, vel_z_diff_mean[actu][itime, isubt], vel_z_diff_std[actu][itime, isubt])
                     axes[actu][5].bar(x, vel_z_diff_mean[actu][itime, isubt], self.width, color=color, clip_on=False, 
                         hatch=hatch, edgecolor=self.edgecolor, lw=lw, zorder=2.5)
                     if stats_vel_z.loc[(time, perturbation)]['significant']:
                         axes[actu][5].text(x, vel_z_offsets[isubt], '*', ha='center', fontsize=10) 
-                    if (actu == 'torques') and diff_stats_vel_x.loc[(time, perturbation)]['significant']:
-                        axes[actu][5].text(x, diff_vel_z_offsets[isubt], r'$ \diamond $', ha='center', fontsize=8)    
+                        if (actu == 'torques') and diff_stats_vel_z.loc[(time, perturbation)]['significant']:
+                            axes[actu][5].text(x, diff_vel_z_offsets[isubt], r'$ \diamond $', ha='center', fontsize=8)    
 
                     # Instantaneous accelerations
                     # ---------------------------
@@ -4593,8 +4764,8 @@ class TaskPlotInstantaneousCenterOfMass(osp.StudyTask):
                         hatch=hatch, edgecolor=self.edgecolor, lw=lw, zorder=2.5)
                     if stats_acc_x.loc[(time, perturbation)]['significant']:
                         axes[actu][6].text(x, acc_x_offsets[isubt], '*', ha='center', fontsize=10)
-                    if (actu == 'torques') and diff_stats_acc_x.loc[(time, perturbation)]['significant']:
-                        axes[actu][6].text(x, diff_acc_x_offsets[isubt], r'$ \diamond $', ha='center', fontsize=8)
+                        if (actu == 'torques') and diff_stats_acc_x.loc[(time, perturbation)]['significant']:
+                            axes[actu][6].text(x, diff_acc_x_offsets[isubt], r'$ \diamond $', ha='center', fontsize=8)
                     handles_acc.append(h_acc)
                     
                     plot_errorbar(axes[actu][7], x, acc_y_diff_mean[actu][itime, isubt], acc_y_diff_std[actu][itime, isubt])
@@ -4602,16 +4773,16 @@ class TaskPlotInstantaneousCenterOfMass(osp.StudyTask):
                         hatch=hatch, edgecolor=self.edgecolor, lw=lw, zorder=2.5)
                     if stats_acc_y.loc[(time, perturbation)]['significant']:
                         axes[actu][7].text(x, acc_y_offsets[isubt], '*', ha='center', fontsize=10)
-                    if (actu == 'torques') and diff_stats_acc_y.loc[(time, perturbation)]['significant']:
-                        axes[actu][7].text(x, diff_acc_y_offsets[isubt], r'$ \diamond $', ha='center', fontsize=8)
+                        if (actu == 'torques') and diff_stats_acc_y.loc[(time, perturbation)]['significant']:
+                            axes[actu][7].text(x, diff_acc_y_offsets[isubt], r'$ \diamond $', ha='center', fontsize=8)
                     
                     plot_errorbar(axes[actu][8], x, acc_z_diff_mean[actu][itime, isubt], acc_z_diff_std[actu][itime, isubt])
                     axes[actu][8].bar(x, acc_z_diff_mean[actu][itime, isubt], self.width, color=color, clip_on=False, 
                         hatch=hatch, edgecolor=self.edgecolor, lw=lw, zorder=2.5)
                     if stats_acc_z.loc[(time, perturbation)]['significant']:
                         axes[actu][8].text(x, acc_z_offsets[isubt], '*', ha='center', fontsize=10)   
-                    if (actu == 'torques') and diff_stats_acc_z.loc[(time, perturbation)]['significant']:
-                        axes[actu][8].text(x, diff_acc_z_offsets[isubt], r'$ \diamond $', ha='center', fontsize=8)   
+                        if (actu == 'torques') and diff_stats_acc_z.loc[(time, perturbation)]['significant']:
+                            axes[actu][8].text(x, diff_acc_z_offsets[isubt], r'$ \diamond $', ha='center', fontsize=8)   
 
             axes[actu][0].set_ylim(pos_x_lim)
             axes[actu][0].set_yticks(get_ticks_from_lims(pos_x_lim, pos_x_step))
@@ -4866,7 +5037,7 @@ class TaskComputeCenterOfMassTimesteppingError(osp.StudyTask):
 
         # Compute errors
         # --------------
-        def integral_sum_squared_error(vec, time):
+        def integrated_rms_error(vec, time):
             interval = time[-1] - time[0]
             N = len(time)
 
@@ -4905,9 +5076,9 @@ class TaskComputeCenterOfMassTimesteppingError(osp.StudyTask):
                     com = com_dict[subject][label]
                     timeVec = time_dict[subject][label]
 
-                    pos_error[isubj] = integral_sum_squared_error(com[:, 0:3], timeVec)
-                    vel_error[isubj] = integral_sum_squared_error(com[:, 3:6], timeVec)
-                    acc_error[isubj] = integral_sum_squared_error(com[:, 6:9], timeVec)
+                    pos_error[isubj] = integrated_rms_error(com[:, 0:3], timeVec)
+                    vel_error[isubj] = integrated_rms_error(com[:, 3:6], timeVec)
+                    acc_error[isubj] = integrated_rms_error(com[:, 6:9], timeVec)
 
             pos_error_mean[actu_key] = np.mean(pos_error)
             vel_error_mean[actu_key] = np.mean(vel_error)
@@ -5629,8 +5800,8 @@ class TaskPlotInstantaneousCenterOfPressure(osp.StudyTask):
             update_lims(cop_x_diff_mean[actu]+cop_x_diff_std[actu], cop_x_step, cop_x_lim, mirror=True)
             update_lims(cop_z_diff_mean[actu]+cop_z_diff_std[actu], cop_z_step, cop_z_lim)
 
-        diff_stats_cop_x = pd.read_csv(file_dep[self.label_dict[f'cop_stats_pos_x_diff']], index_col=[0, 1])
-        diff_stats_cop_z = pd.read_csv(file_dep[self.label_dict[f'cop_stats_pos_z_diff']], index_col=[0, 1])    
+        diff_stats_cop_x = pd.read_csv(file_dep[self.label_dict['cop_stats_pos_x_diff']], index_col=[0, 1])
+        diff_stats_cop_z = pd.read_csv(file_dep[self.label_dict['cop_stats_pos_z_diff']], index_col=[0, 1])    
         for actu in ['muscles', 'torques']:
             stats_cop_x = pd.read_csv(file_dep[self.label_dict[f'cop_stats_pos_x_{actu}']], index_col=[0, 1])
             stats_cop_z = pd.read_csv(file_dep[self.label_dict[f'cop_stats_pos_z_{actu}']], index_col=[0, 1])
@@ -5657,8 +5828,8 @@ class TaskPlotInstantaneousCenterOfPressure(osp.StudyTask):
                         hatch=hatch, edgecolor=self.edgecolor, lw=lw, zorder=2.5)
                     if stats_cop_x.loc[(time, perturbation)]['significant']:
                         axes[actu][0].text(x, cop_x_offsets[isubt], '*', ha='center', fontsize=10)
-                    if (actu == 'torques') and diff_stats_cop_x.loc[(time, perturbation)]['significant']:
-                        axes[actu][0].text(x, diff_cop_x_offsets[isubt], r'$ \diamond $', ha='center', fontsize=8)
+                        if (actu == 'torques') and diff_stats_cop_x.loc[(time, perturbation)]['significant']:
+                            axes[actu][0].text(x, diff_cop_x_offsets[isubt], r'$ \diamond $', ha='center', fontsize=8)
                     handles_cop.append(h_cop)
                     
                     plot_errorbar(axes[actu][1], x, cop_z_diff_mean[actu][itime, isubt], cop_z_diff_std[actu][itime, isubt])
@@ -5666,8 +5837,8 @@ class TaskPlotInstantaneousCenterOfPressure(osp.StudyTask):
                         hatch=hatch, edgecolor=self.edgecolor , lw=lw, zorder=2.5)
                     if stats_cop_z.loc[(time, perturbation)]['significant']:
                         axes[actu][1].text(x, cop_z_offsets[isubt], '*', ha='center', fontsize=10)
-                    if (actu == 'torques') and diff_stats_cop_z.loc[(time, perturbation)]['significant']:
-                        axes[actu][1].text(x, diff_cop_z_offsets[isubt], r'$ \diamond $', ha='center', fontsize=8)
+                        if (actu == 'torques') and diff_stats_cop_z.loc[(time, perturbation)]['significant']:
+                            axes[actu][1].text(x, diff_cop_z_offsets[isubt], r'$ \diamond $', ha='center', fontsize=8)
                      
             axes[actu][0].set_ylim(cop_x_lim)
             axes[actu][0].set_yticks(get_ticks_from_lims(cop_x_lim, cop_x_step))
