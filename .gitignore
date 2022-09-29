@@ -202,8 +202,14 @@ fabric.properties
 
 MocoTool_solution.sto
 *solution.sto
-*.png
-*.tiff
+/results/**/*.png
+/results/**/*.tiff
+/archive/**/*.png
+/archive/**/*.tiff
+/analysis/**/*.png
+/analysis/**/*.tiff
+/validate/**/*.png
+/validate/**/*.tiff
 *.pdf
 *.eps
 *.omoco
