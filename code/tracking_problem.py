@@ -48,7 +48,6 @@ class TrackingConfig:
         self.control_tracking_weight = weights['control_tracking_weight']
         self.aux_deriv_weight = weights['aux_deriv_weight'] 
         self.acceleration_weight = weights['acceleration_weight']
-        self.subtalar_weight = weights['subtalar_weight']
 
         # Periodicity arguments
         self.periodic = periodic
@@ -233,12 +232,8 @@ class TrackingProblem(Result):
                             valueWeight = 1.0 / denom
                             speedWeight = 0.01 / denom
 
-                    elif ('subtalar' in name):
-                        subt_w = config.subtalar_weight
-                        valueWeight = subt_w
-                        speedWeight = 1e-4 * subt_w
-
                     elif ('beta' in name or 
+                          'subtalar' in name or
                           'mtp' in name or 
                           'wrist' in name):  
                         valueWeight = 0.0
@@ -553,16 +548,6 @@ class TrackingProblem(Result):
 
                 guess.insertStatesTrajectory(statesTable, True)
                 guess.insertControlsTrajectory(controlsTable, True)
-
-                # for imult in np.arange(len(prevSol.getMultiplierNames())):
-                #     prevName = prevSol.getMultiplierNames()[imult]
-                #     guessName = guess.getMultiplierNames()[imult]
-                #     prevMultiplier = prevSol.getMultiplierMat(prevName)
-                #     multiplier = osim.Vector(len(prevMultiplier), 0.0)
-                #     for i in np.arange(len(prevMultiplier)):
-                #         multiplier[int(i)] = prevMultiplier[i]
-
-                #     guess.setMultiplier(guessName, multiplier)
 
             else:
                 guess = osim.MocoTrajectory(config.guess)
