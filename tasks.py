@@ -2641,7 +2641,7 @@ class TaskPlotMethodsFigure(osp.StudyTask):
             h, = ax_vel.plot(pgc, vel_mean[:, ilabel], label=label, color=color, 
                 linewidth=lw, clip_on=False, solid_capstyle='round')
             handles.append(h)
-            ax_vel.set_ylabel('center-of-mass\nvelocity, position', fontsize=yfs)
+            ax_vel.set_ylabel('center of mass\nvelocity, position', fontsize=yfs)
             ax_vel.set_ylim(vel_lim)
             ax_vel.set_yticks(get_ticks_from_lims(vel_lim, vel_step))
                 

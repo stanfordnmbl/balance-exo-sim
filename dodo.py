@@ -69,7 +69,6 @@ study.weights = {
     'control_tracking_weight':  0 * scale, 
     'aux_deriv_weight':         1000 * scale,
     'acceleration_weight':      1 * scale,
-    'subtalar_weight':          0 * scale,
     }
 study.constraint_tolerance = 1e-4
 study.convergence_tolerance = 1e-2
