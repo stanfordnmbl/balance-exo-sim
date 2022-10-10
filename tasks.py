@@ -2515,7 +2515,7 @@ class TaskPlotMethodsFigure(osp.StudyTask):
         pgc = np.linspace(self.time - self.rise, self.time + self.fall, N)
         ax_tau.plot(pgc, tauInterp, color=self.colors[1], linewidth=2, 
             clip_on=False, solid_capstyle='round')
-        ax_tau.set_ylabel(r'perturbation torque $[\frac{N\cdot m}{kg}]$', fontsize=yfs)
+        ax_tau.set_ylabel(r'exoskeleton torque $[\frac{N\cdot m}{kg}]$', fontsize=yfs)
         ax_tau.set_ylim([0, 0.1])
         ax_tau.set_yticks([0, 0.1])
         ax_tau.tick_params(axis='both', which='major', labelsize=6)
@@ -2576,21 +2576,21 @@ class TaskPlotMethodsFigure(osp.StudyTask):
             h, = ax_vel.plot(pgc, vel_mean[:, ilabel], label=label, color=color, 
                 linewidth=lw, clip_on=False, solid_capstyle='round')
             handles.append(h)
-            ax_vel.set_ylabel('center-of-mass\nvelocity, position', fontsize=yfs)
+            ax_vel.set_ylabel('center of mass\nvelocity, position', fontsize=yfs)
             ax_vel.set_ylim(vel_lim)
             ax_vel.set_yticks(get_ticks_from_lims(vel_lim, vel_step))
                 
             ax_acc.plot(pgc, acc_mean[:, ilabel], label=label, color=color, 
                 linewidth=lw, clip_on=False, solid_capstyle='round')
-            ax_acc.set_ylabel('center-of-mass acceleration, \ncenter-of-pressure', fontsize=yfs)
+            ax_acc.set_ylabel('center of mass acceleration, \ncenter of pressure', fontsize=yfs)
             ax_acc.set_ylim(acc_lim)
             ax_acc.set_yticks(get_ticks_from_lims(acc_lim, acc_step))
 
 
         # Plot decorations
-        ax_acc.text(self.time-6.5, -0.25, 'unperturbed', fontsize=6,
+        ax_acc.text(self.time-6.5, -0.25, 'normal', fontsize=6,
             color=self.colors[0], fontweight='bold')
-        ax_acc.text(self.time-3.5, -0.485, 'perturbed', fontsize=6,
+        ax_acc.text(self.time-4.0, -0.485, 'exoskeleton', fontsize=6,
             color=self.colors[1], fontweight='bold')
 
         index = np.argmin(np.abs(pgc-self.time))
@@ -2638,7 +2638,7 @@ class TaskPlotMethodsFigure(osp.StudyTask):
         ax.yaxis.set_ticks_position('none')
         ax.tick_params(axis='y', which='both', bottom=False, 
                        top=False, labelbottom=False)
-        ax.set_xlabel('perturbation time\n(% gait cycle)')
+        ax.set_xlabel('exoskeleton torque peak time\n(% gait cycle)')
 
         fig.tight_layout()
         fig.savefig(target[0], dpi=600)

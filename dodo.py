@@ -69,7 +69,6 @@ study.weights = {
     'control_tracking_weight':  0 * scale, 
     'aux_deriv_weight':         1000 * scale,
     'acceleration_weight':      1 * scale,
-    'subtalar_weight':          0 * scale,
     }
 study.constraint_tolerance = 1e-4
 study.convergence_tolerance = 1e-2
@@ -77,7 +76,6 @@ study.convergence_tolerance = 1e-2
 # Maximum perturbation torque
 study.torques = [0, 10]
 study.times = [20, 25, 30, 35, 40, 45, 50, 55, 60] 
-# study.times = [55, 56, 57, 58, 59, 60, 61, 62, 63]
 study.rise = 10
 study.fall = 5
 study.subtalar_peak_torques = [-10, 0, 10]
