@@ -175,6 +175,8 @@ study.add_task(TaskAggregateCenterOfMassStatistics,
     study.times, study.rise, study.fall)
 study.add_task(TaskPlotInstantaneousCenterOfMass, subjects, 
     study.times, study.rise, study.fall)
+study.add_task(TaskPlotCOMVersusCOP, subjects, 
+    study.times, study.rise, study.fall)
 
 # Center-of-pressure analysis
 # ---------------------------
@@ -186,6 +188,8 @@ study.add_task(TaskAggregateCenterOfPressureStatistics,
     study.times, study.rise, study.fall)
 study.add_task(TaskPlotInstantaneousCenterOfPressure, subjects, 
     study.times, study.rise, study.fall)
+
+
 
 # Device powers
 # -------------

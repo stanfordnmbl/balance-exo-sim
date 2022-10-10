@@ -359,27 +359,27 @@ class TimeSteppingProblem(Result):
 
         # Set the initial state.
         # ----------------------
-        statesTraj = trajectory.exportToStatesTrajectory(model)
-        manager.setIntegratorAccuracy(1e-6)
-        manager.setIntegratorMinimumStepSize(1e-6)
-        manager.setIntegratorMaximumStepSize(1e-2)
-        manager.initialize(statesTraj.get(0))
-        manager.integrate(time[time.size() - 1])
+        # statesTraj = trajectory.exportToStatesTrajectory(model)
+        # manager.setIntegratorAccuracy(1e-6)
+        # manager.setIntegratorMinimumStepSize(1e-6)
+        # manager.setIntegratorMaximumStepSize(1e-2)
+        # manager.initialize(statesTraj.get(0))
+        # manager.integrate(time[time.size() - 1])
 
         # Export results from states reporter to a table.
         # -----------------------------------------------
-        statesTrajRep = osim.StatesTrajectoryReporter().safeDownCast(
-            model.getComponent('/states_reporter')) 
-        states = statesTrajRep.getStates().exportToTable(model)
-        controls = trajectory.exportToControlsTable()
+        # statesTrajRep = osim.StatesTrajectoryReporter().safeDownCast(
+        #     model.getComponent('/states_reporter')) 
+        # states = statesTrajRep.getStates().exportToTable(model)
+        # controls = trajectory.exportToControlsTable()
 
         # Convert the time-stepping trajectory to a MocoTrajectory
         # --------------------------------------------------------
-        solution = self.create_trajectory_from_tables(states, controls)
+        # solution = self.create_trajectory_from_tables(states, controls)
 
         # Save the perturbed trajectory to a file
         # ---------------------------------------
-        solution.write(self.get_solution_path(f'{config.name}_half'))
+        # solution.write(self.get_solution_path(f'{config.name}_half'))
 
         # Add the unperturbed states to the full trajectory
         # -------------------------------------------------
