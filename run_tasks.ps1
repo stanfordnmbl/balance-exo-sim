@@ -29,19 +29,7 @@
 # doit subject01_moco_unperturbed_guess_mesh0.03_scale0.5_reserve20_periodic
 # doit subject01_moco_unperturbed_guess_mesh0.02_scale1.0_reserve0_periodic
 # doit subject01_moco_unperturbed
-doit subject*_moco_perturbed*time5*fall5_subtalar-10
-doit subject*_moco_perturbed*time5*fall5
-doit subject*_moco_perturbed*time5*fall5_subtalar10
-doit subject*_moco_perturbed*time5*fall5_subtalar-10_torque_actuators
-doit subject*_moco_perturbed*time5*fall5_torque_actuators
-doit subject*_moco_perturbed*time5*fall5_subtalar10_torque_actuators
-
-doit subject*_moco_perturbed*time6*fall5_subtalar-10
-doit subject*_moco_perturbed*time6*fall5
-doit subject*_moco_perturbed*time6*fall5_subtalar10
-doit subject*_moco_perturbed*time6*fall5_subtalar-10_torque_actuators
-doit subject*_moco_perturbed*time6*fall5_torque_actuators
-doit subject*_moco_perturbed*time6*fall5_subtalar10_torque_actuators
+# doit subject01_moco_perturbed*
 
 # doit subject02_moco_unperturbed_guess_mesh0.04_scale0.1_reserve200
 # doit subject02_moco_unperturbed_guess_mesh0.03_scale0.5_reserve20_periodic
@@ -68,5 +56,3 @@ doit subject*_moco_perturbed*time6*fall5_subtalar10_torque_actuators
 # doit subject19_moco_perturbed*
 
 # doit plot_unperturbed_results
-
-
