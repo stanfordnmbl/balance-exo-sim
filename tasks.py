@@ -1965,8 +1965,8 @@ class TaskValidateMuscleActivity(osp.StudyTask):
             start_idx = min_index(abs(time-solTime[0]))
             end_idx = min_index(abs(time-solTime[-1]))
             duration = solTime[-1] - solTime[0]
-            elecmech_delay = 0.075 # ms
-            elecmech_percent_delay = elecmech_delay / duration
+            # elecmech_delay = 0.075 # ms
+            # elecmech_percent_delay = elecmech_delay / duration
 
             for emg_name in self.emg_names:
                 emg_interp = np.interp(pgc, 
@@ -2013,10 +2013,10 @@ class TaskValidateMuscleActivity(osp.StudyTask):
                 emg_bool = this_emg > threshold
                 act_bool = this_act > threshold
 
-                shift_nodes = int(elecmech_percent_delay * len(emg_bool))
-                emg_deque = deque(emg_bool)
-                emg_deque.rotate(shift_nodes)
-                emg_bool = np.array(emg_deque)
+                # shift_nodes = int(elecmech_percent_delay * len(emg_bool))
+                # emg_deque = deque(emg_bool)
+                # emg_deque.rotate(shift_nodes)
+                # emg_bool = np.array(emg_deque)
                 
                 onset_diff = emg_bool.astype(int) - act_bool.astype(int)
                 percent_error = np.abs(onset_diff).sum() / float(len(onset_diff))
