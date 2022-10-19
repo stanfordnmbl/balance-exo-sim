@@ -939,6 +939,7 @@ class TaskPlotUnperturbedResults(osp.StudyTask):
         super(TaskPlotUnperturbedResults, self).__init__(study)
         self.config_name = 'unperturbed'
         self.name = f'plot_{self.config_name}_results'
+        self.figures_path = os.path.join(study.config['figures_path']) 
         self.results_path = os.path.join(study.config['results_path'], 
             'unperturbed')
         self.validate_path = os.path.join(study.config['validate_path'],
@@ -1004,17 +1005,23 @@ class TaskPlotUnperturbedResults(osp.StudyTask):
 
         self.add_action(unperturbed_fpaths + coordinates_fpaths, 
                         [os.path.join(self.validate_path, 
-                            f'{self.config_name}_coordinates.png')], 
+                            f'{self.config_name}_coordinates.png'),
+                         os.path.join(self.figures_path, 
+                            'figureS9', 'figureS9.png')], 
                         self.plot_unperturbed_coordinates)
 
         self.add_action(unperturbed_grf_fpaths + grf_fpaths, 
                         [os.path.join(self.validate_path, 
-                            f'{self.config_name}_grfs.png')], 
+                            f'{self.config_name}_grfs.png'),
+                         os.path.join(self.figures_path, 
+                            'figureS10', 'figureS10.png')], 
                         self.plot_unperturbed_grfs)
 
         self.add_action(unperturbed_fpaths + emg_fpaths, 
                         [os.path.join(self.validate_path, 
-                            f'{self.config_name}_muscle_activity.png')], 
+                            f'{self.config_name}_muscle_activity.png'),
+                         os.path.join(self.figures_path, 
+                            'figureS11', 'figureS11.png')], 
                         self.plot_unperturbed_muscle_activity)
 
         self.add_action(unperturbed_com_fpaths + experiment_com_fpaths, 
@@ -1040,7 +1047,7 @@ class TaskPlotUnperturbedResults(osp.StudyTask):
         N = 100
         pgc = np.linspace(0, 100, N)
         labels = ['hip flexion', 'hip adduction', 'hip rotation', 'knee flexion', 
-                  'ankle dorsiflexion', 'subtalar inversion', 'toe extension']
+                  'ankle dorsiflexion', 'subtalar inversion', 'MTP extension']
         coordinates = ['hip_flexion', 'hip_adduction', 'hip_rotation', 'knee_angle', 
                        'ankle_angle', 'subtalar_angle', 'mtp_angle']
         joints = ['hip', 'hip', 'hip', 'walker_knee', 'ankle', 'subtalar', 'mtp']
@@ -1144,6 +1151,7 @@ class TaskPlotUnperturbedResults(osp.StudyTask):
 
         fig.tight_layout()
         fig.savefig(target[0], dpi=600)
+        fig.savefig(target[1], dpi=600)
         plt.close()
 
     def plot_unperturbed_grfs(self, file_dep, target):
@@ -1245,6 +1253,7 @@ class TaskPlotUnperturbedResults(osp.StudyTask):
 
         fig.tight_layout()
         fig.savefig(target[0], dpi=600)
+        fig.savefig(target[1], dpi=600)
         plt.close()
 
     def plot_unperturbed_muscle_activity(self, file_dep, target):
@@ -1349,6 +1358,7 @@ class TaskPlotUnperturbedResults(osp.StudyTask):
 
         fig.tight_layout()
         fig.savefig(target[0], dpi=600)
+        fig.savefig(target[1], dpi=600)
         plt.close()
 
     def plot_unperturbed_center_of_mass(self, file_dep, target):
@@ -3685,6 +3695,7 @@ class TaskPlotCenterOfMassVector(osp.StudyTask):
         self.name = f'plot_center_of_mass_vector_rise{rise}_fall{fall}'
         self.results_path = os.path.join(study.config['results_path'], 
             'experiments')
+        self.figures_path = os.path.join(study.config['figures_path'])
         self.analysis_path = os.path.join(study.config['analysis_path'],
             'center_of_mass_vector',  f'rise{rise}_fall{fall}')
         if not os.path.exists(self.analysis_path): 
@@ -3700,7 +3711,7 @@ class TaskPlotCenterOfMassVector(osp.StudyTask):
         self.colors = study.plot_colors
 
         self.kinematic_levels = ['pos', 'vel', 'acc']
-        self.planes = ['sagittal', 'transverse']
+        self.planes = ['sagittal','transverse']
 
         blank = ''
         self.legend_labels = [f'{blank}\neversion\n{blank}', 
@@ -3765,6 +3776,13 @@ class TaskPlotCenterOfMassVector(osp.StudyTask):
             for plane in self.planes:
                 targets += [os.path.join(self.analysis_path, 
                             f'com_vector_{kin}_{plane}.png')]
+
+        targets += [os.path.join(self.figures_path, 'figureS4', 'figureS4.png')]
+        targets += [os.path.join(self.figures_path, 'figureS3', 'figureS3.png')]
+        targets += [os.path.join(self.figures_path, 'figure3', 'figure3.png')]
+        targets += [os.path.join(self.figures_path, 'figure2', 'figure2.png')]
+        targets += [os.path.join(self.figures_path, 'figureS2', 'figureS2.png')]
+        targets += [os.path.join(self.figures_path, 'figureS1', 'figureS1.png')]
 
         self.add_action(deps, targets, self.plot_com_vectors)
 
@@ -4307,6 +4325,9 @@ class TaskPlotCenterOfMassVector(osp.StudyTask):
 
         for ifig, fig in enumerate(figs):
             fig.savefig(target[ifig], dpi=600)
+
+        for ifig, fig in enumerate(figs):
+            fig.savefig(target[ifig + len(figs)], dpi=600)
  
         plt.close()
 
@@ -4316,6 +4337,7 @@ class TaskPlotInstantaneousCenterOfMass(osp.StudyTask):
     def __init__(self, study, subjects, times, rise, fall):
         super(TaskPlotInstantaneousCenterOfMass, self).__init__(study)
         self.name = f'plot_instantaneous_center_of_mass_rise{rise}_fall{fall}'
+        self.figures_path = os.path.join(study.config['figures_path']) 
         self.results_path = os.path.join(study.config['results_path'], 
             'experiments')
         self.aggregate_path = os.path.join(study.config['statistics_path'],
@@ -4410,6 +4432,11 @@ class TaskPlotInstantaneousCenterOfMass(osp.StudyTask):
         for kin in ['pos', 'vel', 'acc']:
             targets += [os.path.join(self.analysis_path, 
                         f'instant_com_{kin}.png')]
+
+        targets += [os.path.join(self.figures_path, 'figureS7', 'figureS7.png')]
+        targets += [os.path.join(self.figures_path, 'figureS6', 'figureS6.png')]
+        targets += [os.path.join(self.figures_path, 'figureS5', 'figureS5.png')]
+
         targets += [os.path.join(self.analysis_path, 'com_height.txt')]
 
         self.add_action(deps, targets, self.plot_instantaneous_com)
@@ -4942,11 +4969,15 @@ class TaskPlotInstantaneousCenterOfMass(osp.StudyTask):
             fig.savefig(target[ifig], dpi=600)
             plt.close()
 
+        for ifig, fig in enumerate(figs):
+            fig.savefig(target[ifig + len(figs)], dpi=600)
+            plt.close()
+
         com_heights = list()
         for subject in self.subjects:
             com_heights.append(com_height_dict[subject])
 
-        with open(target[3], 'w') as f:
+        with open(target[6], 'w') as f:
             f.write('Center-of-mass height, mean +/- std across subjects\n')
             f.write('\n')
             f.write(f'COM height: {np.mean(com_heights):.2f} +/- {np.std(com_heights):.2f} [m]\n')
@@ -5737,6 +5768,7 @@ class TaskPlotCenterOfPressureVector(osp.StudyTask):
     def __init__(self, study, subjects, times, rise, fall):
         super(TaskPlotCenterOfPressureVector, self).__init__(study)
         self.name = f'plot_center_of_pressure_vector_rise{rise}_fall{fall}'
+        self.figures_path = os.path.join(study.config['figures_path']) 
         self.results_path = os.path.join(study.config['results_path'], 
             'experiments')
         self.analysis_path = os.path.join(study.config['analysis_path'],
@@ -5818,8 +5850,11 @@ class TaskPlotCenterOfPressureVector(osp.StudyTask):
                         self.label_dict[f'{subject}_{label}'] = ilabel
                         ilabel += 1
 
-        self.add_action(deps, [os.path.join(self.analysis_path, 
-                    f'cop_vector.png')], 
+        self.add_action(deps, 
+                [os.path.join(self.analysis_path, 
+                    'cop_vector.png'),
+                 os.path.join(self.figures_path, 
+                    'figure4', 'figure4.png')], 
             self.plot_cop_vectors)
 
     def plot_cop_vectors(self, file_dep, target):
@@ -6103,6 +6138,7 @@ class TaskPlotCenterOfPressureVector(osp.StudyTask):
         add_legend(fig, x, y)
 
         fig.savefig(target[0], dpi=600)
+        fig.savefig(target[1], dpi=600)
         plt.close()        
 
 
@@ -6111,6 +6147,7 @@ class TaskPlotInstantaneousCenterOfPressure(osp.StudyTask):
     def __init__(self, study, subjects, times, rise, fall):
         super(TaskPlotInstantaneousCenterOfPressure, self).__init__(study)
         self.name = f'plot_instantaneous_center_of_pressure_rise{rise}_fall{fall}'
+        self.figures_path = os.path.join(study.config['figures_path']) 
         self.results_path = os.path.join(study.config['results_path'], 
             'experiments')
         self.aggregate_path = os.path.join(study.config['statistics_path'],
@@ -6210,9 +6247,8 @@ class TaskPlotInstantaneousCenterOfPressure(osp.StudyTask):
 
 
         targets = list()
-        for kin in ['pos']:
-            targets += [os.path.join(self.analysis_path, 
-                        f'instant_cop_{kin}.png')]
+        targets += [os.path.join(self.analysis_path, 'instant_cop_pos.png')]
+        targets += [os.path.join(self.figures_path, 'figureS8', 'figureS8.png')]
         targets += [os.path.join(self.analysis_path, 'foot_width.txt')]
 
         self.add_action(deps, targets, self.plot_instantaneous_cop)
@@ -6533,11 +6569,15 @@ class TaskPlotInstantaneousCenterOfPressure(osp.StudyTask):
             fig.savefig(target[ifig], dpi=600)
             plt.close()
 
+        for ifig, fig in enumerate(figs):
+            fig.savefig(target[ifig + len(figs)], dpi=600)
+            plt.close()
+
         foot_widths = list()
         for subject in self.subjects:
             foot_widths.append(100*foot_width_dict[subject])
 
-        with open(target[1], 'w') as f:
+        with open(target[2], 'w') as f:
             f.write('Foot widths, mean +/- std across subjects\n')
             f.write('\n')
             f.write(f'foot width: {np.mean(foot_widths):.2f} +/- {np.std(foot_widths):.2f} [cm]\n')
