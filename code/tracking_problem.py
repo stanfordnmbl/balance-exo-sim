@@ -220,8 +220,7 @@ class TrackingProblem(Result):
             speedWeight = 1.0
 
             for name in coordinates_std.index:
-                std = coordinates_std.loc[name][0] 
-                denom = 10.0 * std
+                stdev = coordinates_std.loc[name][0] 
 
                 if name in valuePath:
                     if 'lumbar' in name:
@@ -229,8 +228,8 @@ class TrackingProblem(Result):
                             valueWeight = 0.0
                             speedWeight = 0.0
                         else:
-                            valueWeight = 1.0 / denom
-                            speedWeight = 0.01 / denom
+                            valueWeight = 1.0 / stdev
+                            speedWeight = 0.01 / stdev
 
                     elif ('beta' in name or 
                           'subtalar' in name or
@@ -240,20 +239,20 @@ class TrackingProblem(Result):
                         speedWeight = 0.0
 
                     elif 'ankle' in name:
-                        valueWeight = 2.0 / denom
-                        speedWeight = 0.02 / denom
+                        valueWeight = 2.0 / stdev
+                        speedWeight = 0.02 / stdev
 
                     elif 'pelvis' in name:
                         if 'pelvis_ty' in name:
                             valueWeight = 0.0
-                            speedWeight = 0.01 / denom
+                            speedWeight = 0.01 / stdev
                         else:
-                            valueWeight = 1.0 / denom
-                            speedWeight = 0.01 / denom
+                            valueWeight = 1.0 / stdev
+                            speedWeight = 0.01 / stdev
 
                     else:  
-                        valueWeight = 1.0  / denom 
-                        speedWeight = 0.01 / denom
+                        valueWeight = 1.0  / stdev 
+                        speedWeight = 0.01 / stdev
 
             stateWeights.cloneAndAppend(
                 osim.MocoWeight(valuePath, valueWeight))
@@ -359,7 +358,7 @@ class TrackingProblem(Result):
 
             torsoAngVelGoal = osim.MocoAngularVelocityTrackingGoal(
                 'torso_angular_velocity_goal', 
-                0.1 * config.torso_orientation_weight)
+                0.01 * config.torso_orientation_weight)
             torsoAngVelGoal.setStatesReference(
                 osim.TableProcessor(torsoTable))
             paths = osim.StdVectorString()

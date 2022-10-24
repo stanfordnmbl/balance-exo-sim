@@ -2,6 +2,7 @@ require("lme4")
 require("multcomp")
 require("broom")
 require("emmeans")
+require("lmerTest")
 
 citation("lme4")
 citation("multcomp")

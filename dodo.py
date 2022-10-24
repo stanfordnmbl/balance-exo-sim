@@ -61,7 +61,7 @@ study.error_markers = error_markers
 
 scale = 1.0
 study.weights = {
-    'state_tracking_weight':    50 * scale,
+    'state_tracking_weight':    5 * scale,
     'control_weight':           25 * scale,
     'grf_tracking_weight':      7500 * scale,
     'torso_orientation_weight': 10 * scale,
@@ -164,6 +164,7 @@ study.add_task(TaskValidateMarkerErrors)
 study.add_task(TaskComputeCenterOfMassTimesteppingError,
     subjects, study.times, study.rise, study.fall)
 study.add_task(TaskValidateMuscleActivity, subjects)
+study.add_task(TaskComputeObjectiveContributions, subjects)
 
 # Center-of-mass analysis
 # -----------------------
