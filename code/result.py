@@ -370,7 +370,6 @@ class Result(ABC):
 
             forcesRight = osim.Vec3(0)
             torquesRight = osim.Vec3(0)
-            # copRight = osim.Vec3(0)
 
             # Loop through all Forces of the right side.
             for smoothForce in forcePathsRightFoot:
@@ -383,16 +382,8 @@ class Result(ABC):
                 torquesRight[1] = torquesRight[1] + forceValues.get(4)
                 torquesRight[2] = torquesRight[2] + forceValues.get(5)
 
-            # copRight[0] = torquesRight[2] / forcesRight[1]
-            # copRight[1] = 0
-            # copRight[2] = -torquesRight[0] / forcesRight[1]
-            # torquesRight[0] = 0
-            # torquesRight[1] = torquesRight[1] - copRight[2]*forcesRight[0] + copRight[0]*forcesRight[2]  
-            # torquesRight[2] = 0
-
             forcesLeft = osim.Vec3(0)
             torquesLeft = osim.Vec3(0)
-            # copLeft = osim.Vec3(0)
 
             # Loop through all Forces of the left side.
             for smoothForce in forcePathsLeftFoot:
@@ -404,14 +395,6 @@ class Result(ABC):
                 torquesLeft[0] = torquesLeft[0] + forceValues.get(3)
                 torquesLeft[1] = torquesLeft[1] + forceValues.get(4)
                 torquesLeft[2] = torquesLeft[2] + forceValues.get(5)
-
-
-            # copLeft[0] = torquesLeft[2] / forcesLeft[1]
-            # copLeft[1] = 0
-            # copLeft[2] = -torquesLeft[0] / forcesLeft[1]
-            # torquesLeft[0] = 0
-            # torquesLeft[1] = torquesLeft[1] - copLeft[2]*forcesLeft[0] + copLeft[0]*forcesLeft[2]  
-            # torquesLeft[2] = 0
 
             # Get COP values
             copRow = copTable.getRowAtIndex(istate)

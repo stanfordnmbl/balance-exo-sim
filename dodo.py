@@ -179,8 +179,8 @@ study.add_task(TaskPlotInstantaneousCenterOfMass, subjects,
 study.add_task(TaskPlotCOMVersusCOP, subjects, 
     study.times, study.rise, study.fall)
 
-study.add_task(TaskPlotCenterOfMassVectorSmall, subjects,
-    [20, 30, 40, 50, 60], study.rise, study.fall)
+# study.add_task(TaskPlotCenterOfMassVectorWrongScaling, subjects,
+#     study.times, study.rise, study.fall)
 
 # Center-of-pressure analysis
 # ---------------------------
@@ -192,11 +192,6 @@ study.add_task(TaskAggregateCenterOfPressureStatistics,
     study.times, study.rise, study.fall)
 study.add_task(TaskPlotInstantaneousCenterOfPressure, subjects, 
     study.times, study.rise, study.fall)
-
-study.add_task(TaskPlotCenterOfPressureVectorSmall, subjects,
-    [20, 30, 40, 50, 60], study.rise, study.fall)
-
-
 
 # Device powers
 # -------------
