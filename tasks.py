@@ -3737,10 +3737,11 @@ class TaskPlotCenterOfMassVector(osp.StudyTask):
                 these_axes = list()
 
                 if plane == 'transverse':
-                    fig = plt.figure(figsize=(7, 8))
+                    fig = plt.figure(figsize=(7, 8.5))
                     for itorque, torque in enumerate(self.torques):
-        
                         ax = fig.add_subplot(1, len(self.torques), itorque + 1)
+                        ax.set_aspect('equal')
+
                         ax.grid(axis='y', color='gray', alpha=0.5, linewidth=0.5, 
                                 zorder=-10, clip_on=False)
                         ax.axvline(x=0, color='gray', linestyle='-',
@@ -3756,7 +3757,7 @@ class TaskPlotCenterOfMassVector(osp.StudyTask):
                             ax.tick_params(axis='y', which='both', bottom=False, 
                                            top=False, labelbottom=False)
 
-                        ax.spines['bottom'].set_position(('outward', 50))
+                        ax.spines['bottom'].set_position(('outward', 65))
                         ax.set_title(self.legend_labels[itorque], pad=30, fontsize=8)
                         ax.xaxis.set_minor_locator(AutoMinorLocator(2))
                         ax.tick_params(which='minor', axis='x', direction='in')
@@ -3766,6 +3767,8 @@ class TaskPlotCenterOfMassVector(osp.StudyTask):
                     fig = plt.figure(figsize=(8, 7))
                     for itorque, torque in enumerate(self.torques):
                         ax = fig.add_subplot(len(self.torques), 1, itorque + 1)
+                        ax.set_aspect('equal')
+
                         ax_r = ax.twinx()
                         ax_r.set_ylabel(self.legend_labels[itorque], 
                             rotation=270, labelpad=35, fontsize=8)
@@ -3900,19 +3903,7 @@ class TaskPlotCenterOfMassVector(osp.StudyTask):
 
         # Plot helper functions
         # ---------------------
-        def get_ax_size(ax):
-            bbox = ax.get_window_extent().transformed(fig.dpi_scale_trans.inverted())
-            width, height = bbox.width, bbox.height
-            width *= fig.dpi
-            height *= fig.dpi
-            return width, height 
-         
-        def set_arrow_patch_sagittal(ax, x, y, dx, dy, actu, color,
-                numTimes=len(self.times)):
-
-            width, height = get_ax_size(ax)
-            scale = height / (width / numTimes)
-
+        def set_arrow_patch_sagittal(ax, x, y, dx, dy, actu, color):
             if 'muscles' in actu:
                 arrowstyle = patches.ArrowStyle.CurveFilledB(head_length=0.25, 
                     head_width=0.1)
@@ -3921,19 +3912,14 @@ class TaskPlotCenterOfMassVector(osp.StudyTask):
                 arrowstyle = patches.ArrowStyle.CurveB()
                 lw = 0.75
 
-            arrow = patches.FancyArrowPatch((x, y), (x + scale*dx, y + dy),
+            arrow = patches.FancyArrowPatch((x, y), (x + dx, y + dy),
                     arrowstyle=arrowstyle, mutation_scale=10, shrinkA=0, shrinkB=0,
                     capstyle='round', joinstyle='miter', 
                     color=color, clip_on=False, zorder=2.5, lw=lw)
             ax.add_patch(arrow)
             return arrow
 
-        def set_arrow_patch_transverse(ax, x, y, dx, dy, actu, color,
-                numTimes=len(self.times)):
-
-            width, height = get_ax_size(ax)
-            scale = width / (height / numTimes)
-
+        def set_arrow_patch_transverse(ax, x, y, dx, dy, actu, color):
             if 'muscles' in actu:
                 arrowstyle = patches.ArrowStyle.CurveFilledB(head_length=0.25, 
                     head_width=0.1)
@@ -3942,7 +3928,7 @@ class TaskPlotCenterOfMassVector(osp.StudyTask):
                 arrowstyle = patches.ArrowStyle.CurveB()
                 lw = 0.75
 
-            arrow = patches.FancyArrowPatch((x, y), (x + dx, y + scale*dy),
+            arrow = patches.FancyArrowPatch((x, y), (x + dx, y + dy),
                     arrowstyle=arrowstyle, mutation_scale=10, shrinkA=0, shrinkB=0,
                     capstyle='round', joinstyle='miter', 
                     color=color, clip_on=False, zorder=2.5, lw=lw)
@@ -4026,7 +4012,7 @@ class TaskPlotCenterOfMassVector(osp.StudyTask):
         for iperturb in np.arange(len(self.subtalars)):
 
             # Sagittal position
-            xy_pos_scale = 0.004
+            xy_pos_scale = 0.003
             axes[0][iperturb].set_ylim(-xy_pos_scale, xy_pos_scale)
             axes[0][iperturb].set_yticks([-xy_pos_scale, 0, xy_pos_scale])
             axes[0][iperturb].set_yticklabels([-xy_pos_scale, 0, xy_pos_scale], fontsize=tick_fs)
@@ -4034,27 +4020,31 @@ class TaskPlotCenterOfMassVector(osp.StudyTask):
             axes[0][iperturb].set_xlim(0, xy_pos_scale*(len(self.times)-1))
             if iperturb == len(self.subtalars)-1:
                 axes[0][iperturb].set_xticklabels([f'{time + 5}' for time in self.times],
-                                        fontsize=tick_fs)
+                                        fontsize=tick_fs+1)
             else:
                 axes[0][iperturb].set_xticklabels([])
                 
-            axes[0][2].set_ylabel(r'$\Delta$' + ' center of mass position $[-]$')
-            axes[0][4].set_xlabel('exoskeleton torque end time\n(% gait cycle)')
+            axes[0][2].set_ylabel(r'$\Delta$' + ' center of mass position $[-]$',
+                fontsize=tick_fs+3)
+            axes[0][4].set_xlabel('exoskeleton torque end time\n(% gait cycle)',
+                fontsize=tick_fs+3)
 
             # Transverse position
-            xz_pos_scale = 0.0015
+            xz_pos_scale = 0.001
             axes[1][iperturb].set_xlim(-xz_pos_scale, xz_pos_scale)
             axes[1][iperturb].set_xticks([-xz_pos_scale, 0, xz_pos_scale])
-            axes[1][iperturb].set_xticklabels([-xz_pos_scale, 0, xz_pos_scale], fontsize=tick_fs-1)
+            axes[1][iperturb].set_xticklabels([-xz_pos_scale, 0, xz_pos_scale], fontsize=tick_fs)
             axes[1][iperturb].set_yticks(xz_pos_scale*np.arange(len(self.times)))
             axes[1][iperturb].set_ylim(0, xz_pos_scale*(len(self.times)-1))
             if iperturb:
                 axes[1][iperturb].set_yticklabels([])
             else:
                 axes[1][iperturb].set_yticklabels([f'{time + 5}' for time in self.times],
-                                        fontsize=tick_fs)
-            axes[1][2].set_xlabel(r'$\Delta$' + ' center of mass position $[-]$')
-            axes[1][0].set_ylabel('exoskeleton torque end time\n(% gait cycle)')
+                                        fontsize=tick_fs+1)
+            axes[1][2].set_xlabel(r'$\Delta$' + ' center of mass position $[-]$',
+                fontsize=tick_fs+3)
+            axes[1][0].set_ylabel('exoskeleton torque end time\n(% gait cycle)',
+                fontsize=tick_fs+3)
 
             # Sagittal velocity
             xy_vel_scale = 0.02
@@ -4065,30 +4055,34 @@ class TaskPlotCenterOfMassVector(osp.StudyTask):
             axes[2][iperturb].set_xlim(0, xy_vel_scale*(len(self.times)-1))
             if iperturb == len(self.subtalars)-1:
                 axes[2][iperturb].set_xticklabels([f'{time + 5}' for time in self.times],
-                                        fontsize=tick_fs)
+                                        fontsize=tick_fs+1)
             else:
                 axes[2][iperturb].set_xticklabels([])
                 
-            axes[2][2].set_ylabel(r'$\Delta$' + ' center of mass velocity $[-]$')
-            axes[2][4].set_xlabel('exoskeleton torque end time\n(% gait cycle)')
+            axes[2][2].set_ylabel(r'$\Delta$' + ' center of mass velocity $[-]$',
+                fontsize=tick_fs+3)
+            axes[2][4].set_xlabel('exoskeleton torque end time\n(% gait cycle)',
+                fontsize=tick_fs+3)
 
             # Transverse velocity
-            xz_vel_scale = 0.01
+            xz_vel_scale = 0.007
             axes[3][iperturb].set_xlim(-xz_vel_scale, xz_vel_scale)
             axes[3][iperturb].set_xticks([-xz_vel_scale, 0, xz_vel_scale])
-            axes[3][iperturb].set_xticklabels([-xz_vel_scale, 0, xz_vel_scale], fontsize=tick_fs-1)
+            axes[3][iperturb].set_xticklabels([-xz_vel_scale, 0, xz_vel_scale], fontsize=tick_fs)
             axes[3][iperturb].set_yticks(xz_vel_scale*np.arange(len(self.times)))
             axes[3][iperturb].set_ylim(0, xz_vel_scale*(len(self.times)-1))
             if iperturb:
                 axes[3][iperturb].set_yticklabels([])
             else:
                 axes[3][iperturb].set_yticklabels([f'{time + 5}' for time in self.times],
-                                        fontsize=tick_fs)
-            axes[3][2].set_xlabel(r'$\Delta$' + ' center of mass velocity $[-]$')
-            axes[3][0].set_ylabel('exoskeleton torque end time\n(% gait cycle)')
+                                        fontsize=tick_fs+1)
+            axes[3][2].set_xlabel(r'$\Delta$' + ' center of mass velocity $[-]$',
+                fontsize=tick_fs+3)
+            axes[3][0].set_ylabel('exoskeleton torque end time\n(% gait cycle)',
+                fontsize=tick_fs+3)
 
             # Sagittal acceleration
-            xy_acc_scale = 0.1
+            xy_acc_scale = 0.07
             axes[4][iperturb].set_ylim(-xy_acc_scale, xy_acc_scale)
             axes[4][iperturb].set_yticks([-xy_acc_scale, 0, xy_acc_scale])
             axes[4][iperturb].set_yticklabels([-xy_acc_scale, 0, xy_acc_scale], fontsize=tick_fs)
@@ -4096,29 +4090,32 @@ class TaskPlotCenterOfMassVector(osp.StudyTask):
             axes[4][iperturb].set_xlim(0, xy_acc_scale*(len(self.times)-1))
             if iperturb == len(self.subtalars)-1:
                 axes[4][iperturb].set_xticklabels([f'{time}' for time in self.times],
-                                        fontsize=tick_fs)
+                                        fontsize=tick_fs+1)
             else:
                 axes[4][iperturb].set_xticklabels([])
                 
-            axes[4][2].set_ylabel(r'$\Delta$' + ' center of mass acceleration $[-]$')
-            axes[4][4].set_xlabel('exoskeleton torque peak time\n(% gait cycle)')
+            axes[4][2].set_ylabel(r'$\Delta$' + ' center of mass acceleration $[-]$',
+                fontsize=tick_fs+3)
+            axes[4][4].set_xlabel('exoskeleton torque peak time\n(% gait cycle)',
+                fontsize=tick_fs+3)
 
             # Transverse acceleration
-            xz_acc_scale = 0.035
+            xz_acc_scale = 0.03
             axes[5][iperturb].set_xlim(-xz_acc_scale, xz_acc_scale)
             axes[5][iperturb].set_xticks([-xz_acc_scale, 0, xz_acc_scale])
-            axes[5][iperturb].set_xticklabels([-xz_acc_scale, 0, xz_acc_scale], fontsize=tick_fs-1)
+            axes[5][iperturb].set_xticklabels([-xz_acc_scale, 0, xz_acc_scale], fontsize=tick_fs)
             axes[5][iperturb].set_yticks(xz_acc_scale*np.arange(len(self.times)))
             axes[5][iperturb].set_ylim(0, xz_acc_scale*(len(self.times)-1))
             if iperturb:
                 axes[5][iperturb].set_yticklabels([])
             else:
                 axes[5][iperturb].set_yticklabels([f'{time}' for time in self.times],
-                                        fontsize=tick_fs)
-            axes[5][2].set_xlabel(r'$\Delta$' + ' center of mass acceleration $[-]$')
-            axes[5][0].set_ylabel('exoskeleton torque peak time\n(% gait cycle)')
+                                        fontsize=tick_fs+1)
+            axes[5][2].set_xlabel(r'$\Delta$' + ' center of mass acceleration $[-]$',
+                fontsize=tick_fs+3)
+            axes[5][0].set_ylabel('exoskeleton torque peak time\n(% gait cycle)',
+                fontsize=tick_fs+3)
         
-            
         # Plot results
         # ------------
         for actu in [True, False]:
@@ -4143,9 +4140,7 @@ class TaskPlotCenterOfMassVector(osp.StudyTask):
                     vel_y_diff = vel_y_diff_mean[actu_key][itime, iperturb]
                     vel_z_diff = vel_z_diff_mean[actu_key][itime, iperturb]
                     set_arrow_patch_sagittal(axes[2][iperturb], xy_vel_scale*itime, 0, vel_x_diff, vel_y_diff, actu_key, color)
-                    # set_arrow_patch_sagittal(axes[2][iperturb], xy_vel_scale*itime, 0, 0.5*xy_vel_scale, 0.5*xy_vel_scale, actu_key, color)
                     set_arrow_patch_transverse(axes[3][iperturb], 0, xz_vel_scale*itime, vel_z_diff, vel_x_diff, actu_key, color)
-                    # set_arrow_patch_transverse(axes[3][iperturb], 0, xz_vel_scale*itime, 0.5*xz_vel_scale, 0.5*xz_vel_scale, actu_key, color)
 
                     # Acceleration vectors
                     # --------------------
@@ -4155,8 +4150,7 @@ class TaskPlotCenterOfMassVector(osp.StudyTask):
                     set_arrow_patch_sagittal(axes[4][iperturb], xy_acc_scale*itime, 0, acc_x_diff, acc_y_diff, actu_key, color)
                     set_arrow_patch_transverse(axes[5][iperturb], 0, xz_acc_scale*itime, acc_z_diff, acc_x_diff, actu_key, color)
 
-
-        left = 0.475
+        left = 0.4225
         right = 0.9
         bottom = 0.1
         top = 0.95
@@ -4167,19 +4161,18 @@ class TaskPlotCenterOfMassVector(osp.StudyTask):
 
         left = 0.1
         right = 0.95
-        bottom = 0.475
-        top = 0.88
+        bottom = 0.425
+        top = 0.9
         wspace = 0.3
         figs[1].subplots_adjust(left=left, right=right, bottom=bottom, top=top, wspace=wspace)
         figs[3].subplots_adjust(left=left, right=right, bottom=bottom, top=top, wspace=wspace)
         figs[5].subplots_adjust(left=left, right=right, bottom=bottom, top=top, wspace=wspace)
-
         
         import cv2
         def add_sagittal_image(fig):
             side = 0.35
             offset = 0.01
-            l = 0.01
+            l = -0.01
             b = ((1.0 - side) / 2.0) + offset
             w = side
             h = side
@@ -4205,7 +4198,7 @@ class TaskPlotCenterOfMassVector(osp.StudyTask):
             side = 0.35
             offset = 0.02 
             l = ((1.0 - side) / 2.0) + offset
-            b = 0.0
+            b = -0.02
             w = side
             h = side
             ax = fig.add_axes([l, b, w, h], projection=None, polar=False)
@@ -4226,7 +4219,7 @@ class TaskPlotCenterOfMassVector(osp.StudyTask):
             ax.tick_params(axis='y', which='both', bottom=False, 
                            top=False, labelbottom=False)
 
-        def add_legend(fig, x, y):
+        def add_legend(fig, x, y, transverse=False):
             w = 0.1
             h = 0.02
             ax = fig.add_axes([x, y, w, h], projection=None, polar=False)
@@ -4245,13 +4238,20 @@ class TaskPlotCenterOfMassVector(osp.StudyTask):
 
             set_arrow_patch_transverse(ax, 0, 1.25, 0.5, 0, 'muscles', 'black')
             ax.text(0.6, 1.1, 'muscle-driven model')
-            set_arrow_patch_transverse(ax, 0, 0, 0.5, 0, 'torques', 'black')
-            ax.text(0.6, -0.15, 'torque-driven model')
+
+            if transverse:
+                y_arrow = 0.2
+                y_text = 0
+            else:
+                y_arrow = 0
+                y_text = -0.15
+            set_arrow_patch_transverse(ax, 0, y_arrow, 0.5, 0, 'torques', 'black')
+            ax.text(0.6, y_text, 'torque-driven model')
 
         add_sagittal_image(figs[0])
         add_sagittal_image(figs[2])
         add_sagittal_image(figs[4])
-        x = 0.1
+        x = 0.075
         y = 0.15
         add_legend(figs[0], x, y)
         add_legend(figs[2], x, y)
@@ -4261,10 +4261,10 @@ class TaskPlotCenterOfMassVector(osp.StudyTask):
         add_transverse_image(figs[3])
         add_transverse_image(figs[5])
         x = 0.675
-        y = 0.275
-        add_legend(figs[1], x, y)
-        add_legend(figs[3], x, y)
-        add_legend(figs[5], x, y)
+        y = 0.225
+        add_legend(figs[1], x, y, transverse=True)
+        add_legend(figs[3], x, y, transverse=True)
+        add_legend(figs[5], x, y, transverse=True)
 
         for ifig, fig in enumerate(figs):
             fig.savefig(target[ifig], dpi=600)
@@ -5654,7 +5654,7 @@ class TaskPlotCenterOfPressureVector(osp.StudyTask):
         # Initialize figure
         # -----------------
         axes = list()
-        fig = plt.figure(figsize=(7, 6.5))
+        fig = plt.figure(figsize=(7, 7.5))
         for itorque, torque in enumerate(self.torques):
             ax = fig.add_subplot(1, len(self.torques), itorque + 1)
             ax.grid(axis='y', color='gray', alpha=0.5, linewidth=0.5, 
@@ -5662,6 +5662,7 @@ class TaskPlotCenterOfPressureVector(osp.StudyTask):
             ax.axvline(x=0, color='gray', linestyle='-',
                     linewidth=0.5, alpha=0.5, zorder=-1)
             util.publication_spines(ax)
+            ax.set_aspect('equal')
 
             if not itorque:
                 ax.spines['left'].set_position(('outward', 15))
@@ -5741,19 +5742,7 @@ class TaskPlotCenterOfPressureVector(osp.StudyTask):
 
         # Plot helper functions
         # ---------------------
-        def get_ax_size(ax):
-            bbox = ax.get_window_extent().transformed(fig.dpi_scale_trans.inverted())
-            width, height = bbox.width, bbox.height
-            width *= fig.dpi
-            height *= fig.dpi
-            return width, height
-
-        def set_arrow_patch_transverse(ax, x, y, dx, dy, actu, color,
-                numTimes=len(self.times)):
-            
-            width, height = get_ax_size(ax)
-            scale = width / (height / numTimes)
-
+        def set_arrow_patch_transverse(ax, x, y, dx, dy, actu, color):
             if 'muscles' in actu:
                 arrowstyle = patches.ArrowStyle.CurveFilledB(head_length=0.25, 
                     head_width=0.1)
@@ -5762,7 +5751,7 @@ class TaskPlotCenterOfPressureVector(osp.StudyTask):
                 arrowstyle = patches.ArrowStyle.CurveB()
                 lw = 0.75
 
-            arrow = patches.FancyArrowPatch((x, y), (x + dx, y + scale*dy),
+            arrow = patches.FancyArrowPatch((x, y), (x + dx, y + dy),
                     arrowstyle=arrowstyle, mutation_scale=10, shrinkA=0, shrinkB=0,
                     capstyle='round', joinstyle='miter', 
                     color=color, clip_on=False, zorder=2.5, lw=lw)
@@ -5800,9 +5789,9 @@ class TaskPlotCenterOfPressureVector(osp.StudyTask):
                         time_at_peak = timeVec[0] + (duration * (time / 100.0))
                         index_peak = np.argmin(np.abs(timeVec - time_at_peak))
 
-                        cop_x_diff[isubj] = 100.0 *cop[index_peak, 0]
-                        cop_y_diff[isubj] = 100.0 *cop[index_peak, 1]
-                        cop_z_diff[isubj] = 100.0 *cop[index_peak, 2]
+                        cop_x_diff[isubj] = 100.0*cop[index_peak, 0]
+                        cop_y_diff[isubj] = 100.0*cop[index_peak, 1]
+                        cop_z_diff[isubj] = 100.0*cop[index_peak, 2]
 
                     cop_x_diff_mean[actu_key][itime, iperturb] = np.mean(cop_x_diff)
                     cop_y_diff_mean[actu_key][itime, iperturb] = np.mean(cop_y_diff)
@@ -5822,9 +5811,11 @@ class TaskPlotCenterOfPressureVector(osp.StudyTask):
                 axes[iperturb].set_yticklabels([])
             else:
                 axes[iperturb].set_yticklabels([f'{time}' for time in self.times],
-                                        fontsize=tick_fs)
-            axes[2].set_xlabel(r'$\Delta$' + ' center of pressure position $[cm]$')
-            axes[0].set_ylabel('exoskeleton torque peak time\n(% gait cycle)')
+                                        fontsize=tick_fs+1)
+            axes[2].set_xlabel(r'$\Delta$' + ' center of pressure position $[cm]$',
+                fontsize=tick_fs+3)
+            axes[0].set_ylabel('exoskeleton torque peak time\n(% gait cycle)',
+                fontsize=tick_fs+3)
       
         # Plot results
         # ------------
@@ -5841,21 +5832,22 @@ class TaskPlotCenterOfPressureVector(osp.StudyTask):
                     cop_x_diff = cop_x_diff_mean[actu_key][itime, iperturb]
                     cop_y_diff = cop_y_diff_mean[actu_key][itime, iperturb]
                     cop_z_diff = cop_z_diff_mean[actu_key][itime, iperturb]
-                    set_arrow_patch_transverse(axes[iperturb], 0, xz_cop_scale*itime, cop_z_diff, cop_x_diff, actu_key, color)
+                    set_arrow_patch_transverse(axes[iperturb], 0, xz_cop_scale*itime, 
+                        cop_z_diff, cop_x_diff, actu_key, color)
 
-        left = 0.1
+        left = 0.12
         right = 0.95
-        bottom = 0.475
-        top = 0.88
+        bottom = 0.40
+        top = 0.92
         wspace = 0.3
         fig.subplots_adjust(left=left, right=right, bottom=bottom, top=top, wspace=wspace)
 
         import cv2
         def add_transverse_image(fig):
             side = 0.35
-            offset = 0.01 
+            offset = 0.0275
             l = ((1.0 - side) / 2.0) + offset
-            b = 0.01
+            b = -0.005
             w = side
             h = side
             ax = fig.add_axes([l, b, w, h], projection=None, polar=False)
@@ -5900,7 +5892,7 @@ class TaskPlotCenterOfPressureVector(osp.StudyTask):
 
         add_transverse_image(fig)
         x = 0.675
-        y = 0.275
+        y = 0.25
         add_legend(fig, x, y)
 
         fig.savefig(target[0], dpi=600)
@@ -6815,631 +6807,4 @@ class TaskPlotPerturbationPowers(osp.StudyTask):
             fig.savefig(target[ifig], dpi=600)
 
         figs[0].savefig(target[2], dpi=600)
-        plt.close()
-
-
-##############
-# DEPRECATED #
-##############
-
-class TaskPlotCenterOfMassVectorWrongScaling(osp.StudyTask):
-    REGISTRY = []
-    def __init__(self, study, subjects, times, rise, fall):
-        super(TaskPlotCenterOfMassVectorWrongScaling, self).__init__(study)
-        self.name = f'plot_center_of_mass_vector_wrong_scaling_rise{rise}_fall{fall}'
-        self.results_path = os.path.join(study.config['results_path'], 
-            'experiments')
-        self.figures_path = os.path.join(study.config['figures_path'])
-        self.analysis_path = os.path.join(study.config['analysis_path'],
-            'center_of_mass_vector',  'wrong_scaling')
-        if not os.path.exists(self.analysis_path): 
-            os.makedirs(self.analysis_path)
-        self.walking_speed = study.walking_speed
-        self.gravity = 9.81
-        self.subjects = subjects
-        self.times = times
-        self.rise = rise
-        self.fall = fall
-        self.torques = study.plot_torques
-        self.subtalars = study.plot_subtalars
-        self.colors = study.plot_colors
-
-        self.kinematic_levels = ['pos', 'vel', 'acc']
-        self.planes = ['sagittal','transverse']
-
-        blank = ''
-        self.legend_labels = [f'{blank}\neversion\n{blank}', 
-                              'plantarflexion\n+\neversion', 
-                              f'{blank}\nplantarflexion\n{blank}', 
-                              'plantarflexion\n+\ninversion', 
-                              f'{blank}\ninversion\n{blank}']
-
-        deps = list()
-        self.label_dict = dict()
-        ilabel = 0
-        for isubj, subject in enumerate(subjects):
-
-            # Unperturbed solutions
-            # ---------------------
-            deps.append(
-                os.path.join(
-                    self.study.config['results_path'], 
-                    'unperturbed', subject,
-                    'center_of_mass_unperturbed.sto'))
-
-            self.label_dict[f'{subject}_unperturbed'] = ilabel
-            ilabel += 1
-
-            for actu in [False, True]:
-                torque_act = '_torque_actuators' if actu else ''
-                subpath = 'torque_actuators' if actu else 'perturbed'
-
-                for time in self.times:
-
-                    # Unperturbed time-stepping solutions
-                    # -----------------------------------
-                    label = (f'perturbed_torque0_time{time}'
-                             f'_rise{self.rise}_fall{self.fall}{torque_act}')
-                    deps.append(
-                        os.path.join(
-                            self.study.config['results_path'], 
-                            subpath, label, subject,
-                            f'center_of_mass_{label}.sto'))
-
-                    self.label_dict[f'{subject}_unperturbed_time{time}{torque_act}'] = ilabel
-                    ilabel += 1
-
-                    for torque, subtalar in zip(self.torques, self.subtalars):
-
-                         # Perturbed solutions
-                         # -------------------
-                        label = (f'perturbed_torque{torque}_time{time}'
-                                f'_rise{self.rise}_fall{self.fall}{subtalar}{torque_act}')
-                        deps.append(
-                            os.path.join(
-                                self.study.config['results_path'], 
-                                subpath, label, subject,
-                                f'center_of_mass_{label}.sto')
-                            )
-
-                        self.label_dict[f'{subject}_{label}'] = ilabel
-                        ilabel += 1
-
-        targets = list()
-        for kin in self.kinematic_levels:
-            for plane in self.planes:
-                targets += [os.path.join(self.analysis_path, 
-                            f'com_vector_{kin}_{plane}.png')]
-
-        # targets += [os.path.join(self.figures_path, 'figureS5', 'figureS5.png')]
-        # targets += [os.path.join(self.figures_path, 'figureS4', 'figureS4.png')]
-        # targets += [os.path.join(self.figures_path, 'figure3', 'figure3.png')]
-        # targets += [os.path.join(self.figures_path, 'figure2', 'figure2.png')]
-        # targets += [os.path.join(self.figures_path, 'figureS3', 'figureS3.png')]
-        # targets += [os.path.join(self.figures_path, 'figureS2', 'figureS2.png')]
-
-        self.add_action(deps, targets, self.plot_com_vectors)
-
-    def plot_com_vectors(self, file_dep, target):
-
-        # Globals
-        # -------
-        tick_fs = 6
-
-        # Initialize figures
-        # ------------------
-        figs = list()
-        axes = list()
-        for kin in self.kinematic_levels:
-            for iplane, plane in enumerate(self.planes):
-                these_axes = list()
-
-                if plane == 'transverse':
-                    fig = plt.figure(figsize=(7, 7))
-                    for itorque, torque in enumerate(self.torques):
-        
-                        ax = fig.add_subplot(1, len(self.torques), itorque + 1)
-                        ax.grid(axis='y', color='gray', alpha=0.5, linewidth=0.5, 
-                                zorder=-10, clip_on=False)
-                        ax.axvline(x=0, color='gray', linestyle='-',
-                                linewidth=0.5, alpha=0.5, zorder=-1)
-                        ax.set_yticks(np.arange(len(self.times)))
-                        ax.set_ylim(0, len(self.times)-1)
-                        util.publication_spines(ax)
-
-                        if not itorque:
-                            ax.spines['left'].set_position(('outward', 10))
-                            if kin == 'pos' or kin == 'vel':
-                                ax.set_yticklabels([f'{time + 5}' for time in self.times],
-                                    fontsize=tick_fs)
-                            else:
-                                ax.set_yticklabels([f'{time}' for time in self.times],
-                                    fontsize=tick_fs)
-                        else:
-                            ax.spines['left'].set_visible(False)
-                            ax.set_yticklabels([])
-                            ax.yaxis.set_ticks_position('none')
-                            ax.tick_params(axis='y', which='both', bottom=False, 
-                                           top=False, labelbottom=False)
-
-                        ax.spines['bottom'].set_position(('outward', 40))
-                        ax.set_title(self.legend_labels[itorque], pad=30, fontsize=8)
-                        ax.xaxis.set_minor_locator(AutoMinorLocator(2))
-                        ax.tick_params(which='minor', axis='x', direction='in')
-                        these_axes.append(ax)
-
-                elif plane == 'sagittal':
-                    fig = plt.figure(figsize=(7, 7))
-                    for itorque, torque in enumerate(self.torques):
-                        ax = fig.add_subplot(len(self.torques), 1, itorque + 1)
-                        ax_r = ax.twinx()
-                        ax_r.set_ylabel(self.legend_labels[itorque], 
-                            rotation=270, labelpad=35, fontsize=8)
-
-                        ax.grid(axis='x', color='gray', alpha=0.5, linewidth=0.5, 
-                                zorder=-10, clip_on=False)
-                        ax.axhline(y=0, color='gray', linestyle='-',
-                                linewidth=0.5, alpha=0.5, zorder=-1)
-                        ax.set_xticks(np.arange(len(self.times)))
-                        ax.set_xlim(0, len(self.times)-1)
-                        util.publication_spines(ax)
-
-                        if itorque == len(self.torques)-1:
-                            ax.spines['bottom'].set_position(('outward', 10))
-                            if kin == 'pos' or kin == 'vel':
-                                ax.set_xticklabels([f'{time + 5}' for time in self.times],
-                                    fontsize=tick_fs)
-                            else:
-                                ax.set_xticklabels([f'{time}' for time in self.times],
-                                    fontsize=tick_fs)
-                        else:
-                            ax.spines['bottom'].set_visible(False)
-                            ax.set_xticklabels([])
-                            ax.xaxis.set_ticks_position('none')
-                            ax.tick_params(axis='x', which='both', bottom=False, 
-                                           top=False, labelbottom=False)
-
-                        ax.spines['left'].set_position(('outward', 20))
-                        ax.yaxis.set_minor_locator(AutoMinorLocator(2))
-                        ax.tick_params(which='minor', axis='y', direction='in')
-                        these_axes.append(ax)
-
-                        # Turn off decorations for dummy axis
-                        ax_r.spines['top'].set_visible(False)
-                        ax_r.spines['bottom'].set_visible(False)
-                        ax_r.spines['left'].set_visible(False)
-                        ax_r.spines['right'].set_visible(False)
-                        ax_r.set_yticklabels([])
-                        ax_r.xaxis.set_ticks_position('none')
-                        ax_r.yaxis.set_ticks_position('none')
-                        ax_r.tick_params(axis='x', which='both', bottom=False, 
-                                       top=False, labelbottom=False)
-                        ax_r.tick_params(axis='y', which='both', bottom=False, 
-                                       top=False, labelbottom=False)
-
-                axes.append(these_axes)
-                figs.append(fig)       
-
-        # Aggregate data
-        # --------------
-        import collections
-        com_dict = collections.defaultdict(dict)
-        time_dict = collections.defaultdict(dict)
-        com_height_dict = dict()
-        duration_dict = dict()
-
-        for isubj, subject in enumerate(self.subjects):
-
-            # Unperturbed center-of-mass trajectory
-            # -------------------------------------
-            unperturb_index = self.label_dict[f'{subject}_unperturbed']
-            tableTemp = osim.TimeSeriesTable(file_dep[unperturb_index])
-            com_height_dict[subject] = np.mean(tableTemp.getDependentColumn(
-                                               '/|com_position_y').to_numpy())
-            timeTemp = np.array(tableTemp.getIndependentColumn())
-            duration_dict[subject] = timeTemp[-1] - timeTemp[0]
-
-            for actu in [False, True]:
-                torque_act = '_torque_actuators' if actu else ''
-
-                for time in self.times:
-
-                    # Unperturbed center-of-mass trajectory
-                    # -------------------------------------
-                    unperturb_index = self.label_dict[f'{subject}_unperturbed_time{time}{torque_act}']
-                    unpTable = osim.TimeSeriesTable(file_dep[unperturb_index])
-                    unpTimeVec = unpTable.getIndependentColumn()
-                    unpTable_np = np.zeros((len(unpTimeVec), 9))
-                    unp_pos_x = unpTable.getDependentColumn(
-                        '/|com_position_x').to_numpy()
-                    unp_pos_y = unpTable.getDependentColumn(
-                        '/|com_position_y').to_numpy()
-                    unp_pos_z = unpTable.getDependentColumn(
-                        '/|com_position_z').to_numpy()
-                    unpTable_np[:, 0] = unp_pos_x - unp_pos_x[0] 
-                    unpTable_np[:, 1] = unp_pos_y - unp_pos_y[0] 
-                    unpTable_np[:, 2] = unp_pos_z - unp_pos_z[0] 
-                    unpTable_np[:, 3] = unpTable.getDependentColumn(
-                        '/|com_velocity_x').to_numpy() 
-                    unpTable_np[:, 4] = unpTable.getDependentColumn(
-                        '/|com_velocity_y').to_numpy() 
-                    unpTable_np[:, 5] = unpTable.getDependentColumn(
-                        '/|com_velocity_z').to_numpy() 
-                    unpTable_np[:, 6] = unpTable.getDependentColumn(
-                        '/|com_acceleration_x').to_numpy()
-                    unpTable_np[:, 7] = unpTable.getDependentColumn(
-                        '/|com_acceleration_y').to_numpy()
-                    unpTable_np[:, 8] = unpTable.getDependentColumn(
-                        '/|com_acceleration_z').to_numpy()
-
-                    for torque, subtalar in zip(self.torques, self.subtalars):
-
-                        # Perturbed center-of-mass trajectory
-                        # -----------------------------------
-                        label = (f'{subject}_perturbed_torque{torque}_time{time}'
-                                 f'_rise{self.rise}_fall{self.fall}{subtalar}{torque_act}')
-                        perturb_index = self.label_dict[label]
-                        table = osim.TimeSeriesTable(file_dep[perturb_index])
-                        timeVec = table.getIndependentColumn()
-                        N = len(timeVec)
-                        table_np = np.zeros((N, 9))
-                        pos_x = table.getDependentColumn(
-                            '/|com_position_x').to_numpy()
-                        pos_y = table.getDependentColumn(
-                            '/|com_position_y').to_numpy()
-                        pos_z = table.getDependentColumn(
-                            '/|com_position_z').to_numpy()
-                        table_np[:, 0] = pos_x - pos_x[0] 
-                        table_np[:, 1] = pos_y - pos_y[0] 
-                        table_np[:, 2] = pos_z - pos_z[0] 
-                        table_np[:, 3] = table.getDependentColumn(
-                            '/|com_velocity_x').to_numpy()
-                        table_np[:, 4] = table.getDependentColumn(
-                            '/|com_velocity_y').to_numpy()
-                        table_np[:, 5] = table.getDependentColumn(
-                            '/|com_velocity_z').to_numpy() 
-                        table_np[:, 6] = table.getDependentColumn(
-                            '/|com_acceleration_x').to_numpy()
-                        table_np[:, 7] = table.getDependentColumn(
-                            '/|com_acceleration_y').to_numpy()
-                        table_np[:, 8] = table.getDependentColumn(
-                            '/|com_acceleration_z').to_numpy()
-
-                        # Compute difference between perturbed and unperturbed
-                        # trajectories for this subject. We don't need to interpolate
-                        # here since the perturbed and unperturbed trajectories contain
-                        # the same time points (up until the end of the perturbation).
-                        com_dict[subject][label] = table_np - unpTable_np
-                        time_dict[subject][label] = np.array(timeVec)
-
-        # Plot helper functions
-        # ---------------------
-        def get_ax_size(ax):
-            bbox = ax.get_window_extent().transformed(fig.dpi_scale_trans.inverted())
-            width, height = bbox.width, bbox.height
-            width *= fig.dpi
-            height *= fig.dpi
-            return width, height 
-        
-        def set_arrow_patch_sagittal(ax, x, y, dx, dy, actu, color, 
-                numTimes=len(self.times)):
-            point1 = ax.transData.transform((x, y))
-            point2 = ax.transData.transform((x + dy, y + dy))
-            delta = point2 - point1
-            scale = delta[1] / delta[0]
-
-            if 'muscles' in actu:
-                arrowstyle = patches.ArrowStyle.CurveFilledB(head_length=0.25, 
-                    head_width=0.1)
-                lw = 2.0
-            elif 'torques' in actu: 
-                arrowstyle = patches.ArrowStyle.CurveB()
-                lw = 0.75
-
-            arrow = patches.FancyArrowPatch((x, y), (x + scale*dx, y + dy),
-                    arrowstyle=arrowstyle, mutation_scale=10, shrinkA=0, shrinkB=0,
-                    capstyle='round', joinstyle='miter', 
-                    color=color, clip_on=False, zorder=2.5, lw=lw)
-            ax.add_patch(arrow)
-            return arrow
-
-        def set_arrow_patch_coronal(ax, x, y, dx, dy, actu, color,
-                numTimes=len(self.times)):
-            point1 = ax.transData.transform((x, y))
-            point2 = ax.transData.transform((x + dx, y + dx))
-            delta = point2 - point1
-            scale = delta[0] / delta[1]
-
-            if 'muscles' in actu:
-                arrowstyle = patches.ArrowStyle.CurveFilledB(head_length=0.25, 
-                    head_width=0.1)
-                lw = 2.0
-            elif 'torques' in actu: 
-                arrowstyle = patches.ArrowStyle.CurveB()
-                lw = 0.75
-
-            arrow = patches.FancyArrowPatch((x, y), (x + dx, y + scale*dy),
-                    arrowstyle=arrowstyle, mutation_scale=10, shrinkA=0, shrinkB=0,
-                    capstyle='round', joinstyle='miter', 
-                    color=color, clip_on=False, zorder=2.5, lw=lw)
-            ax.add_patch(arrow)
-            return arrow
-
-        # Compute changes in center-of-mass kinematics
-        # --------------------------------------------
-        pos_x_diff = np.zeros(len(self.subjects))
-        pos_y_diff = np.zeros(len(self.subjects))
-        pos_z_diff = np.zeros(len(self.subjects))
-        vel_x_diff = np.zeros(len(self.subjects))
-        vel_y_diff = np.zeros(len(self.subjects))
-        vel_z_diff = np.zeros(len(self.subjects))
-        acc_x_diff = np.zeros(len(self.subjects))
-        acc_y_diff = np.zeros(len(self.subjects))
-        acc_z_diff = np.zeros(len(self.subjects))
-        pos_x_diff_mean = dict()
-        pos_y_diff_mean = dict()
-        pos_z_diff_mean = dict()
-        vel_x_diff_mean = dict()
-        vel_y_diff_mean = dict()
-        vel_z_diff_mean = dict()
-        acc_x_diff_mean = dict()
-        acc_y_diff_mean = dict()
-        acc_z_diff_mean = dict()
-        for actu in [False, True]:
-            torque_act = '_torque_actuators' if actu else ''
-            actu_key = 'torques' if actu else 'muscles'
-            pos_x_diff_mean[actu_key] = np.zeros((len(self.times), len(self.subtalars)))
-            pos_y_diff_mean[actu_key] = np.zeros((len(self.times), len(self.subtalars)))
-            pos_z_diff_mean[actu_key] = np.zeros((len(self.times), len(self.subtalars)))
-            vel_x_diff_mean[actu_key] = np.zeros((len(self.times), len(self.subtalars)))
-            vel_y_diff_mean[actu_key] = np.zeros((len(self.times), len(self.subtalars)))
-            vel_z_diff_mean[actu_key] = np.zeros((len(self.times), len(self.subtalars)))
-            acc_x_diff_mean[actu_key] = np.zeros((len(self.times), len(self.subtalars)))
-            acc_y_diff_mean[actu_key] = np.zeros((len(self.times), len(self.subtalars)))
-            acc_z_diff_mean[actu_key] = np.zeros((len(self.times), len(self.subtalars)))
-
-            for itime, time in enumerate(self.times):
-                zipped = zip(self.torques, self.subtalars, self.colors)
-                for iperturb, (torque, subtalar, color) in enumerate(zipped):
-                    for isubj, subject in enumerate(self.subjects):
-
-                        label = (f'{subject}_perturbed_torque{torque}_time{time}'
-                                 f'_rise{self.rise}_fall{self.fall}{subtalar}{torque_act}')
-                        com = com_dict[subject][label]
-
-                        # Compute the closet time index to the current peak 
-                        # perturbation time. 
-                        #
-                        # TODO: A given peak perturbation time (e.g 50% of the 
-                        # gait cycle) may not lie exactly on a time point of 
-                        # from the simulation. The interval between time points
-                        # is 5ms, meaning that the time index could be up to 2.5ms
-                        # away from the actual perturbation peak time. 
-                        duration = duration_dict[subject]
-                        timeVec = time_dict[subject][label]
-                        time_at_peak = timeVec[0] + (duration * (time / 100.0))
-                        index_peak = np.argmin(np.abs(timeVec - time_at_peak))
-                        index_fall = -1
-
-                        l_max = com_height_dict[subject]
-                        v_max = np.sqrt(self.gravity * l_max)
-                        pos_x_diff[isubj] = com[index_fall, 0] / l_max
-                        pos_y_diff[isubj] = com[index_fall, 1] / l_max
-                        pos_z_diff[isubj] = com[index_fall, 2] / l_max
-                        vel_x_diff[isubj] = com[index_fall, 3] / v_max
-                        vel_y_diff[isubj] = com[index_fall, 4] / v_max
-                        vel_z_diff[isubj] = com[index_fall, 5] / v_max
-                        acc_x_diff[isubj] = com[index_peak, 6] / self.gravity
-                        acc_y_diff[isubj] = com[index_peak, 7] / self.gravity
-                        acc_z_diff[isubj] = com[index_peak, 8] / self.gravity
-
-                    pos_x_diff_mean[actu_key][itime, iperturb] = np.mean(pos_x_diff)
-                    pos_y_diff_mean[actu_key][itime, iperturb] = np.mean(pos_y_diff)
-                    pos_z_diff_mean[actu_key][itime, iperturb] = np.mean(pos_z_diff)
-                    vel_x_diff_mean[actu_key][itime, iperturb] = np.mean(vel_x_diff)
-                    vel_y_diff_mean[actu_key][itime, iperturb] = np.mean(vel_y_diff)
-                    vel_z_diff_mean[actu_key][itime, iperturb] = np.mean(vel_z_diff)
-                    acc_x_diff_mean[actu_key][itime, iperturb] = np.mean(acc_x_diff)
-                    acc_y_diff_mean[actu_key][itime, iperturb] = np.mean(acc_y_diff)
-                    acc_z_diff_mean[actu_key][itime, iperturb] = np.mean(acc_z_diff)
-
-        # Set plot limits and labels
-        # --------------------------
-        for iperturb in np.arange(len(self.subtalars)):
-
-            # Sagittal position
-            scale = 0.003
-            axes[0][iperturb].set_ylim(-scale, scale)
-            axes[0][iperturb].set_yticks([-scale, 0, scale])
-            axes[0][iperturb].set_yticklabels([-scale, 0, scale], fontsize=tick_fs)
-            axes[0][2].set_ylabel(r'$\Delta$' + ' center of mass position $[-]$')
-            axes[0][4].set_xlabel('exoskeleton torque end time\n(% gait cycle)')
-
-            # Transverse position
-            scale = 0.001
-            axes[1][iperturb].set_xlim(-scale, scale)
-            axes[1][iperturb].set_xticks([-scale, 0, scale])
-            axes[1][iperturb].set_xticklabels([-scale, 0, scale], fontsize=tick_fs-1)
-            axes[1][2].set_xlabel(r'$\Delta$' + ' center of mass position $[-]$')
-            axes[1][0].set_ylabel('exoskeleton torque end time\n(% gait cycle)')
-
-            # Sagittal velocity
-            scale = 0.02
-            axes[2][iperturb].set_ylim(-scale, scale)
-            axes[2][iperturb].set_yticks([-scale, 0, scale])
-            axes[2][iperturb].set_yticklabels([-scale, 0, scale], fontsize=tick_fs)
-            axes[2][2].set_ylabel(r'$\Delta$' + ' center of mass velocity $[-]$')
-            axes[2][4].set_xlabel('exoskeleton torque end time\n(% gait cycle)')
-
-            # Transverse velocity
-            scale = 0.006
-            axes[3][iperturb].set_xlim(-scale, scale)
-            axes[3][iperturb].set_xticks([-scale, 0, scale])
-            axes[3][iperturb].set_xticklabels([-scale, 0, scale], fontsize=tick_fs-1)
-            axes[3][2].set_xlabel(r'$\Delta$' + ' center of mass velocity $[-]$')
-            axes[3][0].set_ylabel('exoskeleton torque end time\n(% gait cycle)')
-
-            # Sagittal acceleration
-            scale = 0.075
-            axes[4][iperturb].set_ylim(-scale, scale)
-            axes[4][iperturb].set_yticks([-scale, 0, scale])
-            axes[4][iperturb].set_yticklabels([-scale, 0, scale], fontsize=tick_fs)
-            axes[4][2].set_ylabel(r'$\Delta$' + ' center of mass acceleration $[-]$')
-            axes[4][4].set_xlabel('exoskeleton torque peak time\n(% gait cycle)')
-
-            # Transverse acceleration
-            scale = 0.025
-            axes[5][iperturb].set_xlim(-scale, scale)
-            axes[5][iperturb].set_xticks([-scale, 0, scale])
-            axes[5][iperturb].set_xticklabels([-scale, 0, scale], fontsize=tick_fs-1)
-            axes[5][2].set_xlabel(r'$\Delta$' + ' center of mass acceleration $[-]$')
-            axes[5][0].set_ylabel('exoskeleton torque peak time\n(% gait cycle)')
-            
-        # Plot results
-        # ------------
-        for actu in [True, False]:
-            torque_act = '_torque_actuators' if actu else ''
-            actu_key = 'torques' if actu else 'muscles'
-
-            for itime, time in enumerate(self.times):
-                zipped = zip(self.torques, self.subtalars, self.colors)
-                for iperturb, (torque, subtalar, color) in enumerate(zipped):
-
-                    # Position vectors
-                    # ----------------
-                    pos_x_diff = pos_x_diff_mean[actu_key][itime, iperturb]
-                    pos_y_diff = pos_y_diff_mean[actu_key][itime, iperturb]
-                    pos_z_diff = pos_z_diff_mean[actu_key][itime, iperturb]
-                    set_arrow_patch_sagittal(axes[0][iperturb], itime, 0, pos_x_diff, pos_y_diff, actu_key, color)
-                    set_arrow_patch_coronal(axes[1][iperturb], 0, itime, pos_z_diff, pos_x_diff, actu_key, color)
-
-                    # Velocity vectors
-                    # ----------------
-                    vel_x_diff = vel_x_diff_mean[actu_key][itime, iperturb]
-                    vel_y_diff = vel_y_diff_mean[actu_key][itime, iperturb]
-                    vel_z_diff = vel_z_diff_mean[actu_key][itime, iperturb]
-                    set_arrow_patch_sagittal(axes[2][iperturb], itime, 0, vel_x_diff, vel_y_diff, actu_key, color)
-                    set_arrow_patch_coronal(axes[3][iperturb], 0, itime, vel_z_diff, vel_x_diff, actu_key, color)
-
-                    # Acceleration vectors
-                    # --------------------
-                    acc_x_diff = acc_x_diff_mean[actu_key][itime, iperturb]
-                    acc_y_diff = acc_y_diff_mean[actu_key][itime, iperturb]
-                    acc_z_diff = acc_z_diff_mean[actu_key][itime, iperturb]
-                    set_arrow_patch_sagittal(axes[4][iperturb], itime, 0, acc_x_diff, acc_y_diff, actu_key, color)
-                    set_arrow_patch_coronal(axes[5][iperturb], 0, itime, acc_z_diff, acc_x_diff, actu_key, color)
-
-
-        left = 0.475
-        right = 0.9
-        bottom = 0.1
-        top = 0.95
-        hspace = 0.3
-        figs[0].subplots_adjust(left=left, right=right, bottom=bottom, top=top, hspace=hspace)
-        figs[2].subplots_adjust(left=left, right=right, bottom=bottom, top=top, hspace=hspace)
-        figs[4].subplots_adjust(left=left, right=right, bottom=bottom, top=top, hspace=hspace)
-
-        left = 0.1
-        right = 0.95
-        bottom = 0.475
-        top = 0.88
-        wspace = 0.3
-        figs[1].subplots_adjust(left=left, right=right, bottom=bottom, top=top, wspace=wspace)
-        figs[3].subplots_adjust(left=left, right=right, bottom=bottom, top=top, wspace=wspace)
-        figs[5].subplots_adjust(left=left, right=right, bottom=bottom, top=top, wspace=wspace)
-        
-        import cv2
-        def add_sagittal_image(fig):
-            side = 0.35
-            offset = 0.01
-            l = 0.01
-            b = ((1.0 - side) / 2.0) + offset
-            w = side
-            h = side
-            ax = fig.add_axes([l, b, w, h], projection=None, polar=False)
-            image = cv2.imread(
-                os.path.join(self.study.config['figures_path'], 'images',
-                    'sagittal_with_arrows.tiff'))[..., ::-1]
-            ax.imshow(image, interpolation='none', aspect='equal')
-
-            ax.spines['top'].set_visible(False)
-            ax.spines['bottom'].set_visible(False)
-            ax.spines['left'].set_visible(False)
-            ax.spines['right'].set_visible(False)
-            ax.set_yticklabels([])
-            ax.xaxis.set_ticks_position('none')
-            ax.yaxis.set_ticks_position('none')
-            ax.tick_params(axis='x', which='both', bottom=False, 
-                           top=False, labelbottom=False)
-            ax.tick_params(axis='y', which='both', bottom=False, 
-                           top=False, labelbottom=False)
-
-        def add_transverse_image(fig):
-            side = 0.35
-            offset = 0.02 
-            l = ((1.0 - side) / 2.0) + offset
-            b = 0.0
-            w = side
-            h = side
-            ax = fig.add_axes([l, b, w, h], projection=None, polar=False)
-            image = cv2.imread(
-                os.path.join(self.study.config['figures_path'], 'images',
-                    'transverse_with_arrows.tiff'))[..., ::-1]
-            ax.imshow(image, interpolation='none', aspect='equal')
-
-            ax.spines['top'].set_visible(False)
-            ax.spines['bottom'].set_visible(False)
-            ax.spines['left'].set_visible(False)
-            ax.spines['right'].set_visible(False)
-            ax.set_yticklabels([])
-            ax.xaxis.set_ticks_position('none')
-            ax.yaxis.set_ticks_position('none')
-            ax.tick_params(axis='x', which='both', bottom=False, 
-                           top=False, labelbottom=False)
-            ax.tick_params(axis='y', which='both', bottom=False, 
-                           top=False, labelbottom=False)
-
-        def add_legend(fig, x, y):
-            w = 0.1
-            h = 0.02
-            ax = fig.add_axes([x, y, w, h], projection=None, polar=False)
-
-            ax.spines['top'].set_visible(False)
-            ax.spines['bottom'].set_visible(False)
-            ax.spines['left'].set_visible(False)
-            ax.spines['right'].set_visible(False)
-            ax.set_yticklabels([])
-            ax.xaxis.set_ticks_position('none')
-            ax.yaxis.set_ticks_position('none')
-            ax.tick_params(axis='x', which='both', bottom=False, 
-                           top=False, labelbottom=False)
-            ax.tick_params(axis='y', which='both', bottom=False, 
-                           top=False, labelbottom=False)
-
-            set_arrow_patch_coronal(ax, 0, 1.25, 0.5, 0, 'muscles', 'black')
-            ax.text(0.6, 1.1, 'muscle-driven model')
-            set_arrow_patch_coronal(ax, 0, 0, 0.5, 0, 'torques', 'black')
-            ax.text(0.6, -0.15, 'torque-driven model')
-
-        add_sagittal_image(figs[0])
-        add_sagittal_image(figs[2])
-        add_sagittal_image(figs[4])
-        x = 0.1
-        y = 0.15
-        add_legend(figs[0], x, y)
-        add_legend(figs[2], x, y)
-        add_legend(figs[4], x, y)
-
-        add_transverse_image(figs[1])
-        add_transverse_image(figs[3])
-        add_transverse_image(figs[5])
-        x = 0.675
-        y = 0.275
-        add_legend(figs[1], x, y)
-        add_legend(figs[3], x, y)
-        add_legend(figs[5], x, y)
-
-        for ifig, fig in enumerate(figs):
-            fig.savefig(target[ifig], dpi=600)
- 
         plt.close()

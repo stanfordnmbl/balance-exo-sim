@@ -248,23 +248,6 @@ class TimeSteppingProblem(Result):
         if config.use_coordinate_actuators:
             modelProcessor.append(osim.ModOpRemoveMuscles())
 
-            # modelProcessor.append(osim.ModOpReplaceMusclesWithPathActuators())
-            # model = modelProcessor.process()
-            # model.initSystem()
-            # actuSet = model.updActuators()
-            # for iactu in range(actuSet.getSize()):
-            #     actu = actuSet.get(iactu)
-            #     actuName = actu.getName()
-            #     if not 'lumbar' in actuName and not 'perturbation' in actuName:
-            #         pathAct = osim.PathActuator.safeDownCast(actu)
-            #         pathAct.setOptimalForce(1.0)
-            #         pathAct.setMinControl(0)
-            #         pathAct.setMaxControl(10000.0)
-
-
-            # model.finalizeConnections()
-            # modelProcessor = osim.ModelProcessor(model)
-
         osim.Logger.setLevelString('info')
 
         return modelProcessor

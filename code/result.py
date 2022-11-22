@@ -459,11 +459,11 @@ class Result(ABC):
 
         ax_list = list()
         ax_list.append(ax_rgrf_x)
-        ax_list.append(ax_rgrf_z)
         ax_list.append(ax_rgrf_y)        
+        ax_list.append(ax_rgrf_z)
         ax_list.append(ax_lgrf_x)
-        ax_list.append(ax_lgrf_z)
         ax_list.append(ax_lgrf_y)
+        ax_list.append(ax_lgrf_z)
 
         for ax in ax_list:
             utilities.publication_spines(ax)
