@@ -2031,6 +2031,564 @@ class TaskValidateMuscleActivity(osp.StudyTask):
                 f.write(f'{emg_name}: {rms_errors_mean[iemg]:.2f}\n')
 
 
+class TaskValidateAccelerationsVersusGRFs(osp.StudyTask):
+    REGISTRY = []
+    def __init__(self, study, subjects, times, rise, fall):
+        super(TaskValidateAccelerationsVersusGRFs, self).__init__(study)
+        self.name = f'validate_accelerations_versus_grfs_rise{rise}_fall{fall}'
+        self.results_path = os.path.join(study.config['results_path'], 
+            'experiments')
+        self.validate_path = os.path.join(study.config['validate_path'],
+            'com_accelerations_versus_grfs',  f'rise{rise}_fall{fall}')
+        if not os.path.exists(self.validate_path): 
+            os.makedirs(self.validate_path)
+        self.subjects = subjects
+        self.times = times
+        self.rise = rise
+        self.fall = fall
+        self.gravity = 9.81
+        self.torques = study.plot_torques
+        self.subtalars = study.plot_subtalars      
+        self.legend_labels = ['eversion', 
+                              'plantarflexion + eversion', 
+                              'plantarflexion', 
+                              'plantarflexion + inversion', 
+                              'inversion']
+        deps = list()
+        self.com_dict = dict()
+        self.grf_dict = dict()
+        self.models = list()
+        ilabel = 0
+        for isubj, subject in enumerate(subjects):
+
+            # Model
+            # -----
+            self.models.append(
+                os.path.join(
+                    self.study.config['results_path'], 
+                    'unperturbed', subject,
+                    'model_unperturbed.osim'))
+
+            for actu in [False, True]:
+                torque_act = '_torque_actuators' if actu else ''
+                subpath = 'torque_actuators' if actu else 'perturbed'
+
+                for time in self.times:
+
+                    # Unperturbed time-stepping solutions
+                    # -----------------------------------
+                    label = (f'perturbed_torque0_time{time}'
+                             f'_rise{self.rise}_fall{self.fall}{torque_act}')
+                    deps.append(
+                        os.path.join(
+                            self.study.config['results_path'], 
+                            subpath, label, subject,
+                            f'center_of_mass_{label}.sto'))
+
+                    self.com_dict[f'{subject}_unperturbed_time{time}{torque_act}'] = ilabel
+                    ilabel += 1
+
+                    deps.append(
+                        os.path.join(
+                            self.study.config['results_path'], 
+                            subpath, label, subject,
+                            f'{label}_grfs.sto'))
+
+                    self.grf_dict[f'{subject}_unperturbed_time{time}{torque_act}'] = ilabel
+                    ilabel += 1
+
+                    for torque, subtalar in zip(self.torques, self.subtalars):
+
+                         # Perturbed solutions
+                         # -------------------
+                        label = (f'perturbed_torque{torque}_time{time}'
+                                f'_rise{self.rise}_fall{self.fall}{subtalar}{torque_act}')
+                        deps.append(
+                            os.path.join(
+                                self.study.config['results_path'], 
+                                subpath, label, subject,
+                                f'center_of_mass_{label}.sto')
+                            )
+
+                        self.com_dict[f'{subject}_{label}'] = ilabel
+                        ilabel += 1
+
+                        deps.append(
+                            os.path.join(
+                                self.study.config['results_path'], 
+                                subpath, label, subject,
+                                f'{label}_grfs.sto')
+                            )
+
+                        self.grf_dict[f'{subject}_{label}'] = ilabel
+                        ilabel += 1
+
+
+        self.add_action(deps, 
+                        [os.path.join(self.validate_path, 
+                            'com_accelerations_versus_grfs.txt')], 
+                        self.plot_instantaneous_com)
+
+    def plot_instantaneous_com(self, file_dep, target):
+
+
+        # Aggregate data
+        # --------------
+        import collections
+        com_dict = collections.defaultdict(dict)
+        grf_dict = collections.defaultdict(dict)
+        mass_dict = dict()
+        for isubj, subject in enumerate(self.subjects):
+
+            # Model mass
+            # ----------
+            model = osim.Model(self.models[isubj])
+            state = model.initSystem()
+            mass_dict[subject] = model.getTotalMass(state)
+
+            for actu in [False, True]:
+                torque_act = '_torque_actuators' if actu else ''
+
+                for time in self.times:
+
+                    # Unperturbed center-of-mass trajectory
+                    # -------------------------------------
+                    unperturb_index = self.com_dict[f'{subject}_unperturbed_time{time}{torque_act}']
+                    unpTable = osim.TimeSeriesTable(file_dep[unperturb_index])
+                    unpTimeVec = unpTable.getIndependentColumn()
+                    unpTable_np = np.zeros((len(unpTimeVec), 9))
+                    unp_pos_x = unpTable.getDependentColumn(
+                        '/|com_position_x').to_numpy()
+                    unp_pos_y = unpTable.getDependentColumn(
+                        '/|com_position_y').to_numpy()
+                    unp_pos_z = unpTable.getDependentColumn(
+                        '/|com_position_z').to_numpy()
+                    unpTable_np[:, 0] = unp_pos_x - unp_pos_x[0] 
+                    unpTable_np[:, 1] = unp_pos_y - unp_pos_y[0] 
+                    unpTable_np[:, 2] = unp_pos_z - unp_pos_z[0] 
+                    unpTable_np[:, 3] = unpTable.getDependentColumn(
+                        '/|com_velocity_x').to_numpy() 
+                    unpTable_np[:, 4] = unpTable.getDependentColumn(
+                        '/|com_velocity_y').to_numpy() 
+                    unpTable_np[:, 5] = unpTable.getDependentColumn(
+                        '/|com_velocity_z').to_numpy() 
+                    unpTable_np[:, 6] = unpTable.getDependentColumn(
+                        '/|com_acceleration_x').to_numpy()
+                    unpTable_np[:, 7] = unpTable.getDependentColumn(
+                        '/|com_acceleration_y').to_numpy()
+                    unpTable_np[:, 8] = unpTable.getDependentColumn(
+                        '/|com_acceleration_z').to_numpy()
+
+                    # Unperturbed ground reaction forces
+                    # ----------------------------------
+                    unperturb_index = self.grf_dict[f'{subject}_unperturbed_time{time}{torque_act}']
+                    unpTableGRF = osim.TimeSeriesTable(file_dep[unperturb_index])
+                    unpTimeVec = unpTableGRF.getIndependentColumn()
+                    unpTableGRF_np = np.zeros((len(unpTimeVec), 3))
+                    grf_r_x = unpTableGRF.getDependentColumn('ground_force_r_vx').to_numpy() 
+                    grf_r_y = unpTableGRF.getDependentColumn('ground_force_r_vy').to_numpy() 
+                    grf_r_z = unpTableGRF.getDependentColumn('ground_force_r_vz').to_numpy() 
+                    grf_l_x = unpTableGRF.getDependentColumn('ground_force_l_vx').to_numpy() 
+                    grf_l_y = unpTableGRF.getDependentColumn('ground_force_l_vy').to_numpy() 
+                    grf_l_z = unpTableGRF.getDependentColumn('ground_force_l_vz').to_numpy()
+
+                    unpTableGRF_np[:, 0] = grf_r_x + grf_l_x
+                    unpTableGRF_np[:, 1] = grf_r_y + grf_l_y
+                    unpTableGRF_np[:, 2] = grf_r_z + grf_l_z
+
+                    for torque, subtalar in zip(self.torques, self.subtalars):
+
+                        # Perturbed center-of-mass trajectory
+                        # -----------------------------------
+                        label = (f'{subject}_perturbed_torque{torque}_time{time}'
+                                 f'_rise{self.rise}_fall{self.fall}{subtalar}{torque_act}')
+                        perturb_index = self.com_dict[label]
+                        table = osim.TimeSeriesTable(file_dep[perturb_index])
+                        timeVec = table.getIndependentColumn()
+                        N = len(timeVec)
+                        table_np = np.zeros((N, 9))
+                        pos_x = table.getDependentColumn(
+                            '/|com_position_x').to_numpy()
+                        pos_y = table.getDependentColumn(
+                            '/|com_position_y').to_numpy()
+                        pos_z = table.getDependentColumn(
+                            '/|com_position_z').to_numpy()
+                        table_np[:, 0] = pos_x - pos_x[0] 
+                        table_np[:, 1] = pos_y - pos_y[0] 
+                        table_np[:, 2] = pos_z - pos_z[0] 
+                        table_np[:, 3] = table.getDependentColumn(
+                            '/|com_velocity_x').to_numpy()
+                        table_np[:, 4] = table.getDependentColumn(
+                            '/|com_velocity_y').to_numpy()
+                        table_np[:, 5] = table.getDependentColumn(
+                            '/|com_velocity_z').to_numpy() 
+                        table_np[:, 6] = table.getDependentColumn(
+                            '/|com_acceleration_x').to_numpy()
+                        table_np[:, 7] = table.getDependentColumn(
+                            '/|com_acceleration_y').to_numpy()
+                        table_np[:, 8] = table.getDependentColumn(
+                            '/|com_acceleration_z').to_numpy()
+
+                        # Unperturbed ground reaction forces
+                        # ----------------------------------
+                        perturb_index = self.grf_dict[label]
+                        tableGRF = osim.TimeSeriesTable(file_dep[perturb_index])
+                        timeVec = tableGRF.getIndependentColumn()
+                        tableGRF_np = np.zeros((len(timeVec), 3))
+                        grf_r_x = tableGRF.getDependentColumn('ground_force_r_vx').to_numpy() 
+                        grf_r_y = tableGRF.getDependentColumn('ground_force_r_vy').to_numpy() 
+                        grf_r_z = tableGRF.getDependentColumn('ground_force_r_vz').to_numpy() 
+                        grf_l_x = tableGRF.getDependentColumn('ground_force_l_vx').to_numpy() 
+                        grf_l_y = tableGRF.getDependentColumn('ground_force_l_vy').to_numpy() 
+                        grf_l_z = tableGRF.getDependentColumn('ground_force_l_vz').to_numpy()
+
+                        tableGRF_np[:, 0] = grf_r_x + grf_l_x
+                        tableGRF_np[:, 1] = grf_r_y + grf_l_y
+                        tableGRF_np[:, 2] = grf_r_z + grf_l_z
+
+                        # Compute difference between perturbed and unperturbed
+                        # trajectories for this subject. We don't need to interpolate
+                        # here since the perturbed and unperturbed trajectories contain
+                        # the same time points (up until the end of the perturbation).
+                        com_dict[subject][label] = table_np - unpTable_np
+                        grf_dict[subject][label] = tableGRF_np - unpTableGRF_np
+
+        # Calculate differences
+        # ---------------------
+        def calc_rms_error(errors):
+            N = len(errors)
+            sq_errors = np.square(errors)
+            sumsq_errors = np.sum(sq_errors)
+            return np.sqrt(sumsq_errors / N) 
+
+        with open(target[0], 'w') as f:
+            f.write('RMS errors between changes in COM and changes in effective GRF forces\n')
+            f.write('---------------------------------------------------------------------\n')
+            f.write('\n')
+
+            for actu in [False, True]:
+                torque_act = '_torque_actuators' if actu else ''
+                actu_key = 'torques' if actu else 'muscles'
+
+                for itime, time in enumerate(self.times):
+                    zipped = zip(self.torques, self.subtalars)
+                    for isubt, (torque, subtalar) in enumerate(zipped):
+                        for isubj, subject in enumerate(self.subjects):
+                            label = (f'{subject}_perturbed_torque{torque}_time{time}'
+                                 f'_rise{self.rise}_fall{self.fall}{subtalar}{torque_act}')
+                            com = com_dict[subject][label]
+                            grf = grf_dict[subject][label]
+
+                            error_x = calc_rms_error(com[:, 6] - grf[:, 0] / mass_dict[subject])
+                            error_y = calc_rms_error(com[:, 7] - grf[:, 1] / mass_dict[subject])
+                            error_z = calc_rms_error(com[:, 8] - grf[:, 2] / mass_dict[subject])
+
+                            total_error = error_x + error_y + error_z
+
+                            result = '(pass)'
+                            if total_error > 1e-9:
+                                result = '[***FAIL***]'
+
+                            f.write(f'{result} | {subject} | {label} | error = {total_error:0.3f}')
+                            f.write('\n')
+
+
+class TaskValidateAccelerationsVersusVelocitiess(osp.StudyTask):
+    REGISTRY = []
+    def __init__(self, study, subjects, times, rise, fall):
+        super(TaskValidateAccelerationsVersusVelocitiess, self).__init__(study)
+        self.name = f'validate_accelerations_versus_velocities_rise{rise}_fall{fall}'
+        self.results_path = os.path.join(study.config['results_path'], 
+            'experiments')
+        self.validate_path = os.path.join(study.config['validate_path'],
+            'accelerations_versus_velocities',  f'rise{rise}_fall{fall}')
+        if not os.path.exists(self.validate_path): 
+            os.makedirs(self.validate_path)
+        self.subjects = subjects
+        self.times = times
+        self.rise = rise
+        self.fall = fall
+        self.gravity = 9.81
+        self.torques = study.plot_torques
+        self.subtalars = study.plot_subtalars      
+        self.legend_labels = ['eversion', 
+                              'plantarflexion + eversion', 
+                              'plantarflexion', 
+                              'plantarflexion + inversion', 
+                              'inversion']
+        deps = list()
+        self.com_dict = dict()
+        self.grf_dict = dict()
+        self.models = list()
+        ilabel = 0
+        for isubj, subject in enumerate(subjects):
+
+            # Model
+            # -----
+            self.models.append(
+                os.path.join(
+                    self.study.config['results_path'], 
+                    'unperturbed', subject,
+                    'model_unperturbed.osim'))
+
+            # Unperturbed solutions
+            # ---------------------
+            deps.append(
+                os.path.join(
+                    self.study.config['results_path'], 
+                    'unperturbed', subject,
+                    'center_of_mass_unperturbed.sto'))
+
+            self.com_dict[f'{subject}_unperturbed'] = ilabel
+            ilabel += 1
+
+            for actu in [False, True]:
+                torque_act = '_torque_actuators' if actu else ''
+                subpath = 'torque_actuators' if actu else 'perturbed'
+
+                for time in self.times:
+
+                    # Unperturbed time-stepping solutions
+                    # -----------------------------------
+                    label = (f'perturbed_torque0_time{time}'
+                             f'_rise{self.rise}_fall{self.fall}{torque_act}')
+                    deps.append(
+                        os.path.join(
+                            self.study.config['results_path'], 
+                            subpath, label, subject,
+                            f'center_of_mass_{label}.sto'))
+
+                    self.com_dict[f'{subject}_unperturbed_time{time}{torque_act}'] = ilabel
+                    ilabel += 1
+
+                    deps.append(
+                        os.path.join(
+                            self.study.config['results_path'], 
+                            subpath, label, subject,
+                            f'{label}_grfs.sto'))
+
+                    self.grf_dict[f'{subject}_unperturbed_time{time}{torque_act}'] = ilabel
+                    ilabel += 1
+
+                    for torque, subtalar in zip(self.torques, self.subtalars):
+
+                         # Perturbed solutions
+                         # -------------------
+                        label = (f'perturbed_torque{torque}_time{time}'
+                                f'_rise{self.rise}_fall{self.fall}{subtalar}{torque_act}')
+                        deps.append(
+                            os.path.join(
+                                self.study.config['results_path'], 
+                                subpath, label, subject,
+                                f'center_of_mass_{label}.sto')
+                            )
+
+                        self.com_dict[f'{subject}_{label}'] = ilabel
+                        ilabel += 1
+
+                        deps.append(
+                            os.path.join(
+                                self.study.config['results_path'], 
+                                subpath, label, subject,
+                                f'{label}_grfs.sto')
+                            )
+
+                        self.grf_dict[f'{subject}_{label}'] = ilabel
+                        ilabel += 1
+
+
+        self.add_action(deps, 
+                        [os.path.join(self.validate_path, 
+                            'accelerations_versus_velocities.txt')], 
+                        self.plot_instantaneous_com)
+
+    def plot_instantaneous_com(self, file_dep, target):
+
+
+        # Aggregate data
+        # --------------
+        import collections
+        com_dict = collections.defaultdict(dict)
+        grf_dict = collections.defaultdict(dict)
+        time_dict = collections.defaultdict(dict)
+        com_height_dict = dict()
+        duration_dict = dict()
+        mass_dict = dict()
+        for isubj, subject in enumerate(self.subjects):
+
+            # Model mass
+            # ----------
+            model = osim.Model(self.models[isubj])
+            state = model.initSystem()
+            mass_dict[subject] = model.getTotalMass(state)
+
+            # Unperturbed center-of-mass trajectory
+            # -------------------------------------
+            unperturb_index = self.com_dict[f'{subject}_unperturbed']
+            tableTemp = osim.TimeSeriesTable(file_dep[unperturb_index])
+            com_height_dict[subject] = np.mean(tableTemp.getDependentColumn(
+                                               '/|com_position_y').to_numpy())
+            timeTemp = np.array(tableTemp.getIndependentColumn())
+            duration_dict[subject] = timeTemp[-1] - timeTemp[0]
+
+            for actu in [False, True]:
+                torque_act = '_torque_actuators' if actu else ''
+
+                for time in self.times:
+
+                    # Unperturbed center-of-mass trajectory
+                    # -------------------------------------
+                    unperturb_index = self.com_dict[f'{subject}_unperturbed_time{time}{torque_act}']
+                    unpTable = osim.TimeSeriesTable(file_dep[unperturb_index])
+                    unpTimeVec = unpTable.getIndependentColumn()
+                    unpTable_np = np.zeros((len(unpTimeVec), 9))
+                    unp_pos_x = unpTable.getDependentColumn(
+                        '/|com_position_x').to_numpy()
+                    unp_pos_y = unpTable.getDependentColumn(
+                        '/|com_position_y').to_numpy()
+                    unp_pos_z = unpTable.getDependentColumn(
+                        '/|com_position_z').to_numpy()
+                    unpTable_np[:, 0] = unp_pos_x - unp_pos_x[0] 
+                    unpTable_np[:, 1] = unp_pos_y - unp_pos_y[0] 
+                    unpTable_np[:, 2] = unp_pos_z - unp_pos_z[0] 
+                    unpTable_np[:, 3] = unpTable.getDependentColumn(
+                        '/|com_velocity_x').to_numpy() 
+                    unpTable_np[:, 4] = unpTable.getDependentColumn(
+                        '/|com_velocity_y').to_numpy() 
+                    unpTable_np[:, 5] = unpTable.getDependentColumn(
+                        '/|com_velocity_z').to_numpy() 
+                    unpTable_np[:, 6] = unpTable.getDependentColumn(
+                        '/|com_acceleration_x').to_numpy()
+                    unpTable_np[:, 7] = unpTable.getDependentColumn(
+                        '/|com_acceleration_y').to_numpy()
+                    unpTable_np[:, 8] = unpTable.getDependentColumn(
+                        '/|com_acceleration_z').to_numpy()
+
+                    # Unperturbed ground reaction forces
+                    # ----------------------------------
+                    unperturb_index = self.grf_dict[f'{subject}_unperturbed_time{time}{torque_act}']
+                    unpTableGRF = osim.TimeSeriesTable(file_dep[unperturb_index])
+                    unpTimeVec = unpTableGRF.getIndependentColumn()
+                    unpTableGRF_np = np.zeros((len(unpTimeVec), 3))
+                    grf_r_x = unpTableGRF.getDependentColumn('ground_force_r_vx').to_numpy() 
+                    grf_r_y = unpTableGRF.getDependentColumn('ground_force_r_vy').to_numpy() 
+                    grf_r_z = unpTableGRF.getDependentColumn('ground_force_r_vz').to_numpy() 
+                    grf_l_x = unpTableGRF.getDependentColumn('ground_force_l_vx').to_numpy() 
+                    grf_l_y = unpTableGRF.getDependentColumn('ground_force_l_vy').to_numpy() 
+                    grf_l_z = unpTableGRF.getDependentColumn('ground_force_l_vz').to_numpy()
+
+                    unpTableGRF_np[:, 0] = grf_r_x + grf_l_x
+                    unpTableGRF_np[:, 1] = grf_r_y + grf_l_y
+                    unpTableGRF_np[:, 2] = grf_r_z + grf_l_z
+
+                    for torque, subtalar in zip(self.torques, self.subtalars):
+
+                        # Perturbed center-of-mass trajectory
+                        # -----------------------------------
+                        label = (f'{subject}_perturbed_torque{torque}_time{time}'
+                                 f'_rise{self.rise}_fall{self.fall}{subtalar}{torque_act}')
+                        perturb_index = self.com_dict[label]
+                        table = osim.TimeSeriesTable(file_dep[perturb_index])
+                        timeVec = table.getIndependentColumn()
+                        N = len(timeVec)
+                        table_np = np.zeros((N, 9))
+                        pos_x = table.getDependentColumn(
+                            '/|com_position_x').to_numpy()
+                        pos_y = table.getDependentColumn(
+                            '/|com_position_y').to_numpy()
+                        pos_z = table.getDependentColumn(
+                            '/|com_position_z').to_numpy()
+                        table_np[:, 0] = pos_x - pos_x[0] 
+                        table_np[:, 1] = pos_y - pos_y[0] 
+                        table_np[:, 2] = pos_z - pos_z[0] 
+                        table_np[:, 3] = table.getDependentColumn(
+                            '/|com_velocity_x').to_numpy()
+                        table_np[:, 4] = table.getDependentColumn(
+                            '/|com_velocity_y').to_numpy()
+                        table_np[:, 5] = table.getDependentColumn(
+                            '/|com_velocity_z').to_numpy() 
+                        table_np[:, 6] = table.getDependentColumn(
+                            '/|com_acceleration_x').to_numpy()
+                        table_np[:, 7] = table.getDependentColumn(
+                            '/|com_acceleration_y').to_numpy()
+                        table_np[:, 8] = table.getDependentColumn(
+                            '/|com_acceleration_z').to_numpy()
+
+                        # Unperturbed ground reaction forces
+                        # ----------------------------------
+                        perturb_index = self.grf_dict[label]
+                        tableGRF = osim.TimeSeriesTable(file_dep[perturb_index])
+                        timeVec = tableGRF.getIndependentColumn()
+                        tableGRF_np = np.zeros((len(timeVec), 3))
+                        grf_r_x = tableGRF.getDependentColumn('ground_force_r_vx').to_numpy() 
+                        grf_r_y = tableGRF.getDependentColumn('ground_force_r_vy').to_numpy() 
+                        grf_r_z = tableGRF.getDependentColumn('ground_force_r_vz').to_numpy() 
+                        grf_l_x = tableGRF.getDependentColumn('ground_force_l_vx').to_numpy() 
+                        grf_l_y = tableGRF.getDependentColumn('ground_force_l_vy').to_numpy() 
+                        grf_l_z = tableGRF.getDependentColumn('ground_force_l_vz').to_numpy()
+
+                        tableGRF_np[:, 0] = grf_r_x + grf_l_x
+                        tableGRF_np[:, 1] = grf_r_y + grf_l_y
+                        tableGRF_np[:, 2] = grf_r_z + grf_l_z
+
+
+                        # Compute difference between perturbed and unperturbed
+                        # trajectories for this subject. We don't need to interpolate
+                        # here since the perturbed and unperturbed trajectories contain
+                        # the same time points (up until the end of the perturbation).
+                        com_dict[subject][label] = table_np - unpTable_np
+                        grf_dict[subject][label] = tableGRF_np - unpTableGRF_np
+                        time_dict[subject][label] = timeVec
+
+        # Calculate differences
+        # ---------------------
+        with open(target[0], 'w') as f:
+            f.write('Velocity changes are in same direction as acceleration changes\n')
+            f.write('--------------------------------------------------------------\n')
+            f.write('\n')
+
+            for actu in [False, True]:
+                torque_act = '_torque_actuators' if actu else ''
+                actu_key = 'torques' if actu else 'muscles'
+
+                for itime, time in enumerate(self.times):
+                    zipped = zip(self.torques, self.subtalars)
+                    for isubt, (torque, subtalar) in enumerate(zipped):
+                        for isubj, subject in enumerate(self.subjects):
+                            label = (f'{subject}_perturbed_torque{torque}_time{time}'
+                                 f'_rise{self.rise}_fall{self.fall}{subtalar}{torque_act}')
+                            com = com_dict[subject][label]
+                            grf = grf_dict[subject][label]
+
+                            # Compute the closet time index to the current peak 
+                            # perturbation time. 
+                            timeVec = time_dict[subject][label]
+                            duration = duration_dict[subject]
+                            time_at_peak = timeVec[0] + (duration * (time / 100.0))
+                            index_peak = np.argmin(np.abs(timeVec - time_at_peak))
+                            index_fall = -1
+
+                            l_max = com_height_dict[subject]
+                            v_max = np.sqrt(self.gravity * l_max)
+                            vel_x_diff = com[index_fall, 3] / v_max
+                            vel_y_diff = com[index_fall, 4] / v_max
+                            vel_z_diff = com[index_fall, 5] / v_max
+                            acc_x_diff = com[index_peak, 6] / self.gravity
+                            acc_y_diff = com[index_peak, 7] / self.gravity
+                            acc_z_diff = com[index_peak, 8] / self.gravity
+
+                            error_x = vel_x_diff * acc_x_diff
+                            error_y = vel_y_diff * acc_y_diff
+                            error_z = vel_z_diff * acc_z_diff
+
+                            result = '(pass)'
+                            if not (error_x and error_y and error_z):
+                                result = '[***FAIL***]'
+
+                            f.write(f'{result} | {subject} | {label}')
+                            f.write('\n')
+
+
 # Perturbed walking
 # -----------------
 

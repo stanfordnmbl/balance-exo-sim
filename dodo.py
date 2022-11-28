@@ -163,6 +163,10 @@ study.add_task(TaskValidateTrackingErrors, subjects, masses,
 study.add_task(TaskValidateMarkerErrors)
 study.add_task(TaskComputeCenterOfMassTimesteppingError,
     subjects, study.times, study.rise, study.fall)
+study.add_task(TaskValidateAccelerationsVersusGRFs, subjects, study.times,
+    study.rise, study.fall)
+study.add_task(TaskValidateAccelerationsVersusVelocitiess, subjects, study.times,
+    study.rise, study.fall)
 study.add_task(TaskValidateMuscleActivity, subjects)
 study.add_task(TaskComputeObjectiveContributions, subjects)
 
