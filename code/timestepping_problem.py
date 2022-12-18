@@ -288,24 +288,6 @@ class TimeSteppingProblem(Result):
                     controls.appendColumn(label, 
                         muscleMoments.getDependentColumn(label))
 
-            # unperturbed_dir = os.path.split(config.unperturbed_fpath)[0]
-            # muscleMoments = osim.TimeSeriesTable(
-            #     os.path.join(unperturbed_dir, 'muscle_mechanics_unperturbed.sto'))
-            # forceSet = model.getForceSet()
-            # for label in muscleMoments.getColumnLabels():
-            #     if '|tendon_force' in label:
-            #         # actu = osim.PathActuator.safeDownCast(
-            #         #     forceSet.get(label[10:-13]))
-            #         # optimalForce = actu.getOptimalForce()
-            #         # tendonForce = muscleMoments.getDependentColumn(label)
-            #         # control = osim.Vector(tendonForce.size(), 0.0)
-            #         # for ic in range(tendonForce.size()):
-            #         #     control[ic] = tendonForce[ic] / optimalForce
-            #         # controls.appendColumn(label[:-13], control)
-
-            #         controls.appendColumn(label[:-13], 
-            #             muscleMoments.getDependentColumn(label))
-
             trajectory = self.create_trajectory_from_tables(states, controls)
 
         # Trim the trajectory to the ankle perturbation window
@@ -342,27 +324,27 @@ class TimeSteppingProblem(Result):
 
         # Set the initial state.
         # ----------------------
-        # statesTraj = trajectory.exportToStatesTrajectory(model)
-        # manager.setIntegratorAccuracy(1e-6)
-        # manager.setIntegratorMinimumStepSize(1e-6)
-        # manager.setIntegratorMaximumStepSize(1e-2)
-        # manager.initialize(statesTraj.get(0))
-        # manager.integrate(time[time.size() - 1])
+        statesTraj = trajectory.exportToStatesTrajectory(model)
+        manager.setIntegratorAccuracy(1e-6)
+        manager.setIntegratorMinimumStepSize(1e-6)
+        manager.setIntegratorMaximumStepSize(1e-2)
+        manager.initialize(statesTraj.get(0))
+        manager.integrate(time[time.size() - 1])
 
         # Export results from states reporter to a table.
         # -----------------------------------------------
-        # statesTrajRep = osim.StatesTrajectoryReporter().safeDownCast(
-        #     model.getComponent('/states_reporter')) 
-        # states = statesTrajRep.getStates().exportToTable(model)
-        # controls = trajectory.exportToControlsTable()
+        statesTrajRep = osim.StatesTrajectoryReporter().safeDownCast(
+            model.getComponent('/states_reporter')) 
+        states = statesTrajRep.getStates().exportToTable(model)
+        controls = trajectory.exportToControlsTable()
 
         # Convert the time-stepping trajectory to a MocoTrajectory
         # --------------------------------------------------------
-        # solution = self.create_trajectory_from_tables(states, controls)
+        solution = self.create_trajectory_from_tables(states, controls)
 
         # Save the perturbed trajectory to a file
         # ---------------------------------------
-        # solution.write(self.get_solution_path(f'{config.name}_half'))
+        solution.write(self.get_solution_path(f'{config.name}_half'))
 
         # Add the unperturbed states to the full trajectory
         # -------------------------------------------------

@@ -252,3 +252,6 @@ controls*.sto
 # /results/**/center_of_mass*.sto
 # /results/**/muscle_mechanics*.sto
 # /results/**/muscle_moments*.sto
+
+# Mac specific
+*.DS_Store
