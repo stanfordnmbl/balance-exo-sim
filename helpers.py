@@ -65,9 +65,6 @@ def generate_unperturbed_tasks(study, subject, trial,
         'unperturbed', subject.name, 
         'unperturbed.sto')
 
-    if not subject.name == 'subject18':
-        guess_fpath = unperturbed_guess_fpath
-
     trial.add_task(
         tasks.TaskMocoUnperturbedWalking,
         initial_time, final_time, 
