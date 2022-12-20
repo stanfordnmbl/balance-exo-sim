@@ -1,0 +1,8 @@
+doit_path: /balance-exo-sim
+opensim_home: /opensim-core-install
+motion_capture_data_path: /
+results_path: /balance-exo-sim/results
+analysis_path: /balance-exo-sim/analysis
+validate_path: /balance-exo-sim/validate
+statistics_path: /balance-exo-sim/statistics
+figures_path: /balance-exo-sim/figures

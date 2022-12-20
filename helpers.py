@@ -70,7 +70,7 @@ def generate_unperturbed_tasks(study, subject, trial,
         initial_time, final_time, 
         mesh_interval=0.01, 
         walking_speed=study.walking_speed,
-        guess_fpath=guess_fpath,
+        guess_fpath=unperturbed_guess_fpath,
         periodic=True,
         create_and_insert_guess=False)
 
