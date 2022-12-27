@@ -60,33 +60,34 @@ def generate_unperturbed_tasks(study, subject, trial,
 
     # Unperturbed walking
     # -------------------
-    unperturbed_guess_fpath = os.path.join(
-        study.config['results_path'],
-        'unperturbed', subject.name, 
-        'unperturbed.sto')
+    if study.config['unperturbed_initial_guess']:
+        guess_fpath = os.path.join(
+            study.config['results_path'],
+            'unperturbed', subject.name, 
+            'unperturbed.sto')
 
     trial.add_task(
         tasks.TaskMocoUnperturbedWalking,
         initial_time, final_time, 
         mesh_interval=0.01, 
         walking_speed=study.walking_speed,
-        guess_fpath=unperturbed_guess_fpath,
+        guess_fpath=guess_fpath,
         periodic=True,
         create_and_insert_guess=False)
 
     # Unperturbed walking w/ different lumbar stiffnesses
     # ---------------------------------------------------
-    if subject.name == 'subject01':
-        for lumbar_stiffness in study.lumbar_stiffnesses:
-            if lumbar_stiffness == 1.0: continue
-            trial.add_task(
-                tasks.TaskMocoUnperturbedWalking,
-                initial_time, final_time, 
-                mesh_interval=0.01, 
-                walking_speed=study.walking_speed,
-                guess_fpath=unperturbed_guess_fpath,
-                periodic=True,
-                lumbar_stiffness=lumbar_stiffness)
+    # if subject.name == 'subject01':
+    #     for lumbar_stiffness in study.lumbar_stiffnesses:
+    #         if lumbar_stiffness == 1.0: continue
+    #         trial.add_task(
+    #             tasks.TaskMocoUnperturbedWalking,
+    #             initial_time, final_time, 
+    #             mesh_interval=0.01, 
+    #             walking_speed=study.walking_speed,
+    #             guess_fpath=unperturbed_guess_fpath,
+    #             periodic=True,
+    #             lumbar_stiffness=lumbar_stiffness)
 
 def generate_perturbed_tasks(study, subject, trial, 
         initial_time, final_time, right_strikes, 
