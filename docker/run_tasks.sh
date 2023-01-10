@@ -1,5 +1,11 @@
-doit -s subject01_moco_unperturbed
-doit -s subject02_moco_unperturbed
-doit -s subject04_moco_unperturbed
-doit -s subject18_moco_unperturbed
-doit -s subject19_moco_unperturbed
+doit subject01_moco_unperturbed
+doit subject02_moco_unperturbed
+doit subject04_moco_unperturbed
+doit subject18_moco_unperturbed
+doit subject19_moco_unperturbed
+
+doit subject01_moco_perturbed*
+doit subject02_moco_perturbed*
+doit subject04_moco_perturbed*
+doit subject18_moco_perturbed*
+doit subject19_moco_perturbed*

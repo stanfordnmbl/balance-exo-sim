@@ -245,6 +245,7 @@ controls*.sto
 # /results/torque_actuators*
 
 # Archived results
+/archive/**
 /results/**/archive
 
 # Results files
@@ -258,4 +259,7 @@ controls*.sto
 
 # Docker files
 /docker/results
+
+# Tempoarary
+/cop/**
 
