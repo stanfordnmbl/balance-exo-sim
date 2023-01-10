@@ -256,6 +256,8 @@ controls*.sto
 /results/**/center_of_mass*.sto
 /results/**/muscle_mechanics*.sto
 /results/**/muscle_moments*.sto
+/results/**/unperturbed_contacts.sto
+/results/**/unperturbed_experiment_states.sto
 /figures/**
 /manuscript/**
 /validate/**
