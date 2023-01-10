@@ -245,6 +245,9 @@ controls*.sto
 /archive/**
 /results/**/archive
 
+# AddBiomechanics files
+/results/experiments/**/addbio/**
+
 # Results files
 /results/guess/**
 /results/perturbed/**
