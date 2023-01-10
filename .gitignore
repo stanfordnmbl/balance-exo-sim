@@ -248,6 +248,17 @@ controls*.sto
 # AddBiomechanics files
 /results/experiments/**/addbio/**
 
+# Statistics
+/statistics/center_of_mass/center_of_mass_statistics.txt
+/statistics/center_of_mass/aggregate/**
+/statistics/center_of_mass/results/**
+/statistics/center_of_mass/tables/**
+
+/statistics/center_of_pressure/center_of_pressure_statistics.txt
+/statistics/center_of_pressure/aggregate/**
+/statistics/center_of_pressure/results/**
+/statistics/center_of_pressure/tables/**
+
 # Results files
 /results/guess/**
 /results/perturbed/**
