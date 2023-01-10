@@ -241,9 +241,6 @@ upper*.sto
 lower*.sto
 controls*.sto
 
-# /results/perturbed*
-# /results/torque_actuators*
-
 # Archived results
 /archive/**
 /results/**/archive
@@ -259,6 +256,7 @@ controls*.sto
 /figures/**
 /manuscript/**
 /validate/**
+/analysis/**
 
 # Mac specific
 *.DS_Store
