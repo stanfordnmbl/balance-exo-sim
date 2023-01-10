@@ -249,10 +249,13 @@ controls*.sto
 /results/**/archive
 
 # Results files
-# /results/**/tracking*.txt
-# /results/**/center_of_mass*.sto
-# /results/**/muscle_mechanics*.sto
-# /results/**/muscle_moments*.sto
+/results/guess/**
+/results/perturbed/**
+/results/torque_actuators/**
+/results/**/tracking*.txt
+/results/**/center_of_mass*.sto
+/results/**/muscle_mechanics*.sto
+/results/**/muscle_moments*.sto
 
 # Mac specific
 *.DS_Store
