@@ -270,6 +270,7 @@ controls*.sto
 /results/**/unperturbed_contacts.sto
 /results/**/unperturbed_grfs.sto
 /results/**/unperturbed_experiment_states.sto
+/results/**/model_unperturbed.osim
 /figures/**
 /manuscript/**
 /validate/**

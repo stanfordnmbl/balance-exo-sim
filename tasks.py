@@ -722,6 +722,7 @@ class TaskMocoUnperturbedWalkingGuess(osp.TrialTask):
             self.num_max_iterations,
             self.walking_speed,
             [config],
+            skip_solve=self.study.config['skip_tracking_solve'],
             reserve_strength=self.reserve_strength,
             implicit_multibody_dynamics=self.implicit_multibody_dynamics,
             implicit_tendon_dynamics=self.implicit_tendon_dynamics,
@@ -835,7 +836,8 @@ class TaskMocoUnperturbedWalking(osp.TrialTask):
             self.constraint_tolerance,
             self.num_max_iterations,
             self.walking_speed,
-            [config])
+            [config], 
+            skip_solve=self.study.config['skip_tracking_solve'])
 
         result.generate_results()
         result.report_results()
@@ -2746,7 +2748,8 @@ class TaskMocoPerturbedWalking(osp.TrialTask):
             self.left_strikes,
             self.mesh_interval, 
             self.walking_speed,
-            [config]
+            [config],
+            skip_solve=self.study.config['skip_timestepping_solve']
         )
 
         result.generate_results()
@@ -2862,6 +2865,7 @@ class TaskMocoPerturbedWalkingPost(osp.TrialTask):
             self.mesh_interval, 
             self.walking_speed,
             configs,
+            skip_solve=self.study.config['skip_timestepping_solve']
         )
 
         result.report_results()
@@ -3606,150 +3610,6 @@ class TaskCreateCenterOfMassStatisticsTables(osp.StudyTask):
                     df_list[index].to_csv(f, line_terminator='\n')
 
 
-class TaskAggregateCenterOfMassStatistics(osp.StudyTask):
-    REGISTRY = []
-    def __init__(self, study, times, rise, fall):
-        super(TaskAggregateCenterOfMassStatistics, self).__init__(study)
-        self.name = f'aggregate_com_statistics_results_{rise}_fall{fall}'
-        self.results_path = os.path.join(study.config['statistics_path'], 
-            'center_of_mass', 'results')
-        self.aggregate_path = os.path.join(study.config['statistics_path'],
-            'center_of_mass', 'aggregate')
-        if not os.path.exists(self.aggregate_path): 
-            os.makedirs(self.aggregate_path)
-        self.times = times
-        self.rise = rise
-        self.fall = fall
-        self.torques = study.plot_torques
-        self.subtalars = study.plot_subtalars
-
-        self.multiindex_tuples = list()
-        for itime, time in enumerate(self.times):
-            for torque, subtalar in zip(self.torques, self.subtalars):
-                self.multiindex_tuples.append((
-                    time,
-                    f'perturbed_torque{torque}{subtalar}'
-                    ))
-
-
-        deps = list()
-        for actu in ['muscles', 'torques', 'diff']:
-            for kin in ['pos', 'vel', 'acc']:
-                for direc in ['x', 'y', 'z']:
-                    for time in self.times:
-                            deps += [os.path.join(self.results_path,
-                                     f'com_stats_time{time}_{kin}_{direc}_{actu}_comparisons.csv')]
-
-        targets = list()
-        for actu in ['muscles', 'torques', 'diff']:
-            for kin in ['pos', 'vel', 'acc']:
-                for direc in ['x', 'y', 'z']:
-                        targets += [os.path.join(self.aggregate_path,
-                                    f'com_stats_{kin}_{direc}_{actu}.csv')]
-
-
-        self.add_action(deps, 
-                        targets, 
-                        self.aggregate_com_stats)
-
-    def aggregate_com_stats(self, file_dep, target):
-
-        idep = 0
-        itarget = 0
-
-        # Did all of the perturbations change the center-of-mass kinematics?
-        for actu in ['muscles', 'torques']:
-            for kin in ['pos', 'vel', 'acc']:
-                for direc in ['x', 'y', 'z']:
-                    significances = list()
-                    for itime, time in enumerate(self.times):
-                        df = pd.read_csv(file_dep[idep])
-                        idep += 1
-                            
-                        contrasts = df['contrast']
-                        p_values = df['adj.p.value']
-                        for torque, subtalar in zip(self.torques, self.subtalars):
-                            label = f'unperturbed - perturbed_torque{torque}{subtalar}'
-
-                            iperturb = 0
-                            foundContrast = False
-                            for icontrast, contrast in enumerate(contrasts):
-                                if label == contrast:
-                                    iperturb = icontrast
-                                    foundContrast = True
-                                    break
-
-                            if not foundContrast:
-                                raise Exception(f'Did not find statistics contrast {label}')
-
-                            p_value = p_values[iperturb]
-                            significant = p_value < 0.05
-                            significances.append(significant)
-
-                    index = pd.MultiIndex.from_tuples(self.multiindex_tuples,
-                        names=['time', 'perturbation'])
-                    df_sig = pd.DataFrame(significances, index=index, columns=['significant'])
-
-                    target_dir = os.path.dirname(target[itarget])
-                    if not os.path.exists(target_dir):
-                        os.makedirs(target_dir)
-                    with open(target[itarget], 'w') as f:
-                        df_sig.to_csv(f, line_terminator='\n')
-
-                    itarget += 1
-
-        # Were the torque-driven perturbations different from the muscle-driven perturbations?
-        for kin in ['pos', 'vel', 'acc']:
-            for direc in ['x', 'y', 'z']:
-                significances = list()
-                for itime, time in enumerate(self.times):
-                    df = pd.read_csv(file_dep[idep])
-                    idep += 1
-                        
-                    contrasts = df['contrast']
-                    p_values = df['adj.p.value']
-                    for torque, subtalar in zip(self.torques, self.subtalars):
-                        label = (f'perturbed_torque{torque}{subtalar} muscles - '
-                                 f'perturbed_torque{torque}{subtalar} torques')
-
-                        iperturb = 0
-                        foundContrast = False
-                        for icontrast, contrast in enumerate(contrasts):
-                            if label == contrast:
-                                iperturb = icontrast
-                                foundContrast = True
-                                break
-
-                        if not foundContrast:
-                            label = (f'perturbed_torque{torque}{subtalar} torques - '
-                                     f'perturbed_torque{torque}{subtalar} muscles')
-
-                            for icontrast, contrast in enumerate(contrasts):
-                                if label == contrast:
-                                    iperturb = icontrast
-                                    foundContrast = True
-                                    break
-
-                            if not foundContrast:
-                                raise Exception(f'Did not find statistics contrast {label}')
-
-                        p_value = p_values[iperturb]
-                        significant = p_value < 0.05
-                        significances.append(significant)
-
-                index = pd.MultiIndex.from_tuples(self.multiindex_tuples,
-                    names=['time', 'perturbation'])
-                df_sig = pd.DataFrame(significances, index=index, columns=['significant'])
-
-                target_dir = os.path.dirname(target[itarget])
-                if not os.path.exists(target_dir):
-                    os.makedirs(target_dir)
-                with open(target[itarget], 'w') as f:
-                    df_sig.to_csv(f, line_terminator='\n')
-
-                itarget += 1
-
-
 class TaskCreateCenterOfPressureStatisticsTables(osp.StudyTask):
     REGISTRY = []
     def __init__(self, study, subjects, times, rise, fall):
@@ -4033,6 +3893,186 @@ class TaskCreateCenterOfPressureStatisticsTables(osp.StudyTask):
                     os.makedirs(target_dir)
                 with open(target[offset + index], 'w') as f:
                     df_list[index].to_csv(f, line_terminator='\n')
+
+
+class TaskRunStatistics(osp.StudyTask):
+    REGISTRY = []
+    def __init__(self, study, times, rise, fall):
+        super(TaskRunStatistics, self).__init__(study)
+        self.name = f'run_statistics_{rise}_fall{fall}'
+        self.statistics_path = os.path.join(study.config['statistics_path'])
+        self.times = times
+        self.rise = rise
+        self.fall = fall
+
+        self.add_action([], [], self.run_center_of_mass_stats)
+        self.add_action([], [], self.run_center_of_pressure_stats)
+
+        def run_center_of_mass_stats(self, file_dep, target):
+            import subprocess
+            cwd = os.path.join(self.statistics_path, 'center_of_mass')
+            exec_path = os.path.join(self.study.config['R_exec_path'],
+                'Rscript.exe') 
+            p = subprocess.Popen([exec_path, 'center_of_mass_statistics.R'],
+                cwd=cwd)
+            p.wait()
+            if p.returncode != 0:
+                raise Exception('Non-zero exit status: code %s.' % p.returncode)
+
+        def run_center_of_pressure_stats(self, file_dep, target):
+            import subprocess
+            cwd = os.path.join(self.statistics_path, 'center_of_pressure')
+            exec_path = os.path.join(self.study.config['R_exec_path'],
+                'Rscript.exe') 
+            p = subprocess.Popen([exec_path, 'center_of_pressure_statistics.R'],
+                cwd=cwd)
+            p.wait()
+            if p.returncode != 0:
+                raise Exception('Non-zero exit status: code %s.' % p.returncode)
+
+
+class TaskAggregateCenterOfMassStatistics(osp.StudyTask):
+    REGISTRY = []
+    def __init__(self, study, times, rise, fall):
+        super(TaskAggregateCenterOfMassStatistics, self).__init__(study)
+        self.name = f'aggregate_com_statistics_results_{rise}_fall{fall}'
+        self.results_path = os.path.join(study.config['statistics_path'], 
+            'center_of_mass', 'results')
+        self.aggregate_path = os.path.join(study.config['statistics_path'],
+            'center_of_mass', 'aggregate')
+        if not os.path.exists(self.aggregate_path): 
+            os.makedirs(self.aggregate_path)
+        self.times = times
+        self.rise = rise
+        self.fall = fall
+        self.torques = study.plot_torques
+        self.subtalars = study.plot_subtalars
+
+        self.multiindex_tuples = list()
+        for itime, time in enumerate(self.times):
+            for torque, subtalar in zip(self.torques, self.subtalars):
+                self.multiindex_tuples.append((
+                    time,
+                    f'perturbed_torque{torque}{subtalar}'
+                    ))
+
+
+        deps = list()
+        for actu in ['muscles', 'torques', 'diff']:
+            for kin in ['pos', 'vel', 'acc']:
+                for direc in ['x', 'y', 'z']:
+                    for time in self.times:
+                            deps += [os.path.join(self.results_path,
+                                     f'com_stats_time{time}_{kin}_{direc}_{actu}_comparisons.csv')]
+
+        targets = list()
+        for actu in ['muscles', 'torques', 'diff']:
+            for kin in ['pos', 'vel', 'acc']:
+                for direc in ['x', 'y', 'z']:
+                        targets += [os.path.join(self.aggregate_path,
+                                    f'com_stats_{kin}_{direc}_{actu}.csv')]
+
+
+        self.add_action(deps, 
+                        targets, 
+                        self.aggregate_com_stats)
+
+    def aggregate_com_stats(self, file_dep, target):
+
+        idep = 0
+        itarget = 0
+
+        # Did all of the perturbations change the center-of-mass kinematics?
+        for actu in ['muscles', 'torques']:
+            for kin in ['pos', 'vel', 'acc']:
+                for direc in ['x', 'y', 'z']:
+                    significances = list()
+                    for itime, time in enumerate(self.times):
+                        df = pd.read_csv(file_dep[idep])
+                        idep += 1
+                            
+                        contrasts = df['contrast']
+                        p_values = df['adj.p.value']
+                        for torque, subtalar in zip(self.torques, self.subtalars):
+                            label = f'unperturbed - perturbed_torque{torque}{subtalar}'
+
+                            iperturb = 0
+                            foundContrast = False
+                            for icontrast, contrast in enumerate(contrasts):
+                                if label == contrast:
+                                    iperturb = icontrast
+                                    foundContrast = True
+                                    break
+
+                            if not foundContrast:
+                                raise Exception(f'Did not find statistics contrast {label}')
+
+                            p_value = p_values[iperturb]
+                            significant = p_value < 0.05
+                            significances.append(significant)
+
+                    index = pd.MultiIndex.from_tuples(self.multiindex_tuples,
+                        names=['time', 'perturbation'])
+                    df_sig = pd.DataFrame(significances, index=index, columns=['significant'])
+
+                    target_dir = os.path.dirname(target[itarget])
+                    if not os.path.exists(target_dir):
+                        os.makedirs(target_dir)
+                    with open(target[itarget], 'w') as f:
+                        df_sig.to_csv(f, line_terminator='\n')
+
+                    itarget += 1
+
+        # Were the torque-driven perturbations different from the muscle-driven perturbations?
+        for kin in ['pos', 'vel', 'acc']:
+            for direc in ['x', 'y', 'z']:
+                significances = list()
+                for itime, time in enumerate(self.times):
+                    df = pd.read_csv(file_dep[idep])
+                    idep += 1
+                        
+                    contrasts = df['contrast']
+                    p_values = df['adj.p.value']
+                    for torque, subtalar in zip(self.torques, self.subtalars):
+                        label = (f'perturbed_torque{torque}{subtalar} muscles - '
+                                 f'perturbed_torque{torque}{subtalar} torques')
+
+                        iperturb = 0
+                        foundContrast = False
+                        for icontrast, contrast in enumerate(contrasts):
+                            if label == contrast:
+                                iperturb = icontrast
+                                foundContrast = True
+                                break
+
+                        if not foundContrast:
+                            label = (f'perturbed_torque{torque}{subtalar} torques - '
+                                     f'perturbed_torque{torque}{subtalar} muscles')
+
+                            for icontrast, contrast in enumerate(contrasts):
+                                if label == contrast:
+                                    iperturb = icontrast
+                                    foundContrast = True
+                                    break
+
+                            if not foundContrast:
+                                raise Exception(f'Did not find statistics contrast {label}')
+
+                        p_value = p_values[iperturb]
+                        significant = p_value < 0.05
+                        significances.append(significant)
+
+                index = pd.MultiIndex.from_tuples(self.multiindex_tuples,
+                    names=['time', 'perturbation'])
+                df_sig = pd.DataFrame(significances, index=index, columns=['significant'])
+
+                target_dir = os.path.dirname(target[itarget])
+                if not os.path.exists(target_dir):
+                    os.makedirs(target_dir)
+                with open(target[itarget], 'w') as f:
+                    df_sig.to_csv(f, line_terminator='\n')
+
+                itarget += 1
 
 
 class TaskAggregateCenterOfPressureStatistics(osp.StudyTask):
