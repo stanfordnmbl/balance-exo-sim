@@ -156,46 +156,34 @@ study.add_task(TaskPlotMethodsFigure, subjects, study.times)
 
 # Validate
 # --------
-study.add_task(TaskPlotUnperturbedResults, subjects, masses,
-    study.times)
-study.add_task(TaskValidateTrackingErrors, subjects, masses,
-    study.times)
+study.add_task(TaskPlotUnperturbedResults, subjects, masses, study.times)
+study.add_task(TaskValidateTrackingErrors, subjects, masses, study.times)
 study.add_task(TaskValidateMarkerErrors)
-study.add_task(TaskComputeCenterOfMassTimesteppingError,
-    subjects, study.times, study.rise, study.fall)
-study.add_task(TaskValidateAccelerationsVersusGRFs, subjects, study.times,
-    study.rise, study.fall)
-study.add_task(TaskValidateAccelerationsVersusVelocitiess, subjects, study.times,
-    study.rise, study.fall)
+study.add_task(TaskComputeCenterOfMassTimesteppingError, subjects, study.times)
+study.add_task(TaskValidateAccelerationsVersusGRFs, subjects, study.times)
+study.add_task(TaskValidateAccelerationsVersusVelocitiess, subjects, study.times)
 study.add_task(TaskValidateMuscleActivity, subjects)
 study.add_task(TaskComputeObjectiveContributions, subjects)
 
+# Statistics
+# ----------
+study.add_task(TaskCreateCenterOfMassStatisticsTables, subjects, study.times)
+study.add_task(TaskCreateCenterOfPressureStatisticsTables, subjects, study.times)
+study.add_task(TaskRunStatistics, study.times)
+study.add_task(TaskAggregateCenterOfMassStatistics, study.times)
+study.add_task(TaskAggregateCenterOfPressureStatistics, study.times)
+
 # Center-of-mass analysis
 # -----------------------
-study.add_task(TaskPlotCenterOfMassVector, subjects,
-    study.times, study.rise, study.fall)
-study.add_task(TaskCreateCenterOfMassStatisticsTables, subjects,
-    study.times, study.rise, study.fall)
-study.add_task(TaskAggregateCenterOfMassStatistics,
-    study.times, study.rise, study.fall)
-study.add_task(TaskPlotInstantaneousCenterOfMass, subjects, 
-    study.times, study.rise, study.fall)
-study.add_task(TaskPlotCOMVersusCOP, subjects, 
-    study.times, study.rise, study.fall)
-
-# study.add_task(TaskPlotCenterOfMassVectorWrongScaling, subjects,
-#     study.times, study.rise, study.fall)
+study.add_task(TaskPlotCenterOfMassVector, subjects, study.times)
+study.add_task(TaskPlotInstantaneousCenterOfMass, subjects, study.times)
+study.add_task(TaskPlotCOMVersusCOP, subjects, study.times)
 
 # Center-of-pressure analysis
 # ---------------------------
-study.add_task(TaskPlotCenterOfPressureVector, subjects,
-    study.times, study.rise, study.fall)
-study.add_task(TaskCreateCenterOfPressureStatisticsTables, subjects,
-    study.times, study.rise, study.fall)
-study.add_task(TaskAggregateCenterOfPressureStatistics,
-    study.times, study.rise, study.fall)
-study.add_task(TaskPlotInstantaneousCenterOfPressure, subjects, 
-    study.times, study.rise, study.fall)
+study.add_task(TaskPlotCenterOfPressureVector, subjects, study.times)
+
+study.add_task(TaskPlotInstantaneousCenterOfPressure, subjects, study.times)
 
 # Device powers
 # -------------

@@ -2035,19 +2035,19 @@ class TaskValidateMuscleActivity(osp.StudyTask):
 
 class TaskValidateAccelerationsVersusGRFs(osp.StudyTask):
     REGISTRY = []
-    def __init__(self, study, subjects, times, rise, fall):
+    def __init__(self, study, subjects, times):
         super(TaskValidateAccelerationsVersusGRFs, self).__init__(study)
-        self.name = f'validate_accelerations_versus_grfs_rise{rise}_fall{fall}'
+        self.name = f'validate_accelerations_versus_grfs'
         self.results_path = os.path.join(study.config['results_path'], 
             'experiments')
         self.validate_path = os.path.join(study.config['validate_path'],
-            'com_accelerations_versus_grfs',  f'rise{rise}_fall{fall}')
+            'com_accelerations_versus_grfs')
         if not os.path.exists(self.validate_path): 
             os.makedirs(self.validate_path)
         self.subjects = subjects
         self.times = times
-        self.rise = rise
-        self.fall = fall
+        self.rise = study.rise
+        self.fall = study.fall
         self.gravity = 9.81
         self.torques = study.plot_torques
         self.subtalars = study.plot_subtalars      
@@ -2297,19 +2297,19 @@ class TaskValidateAccelerationsVersusGRFs(osp.StudyTask):
 
 class TaskValidateAccelerationsVersusVelocitiess(osp.StudyTask):
     REGISTRY = []
-    def __init__(self, study, subjects, times, rise, fall):
+    def __init__(self, study, subjects, times):
         super(TaskValidateAccelerationsVersusVelocitiess, self).__init__(study)
-        self.name = f'validate_accelerations_versus_velocities_rise{rise}_fall{fall}'
+        self.name = f'validate_accelerations_versus_velocities'
         self.results_path = os.path.join(study.config['results_path'], 
             'experiments')
         self.validate_path = os.path.join(study.config['validate_path'],
-            'accelerations_versus_velocities',  f'rise{rise}_fall{fall}')
+            'accelerations_versus_velocities')
         if not os.path.exists(self.validate_path): 
             os.makedirs(self.validate_path)
         self.subjects = subjects
         self.times = times
-        self.rise = rise
-        self.fall = fall
+        self.rise = study.rise
+        self.fall = study.fall
         self.gravity = 9.81
         self.torques = study.plot_torques
         self.subtalars = study.plot_subtalars      
@@ -2873,20 +2873,20 @@ class TaskMocoPerturbedWalkingPost(osp.TrialTask):
 
 class TaskCreatePerturbedVisualization(osp.StudyTask):
     REGISTRY = []
-    def __init__(self, study, subjects, time, torques, rise, fall):
+    def __init__(self, study, subjects, time, torques):
         super(TaskCreatePerturbedVisualization, self).__init__(study)
-        self.name = f'create_perturbed_visualization_time{time}_rise{rise}_fall{fall}'
+        self.name = f'create_perturbed_visualization_time{time}'
         self.results_path = os.path.join(study.config['results_path'], 
             'unperturbed')
         self.analysis_path = os.path.join(study.config['analysis_path'],
-            'perturbed_visualization', f'time{time}_rise{rise}_fall{fall}')
+            'perturbed_visualization', f'time{time}')
         if not os.path.exists(self.analysis_path): 
             os.makedirs(self.analysis_path)
         self.subjects = subjects
         self.time = time
         self.torques = torques
-        self.rise = rise
-        self.fall = fall
+        self.rise = study.rise
+        self.fall = study.fall
         self.column_labels = ['ground_force_r_vx', 
                               'ground_force_r_vy',
                               'ground_force_r_vz', 
@@ -3260,15 +3260,15 @@ class TaskPlotMethodsFigure(osp.StudyTask):
 
 class TaskCreateCenterOfMassStatisticsTables(osp.StudyTask):
     REGISTRY = []
-    def __init__(self, study, subjects, times, rise, fall):
+    def __init__(self, study, subjects, times):
         super(TaskCreateCenterOfMassStatisticsTables, self).__init__(study)
-        self.name = f'create_center_of_mass_statistics_tables_{rise}_fall{fall}'
+        self.name = f'create_center_of_mass_statistics_tables'
         self.results_path = os.path.join(study.config['results_path'], 
             'experiments')
         self.subjects = subjects
         self.times = times
-        self.rise = rise
-        self.fall = fall
+        self.rise = study.rise
+        self.fall = study.fall
         self.gravity = 9.81
         self.torques = study.plot_torques
         self.subtalars = study.plot_subtalars
@@ -3612,15 +3612,15 @@ class TaskCreateCenterOfMassStatisticsTables(osp.StudyTask):
 
 class TaskCreateCenterOfPressureStatisticsTables(osp.StudyTask):
     REGISTRY = []
-    def __init__(self, study, subjects, times, rise, fall):
+    def __init__(self, study, subjects, times):
         super(TaskCreateCenterOfPressureStatisticsTables, self).__init__(study)
-        self.name = f'create_center_of_pressure_statistics_tables_rise{rise}_fall{fall}'
+        self.name = f'create_center_of_pressure_statistics_tables'
         self.results_path = os.path.join(study.config['results_path'], 
             'experiments')
         self.subjects = subjects
         self.times = times
-        self.rise = rise
-        self.fall = fall
+        self.rise = study.rise
+        self.fall = study.fall
         self.gravity = 9.81
         self.torques = study.plot_torques
         self.subtalars = study.plot_subtalars
@@ -3897,45 +3897,45 @@ class TaskCreateCenterOfPressureStatisticsTables(osp.StudyTask):
 
 class TaskRunStatistics(osp.StudyTask):
     REGISTRY = []
-    def __init__(self, study, times, rise, fall):
+    def __init__(self, study, times):
         super(TaskRunStatistics, self).__init__(study)
-        self.name = f'run_statistics_{rise}_fall{fall}'
+        self.name = f'run_statistics'
         self.statistics_path = os.path.join(study.config['statistics_path'])
         self.times = times
-        self.rise = rise
-        self.fall = fall
+        self.rise = study.rise
+        self.fall = study.fall
 
         self.add_action([], [], self.run_center_of_mass_stats)
         self.add_action([], [], self.run_center_of_pressure_stats)
 
-        def run_center_of_mass_stats(self, file_dep, target):
-            import subprocess
-            cwd = os.path.join(self.statistics_path, 'center_of_mass')
-            exec_path = os.path.join(self.study.config['R_exec_path'],
-                'Rscript.exe') 
-            p = subprocess.Popen([exec_path, 'center_of_mass_statistics.R'],
-                cwd=cwd)
-            p.wait()
-            if p.returncode != 0:
-                raise Exception('Non-zero exit status: code %s.' % p.returncode)
+    def run_center_of_mass_stats(self, file_dep, target):
+        import subprocess
+        cwd = os.path.join(self.statistics_path, 'center_of_mass')
+        exec_path = os.path.join(self.study.config['R_exec_path'],
+            'Rscript.exe') 
+        p = subprocess.Popen([exec_path, 'center_of_mass_statistics.R'],
+            cwd=cwd)
+        p.wait()
+        if p.returncode != 0:
+            raise Exception('Non-zero exit status: code %s.' % p.returncode)
 
-        def run_center_of_pressure_stats(self, file_dep, target):
-            import subprocess
-            cwd = os.path.join(self.statistics_path, 'center_of_pressure')
-            exec_path = os.path.join(self.study.config['R_exec_path'],
-                'Rscript.exe') 
-            p = subprocess.Popen([exec_path, 'center_of_pressure_statistics.R'],
-                cwd=cwd)
-            p.wait()
-            if p.returncode != 0:
-                raise Exception('Non-zero exit status: code %s.' % p.returncode)
+    def run_center_of_pressure_stats(self, file_dep, target):
+        import subprocess
+        cwd = os.path.join(self.statistics_path, 'center_of_pressure')
+        exec_path = os.path.join(self.study.config['R_exec_path'],
+            'Rscript.exe') 
+        p = subprocess.Popen([exec_path, 'center_of_pressure_statistics.R'],
+            cwd=cwd)
+        p.wait()
+        if p.returncode != 0:
+            raise Exception('Non-zero exit status: code %s.' % p.returncode)
 
 
 class TaskAggregateCenterOfMassStatistics(osp.StudyTask):
     REGISTRY = []
-    def __init__(self, study, times, rise, fall):
+    def __init__(self, study, times):
         super(TaskAggregateCenterOfMassStatistics, self).__init__(study)
-        self.name = f'aggregate_com_statistics_results_{rise}_fall{fall}'
+        self.name = f'aggregate_com_statistics_results'
         self.results_path = os.path.join(study.config['statistics_path'], 
             'center_of_mass', 'results')
         self.aggregate_path = os.path.join(study.config['statistics_path'],
@@ -3943,8 +3943,8 @@ class TaskAggregateCenterOfMassStatistics(osp.StudyTask):
         if not os.path.exists(self.aggregate_path): 
             os.makedirs(self.aggregate_path)
         self.times = times
-        self.rise = rise
-        self.fall = fall
+        self.rise = study.rise
+        self.fall = study.fall
         self.torques = study.plot_torques
         self.subtalars = study.plot_subtalars
 
@@ -4077,9 +4077,9 @@ class TaskAggregateCenterOfMassStatistics(osp.StudyTask):
 
 class TaskAggregateCenterOfPressureStatistics(osp.StudyTask):
     REGISTRY = []
-    def __init__(self, study, times, rise, fall):
+    def __init__(self, study, times):
         super(TaskAggregateCenterOfPressureStatistics, self).__init__(study)
-        self.name = f'aggregate_cop_statistics_results_rise{rise}_fall{fall}'
+        self.name = f'aggregate_cop_statistics_results'
         self.results_path = os.path.join(study.config['statistics_path'], 
             'center_of_pressure', 'results')
         self.aggregate_path = os.path.join(study.config['statistics_path'],
@@ -4087,8 +4087,8 @@ class TaskAggregateCenterOfPressureStatistics(osp.StudyTask):
         if not os.path.exists(self.aggregate_path): 
             os.makedirs(self.aggregate_path)
         self.times = times
-        self.rise = rise
-        self.fall = fall
+        self.rise = study.rise
+        self.fall = study.fall
         self.torques = study.plot_torques
         self.subtalars = study.plot_subtalars
 
@@ -4224,22 +4224,22 @@ class TaskAggregateCenterOfPressureStatistics(osp.StudyTask):
 
 class TaskPlotCenterOfMassVector(osp.StudyTask):
     REGISTRY = []
-    def __init__(self, study, subjects, times, rise, fall):
+    def __init__(self, study, subjects, times):
         super(TaskPlotCenterOfMassVector, self).__init__(study)
-        self.name = f'plot_center_of_mass_vector_rise{rise}_fall{fall}'
+        self.name = f'plot_center_of_mass_vector'
         self.results_path = os.path.join(study.config['results_path'], 
             'experiments')
         self.figures_path = os.path.join(study.config['figures_path'])
         self.analysis_path = os.path.join(study.config['analysis_path'],
-            'center_of_mass_vector',  f'rise{rise}_fall{fall}')
+            'center_of_mass_vector')
         if not os.path.exists(self.analysis_path): 
             os.makedirs(self.analysis_path)
         self.walking_speed = study.walking_speed
         self.gravity = 9.81
         self.subjects = subjects
         self.times = times
-        self.rise = rise
-        self.fall = fall
+        self.rise = study.rise
+        self.fall = study.fall
         self.torques = study.plot_torques
         self.subtalars = study.plot_subtalars
         self.colors = study.plot_colors
@@ -4875,22 +4875,22 @@ class TaskPlotCenterOfMassVector(osp.StudyTask):
 
 class TaskPlotInstantaneousCenterOfMass(osp.StudyTask):
     REGISTRY = []
-    def __init__(self, study, subjects, times, rise, fall):
+    def __init__(self, study, subjects, times):
         super(TaskPlotInstantaneousCenterOfMass, self).__init__(study)
-        self.name = f'plot_instantaneous_center_of_mass_rise{rise}_fall{fall}'
+        self.name = f'plot_instantaneous_center_of_mass'
         self.figures_path = os.path.join(study.config['figures_path']) 
         self.results_path = os.path.join(study.config['results_path'], 
             'experiments')
         self.aggregate_path = os.path.join(study.config['statistics_path'],
             'center_of_mass', 'aggregate')
         self.analysis_path = os.path.join(study.config['analysis_path'],
-            'center_of_mass_instantaneous',  f'rise{rise}_fall{fall}')
+            'center_of_mass_instantaneous')
         if not os.path.exists(self.analysis_path): 
             os.makedirs(self.analysis_path)
         self.subjects = subjects
         self.times = times
-        self.rise = rise
-        self.fall = fall
+        self.rise = study.rise
+        self.fall = study.fall
         self.gravity = 9.81
         self.torques = study.plot_torques
         self.subtalars = study.plot_subtalars
@@ -5521,19 +5521,19 @@ class TaskPlotInstantaneousCenterOfMass(osp.StudyTask):
 
 class TaskComputeCenterOfMassTimesteppingError(osp.StudyTask):
     REGISTRY = []
-    def __init__(self, study, subjects, times, rise, fall):
+    def __init__(self, study, subjects, times):
         super(TaskComputeCenterOfMassTimesteppingError, self).__init__(study)
-        self.name = f'compute_center_of_mass_timestepping_error_rise{rise}_fall{fall}'
+        self.name = f'compute_center_of_mass_timestepping_error'
         self.results_path = os.path.join(study.config['results_path'], 
             'experiments')
         self.validate_path = os.path.join(study.config['validate_path'],
-            'center_of_mass_error',  f'rise{rise}_fall{fall}')
+            'center_of_mass_error')
         if not os.path.exists(self.validate_path): 
             os.makedirs(self.validate_path)
         self.subjects = subjects
         self.times = times
-        self.rise = rise
-        self.fall = fall
+        self.rise = study.rise
+        self.fall = study.fall
         self.gravity = 9.81
 
         deps = list()
@@ -5745,23 +5745,23 @@ class TaskComputeCenterOfMassTimesteppingError(osp.StudyTask):
 
 class TaskPlotCOMVersusCOP(osp.StudyTask):
     REGISTRY = []
-    def __init__(self, study, subjects, times, rise, fall):
+    def __init__(self, study, subjects, times):
         super(TaskPlotCOMVersusCOP, self).__init__(study)
-        self.name = f'plot_com_versus_cop_rise{rise}_fall{fall}'
+        self.name = f'plot_com_versus_cop'
         self.results_path = os.path.join(study.config['results_path'], 
             'experiments')
         self.aggregate_path = os.path.join(study.config['statistics_path'],
             'center_of_mass', 'aggregate')
         self.analysis_path = os.path.join(study.config['analysis_path'],
-            'com_versus_cop',  f'rise{rise}_fall{fall}')
+            'com_versus_cop')
         self.figures_path = os.path.join(study.config['figures_path'])
 
         if not os.path.exists(self.analysis_path): 
             os.makedirs(self.analysis_path)
         self.subjects = subjects
         self.times = times
-        self.rise = rise
-        self.fall = fall
+        self.rise = study.rise
+        self.fall = study.fall
         self.gravity = 9.81
         self.torques = [study.plot_torques[2]]
         self.subtalars = [study.plot_subtalars[2]]
@@ -6151,22 +6151,22 @@ class TaskPlotCOMVersusCOP(osp.StudyTask):
 
 class TaskPlotCenterOfPressureVector(osp.StudyTask):
     REGISTRY = []
-    def __init__(self, study, subjects, times, rise, fall):
+    def __init__(self, study, subjects, times):
         super(TaskPlotCenterOfPressureVector, self).__init__(study)
-        self.name = f'plot_center_of_pressure_vector_rise{rise}_fall{fall}'
+        self.name = f'plot_center_of_pressure_vector'
         self.figures_path = os.path.join(study.config['figures_path']) 
         self.results_path = os.path.join(study.config['results_path'], 
             'experiments')
         self.analysis_path = os.path.join(study.config['analysis_path'],
-            'center_of_pressure_vector',  f'rise{rise}_fall{fall}')
+            'center_of_pressure_vector')
         if not os.path.exists(self.analysis_path): 
             os.makedirs(self.analysis_path)
         self.walking_speed = study.walking_speed
         self.gravity = 9.81
         self.subjects = subjects
         self.times = times
-        self.rise = rise
-        self.fall = fall
+        self.rise = study.rise
+        self.fall = study.fall
         self.torques = study.plot_torques
         self.subtalars = study.plot_subtalars
         self.colors = study.plot_colors
@@ -6500,22 +6500,22 @@ class TaskPlotCenterOfPressureVector(osp.StudyTask):
 
 class TaskPlotInstantaneousCenterOfPressure(osp.StudyTask):
     REGISTRY = []
-    def __init__(self, study, subjects, times, rise, fall):
+    def __init__(self, study, subjects, times):
         super(TaskPlotInstantaneousCenterOfPressure, self).__init__(study)
-        self.name = f'plot_instantaneous_center_of_pressure_rise{rise}_fall{fall}'
+        self.name = f'plot_instantaneous_center_of_pressure'
         self.figures_path = os.path.join(study.config['figures_path']) 
         self.results_path = os.path.join(study.config['results_path'], 
             'experiments')
         self.aggregate_path = os.path.join(study.config['statistics_path'],
             'center_of_pressure', 'aggregate')
         self.analysis_path = os.path.join(study.config['analysis_path'],
-            'center_of_pressure_instantaneous',  f'rise{rise}_fall{fall}')
+            'center_of_pressure_instantaneous')
         if not os.path.exists(self.analysis_path): 
             os.makedirs(self.analysis_path)
         self.subjects = subjects
         self.times = times
-        self.rise = rise
-        self.fall = fall
+        self.rise = study.rise
+        self.fall = study.fall
         self.gravity = 9.81
         self.torques = study.plot_torques
         self.subtalars = study.plot_subtalars
