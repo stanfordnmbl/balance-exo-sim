@@ -173,7 +173,7 @@ def add_to_study(study):
 
     initial_time = 2.72
     final_time = 3.78
-    duration = 1.07
+    duration = 1.06
     right_strikes = [2.72, 3.78]
     left_strikes = [3.26]
     walk2_trial.add_task(

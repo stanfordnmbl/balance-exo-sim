@@ -2,6 +2,8 @@ require("lme4")
 require("multcomp")
 require("broom")
 require("emmeans")
+require("ggResidpanel")
+require("ggplot2")
 
 citation("lme4")
 citation("multcomp")
@@ -14,13 +16,18 @@ verbosity = 1
 # Redirect all output to a text file.
 sink("center_of_mass_statistics.txt", append=FALSE, split=TRUE)
 
-perform_stats_for_formula <- function(exp, formula, linfct, result_path) {
+perform_stats_for_formula <- function(exp, formula, linfct, result_name) {
     print("");
     print("");
     print("=========================== formula: =============================")
     print(formula)
     print("==================================================================")
     model = lmerTest::lmer(formula, data=exp.data)
+
+    # Check for normality of residuals
+    residual_plot = resid_panel(model)
+    ggsave(paste0("normality/", result_name, ".png"))
+
     if (verbosity == 1) {
         print(summary(model))
         print(confint(model))
@@ -30,7 +37,7 @@ perform_stats_for_formula <- function(exp, formula, linfct, result_path) {
 
     # Perform pairwise comparisons.
     comparisons = multcomp::glht(model, linfct=linfct)
-    comparisons_path <- paste0(result_path, "_comparisons.csv")
+    comparisons_path <- paste0("results/", result_name, "_comparisons.csv")
     write.csv(tidy(comparisons), file=comparisons_path)
 
     if (verbosity == 1) {
@@ -49,7 +56,7 @@ for (actuator in actuators) {
         for (kin in kins) {
             for (direc in direcs) {
                 filepath <- paste0("tables/com_stats_time", time, "_", kin, "_", direc, "_", actuator, ".csv")
-                result_fpath <- paste0("results/com_stats_time", time, "_", kin, "_", direc, "_", actuator)
+                result_name <- paste0("com_stats_time", time, "_", kin, "_", direc, "_", actuator)
 
                 print("");
                 print("");
@@ -66,7 +73,7 @@ for (actuator in actuators) {
 
                 # Run the stats.
                 perform_stats_for_formula(exp, com ~ perturbation + (1 | subject), 
-                    emm(pairwise ~ perturbation, parens=NULL), result_fpath)
+                    emm(pairwise ~ perturbation, parens=NULL), result_name)
             }
         }
     }
@@ -80,7 +87,7 @@ for (time in times) {
     for (kin in kins) {
         for (direc in direcs) {
             filepath <- paste0("tables/com_stats_time", time, "_", kin, "_", direc, "_diff.csv")
-            result_fpath <- paste0("results/com_stats_time", time, "_", kin, "_", direc, "_diff")
+            result_name <- paste0("com_stats_time", time, "_", kin, "_", direc, "_diff")
 
             print("");
             print("");
@@ -95,7 +102,7 @@ for (time in times) {
 
             # Run the stats.
             perform_stats_for_formula(exp, com ~ actuator + perturbation + (1 | subject), 
-                    emm(pairwise ~ perturbation * actuator, parens=NULL), result_fpath)
+                    emm(pairwise ~ perturbation * actuator, parens=NULL), result_name)
         }
     }
 }

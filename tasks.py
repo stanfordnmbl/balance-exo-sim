@@ -3909,6 +3909,11 @@ class TaskRunStatistics(osp.StudyTask):
         self.add_action([], [], self.run_center_of_pressure_stats)
 
     def run_center_of_mass_stats(self, file_dep, target):
+        normality_path = os.path.join(study.config['statistics_path'],
+            'center_of_mass', 'normality')
+        if not os.path.exists(normality_path): 
+            os.makedirs(normality_path)
+
         import subprocess
         cwd = os.path.join(self.statistics_path, 'center_of_mass')
         exec_path = os.path.join(self.study.config['R_exec_path'],
@@ -3920,6 +3925,11 @@ class TaskRunStatistics(osp.StudyTask):
             raise Exception('Non-zero exit status: code %s.' % p.returncode)
 
     def run_center_of_pressure_stats(self, file_dep, target):
+        normality_path = os.path.join(study.config['statistics_path'],
+            'center_of_pressure', 'normality')
+        if not os.path.exists(normality_path): 
+            os.makedirs(normality_path)
+
         import subprocess
         cwd = os.path.join(self.statistics_path, 'center_of_pressure')
         exec_path = os.path.join(self.study.config['R_exec_path'],

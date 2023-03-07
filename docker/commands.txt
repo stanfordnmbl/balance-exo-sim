@@ -1,0 +1,18 @@
+# A list of handy Docker commands
+# -------------------------------
+
+# Build the docker image
+docker build -t balance-exo-sim .
+
+# Run an interactive docker container from the image
+docker run -di --name run-balance-exo-sim balance-exo-sim
+
+# Copy the config and tasks files into the container
+docker cp config_docker.yaml run-balance-exo-sim:/balance-exo-sim/config.yaml
+docker cp run_tasks.sh run-balance-exo-sim:/balance-exo-sim/run_tasks.sh
+
+# Remove build cache
+docker builder prune
+
+# Copy results out of the container
+docker cp run-balance-exo-sim:/balance-exo-sim/results/unperturbed/ ./
