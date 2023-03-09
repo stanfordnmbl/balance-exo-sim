@@ -44,7 +44,7 @@ RUN mkdir -p ~/.config/matplotlib && \
 # Check out the earliest commit with all features needed to reproduce the results
 RUN git clone https://github.com/opensim-org/opensim-core.git /opensim-core \
         && cd /opensim-core \
-        && git checkout a96b1543c80d854b1fab078023b073d82608ad07
+        && git checkout d9ebf9389fabfe9cceb8ab46122e90b69a07689e
 
 RUN cd /opensim-core \
         && git submodule update --init \

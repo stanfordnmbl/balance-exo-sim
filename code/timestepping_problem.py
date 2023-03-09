@@ -299,7 +299,7 @@ class TimeSteppingProblem(Result):
             config.ankle_torque_perturbation_start)
         final_index = unperturbedTable.getNearestRowIndexForTime(
             config.ankle_torque_perturbation_end)-1
-        trajectory.trim(int(initial_index), int(final_index))
+        trajectory.trimToIndices(int(initial_index), int(final_index))
 
         # Insert the torque perturbation control to the trajectory
         # -------------------------------------------------------
