@@ -6038,7 +6038,9 @@ class TaskPlotCOMVersusCOP(osp.StudyTask):
                         timeVec = time_dict[subject][label]
                         duration = duration_dict[subject]
                         time_at_peak = timeVec[0] + (duration * (time / 100.0))
+                        time_at_rise = timeVec[0] + (duration * ((time - 10) / 100.0))
                         index_peak = np.argmin(np.abs(timeVec - time_at_peak))
+                        index_rise = np.argmin(np.abs(timeVec - time_at_rise))
                         index_fall = -1
 
                         hCOM = com_height_dict[subject]

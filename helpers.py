@@ -127,7 +127,8 @@ def generate_perturbed_tasks(study, subject, trial,
                             subtalar_peak_torque=subtalar_peak_torque,
                             lumbar_stiffness=1.0,
                             use_coordinate_actuators=coordact)
-                    trial.add_task(
-                            tasks.TaskMocoPerturbedWalkingPost,
-                            trial.tasks[-1])
+                    if study.config['enable_perturbed_plotting_tasks']:
+                        trial.add_task(
+                                tasks.TaskMocoPerturbedWalkingPost,
+                                trial.tasks[-1])
 
