@@ -9,3 +9,4 @@ figures_path: /balance-exo-sim/figures
 unperturbed_initial_guess: True
 skip_tracking_solve: True
 skip_timestepping_solve: False
+enable_perturbed_plotting_tasks: False
