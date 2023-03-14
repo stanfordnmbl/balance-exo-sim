@@ -74,7 +74,7 @@ study.constraint_tolerance = 1e-4
 study.convergence_tolerance = 1e-2
 
 # Maximum perturbation torque
-study.torques = [0, 10, 20, 30, 40, 50]
+study.torques = [0, 10] #, 20, 30, 40, 50]
 study.times = [20, 25, 30, 35, 40, 45, 50, 55, 60] 
 study.rise = 10
 study.fall = 5

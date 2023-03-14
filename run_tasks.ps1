@@ -86,5 +86,5 @@
 
 # Trends with changing peak torque
 # --------------------------------
-doit subject*_moco_perturbed_torque*_time30_rise10_fall5_*
-doit subject*_moco_perturbed_torque*_time60_rise10_fall5_*
+#doit subject*_moco_perturbed_torque*_time30_rise10_fall5_*
+#doit subject*_moco_perturbed_torque*_time60_rise10_fall5_*

@@ -5,3 +5,5 @@ install.packages("emmeans", repos='https://cloud.r-project.org/')
 install.packages("lmerTest", repos='https://cloud.r-project.org/')
 install.packages("ggResidpanel", repos='https://cloud.r-project.org/')
 install.packages("ggplot2", repos='https://cloud.r-project.org/')
+install.packages("devtools", repos='https://cloud.r-project.org/').
+devtools::install_github("goodekat/ggResidpanel")
