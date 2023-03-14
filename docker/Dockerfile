@@ -34,6 +34,15 @@ RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y \
         ttf-mscorefonts-installer \
         swig \
         r-base
+        # libssl-dev \
+        # libfontconfig1-dev \
+        # libcurl4-openssl-dev \
+        # libharfbuzz-dev \
+        # libfribidi-dev \
+        # libfreetype6-dev \
+        # libpng-dev \
+        # libtiff5-dev \
+        # libjpeg-dev \
 
 RUN pip3 install PyYAML
 

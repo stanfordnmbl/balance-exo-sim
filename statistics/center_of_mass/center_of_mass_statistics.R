@@ -2,7 +2,7 @@ require("lme4")
 require("multcomp")
 require("broom")
 require("emmeans")
-require("ggResidpanel")
+# require("ggResidpanel")
 require("ggplot2")
 
 citation("lme4")
@@ -25,8 +25,8 @@ perform_stats_for_formula <- function(exp, formula, linfct, result_name) {
     model = lmerTest::lmer(formula, data=exp.data)
 
     # Check for normality of residuals
-    residual_plot = resid_panel(model)
-    ggsave(paste0("normality/", result_name, ".png"))
+    # residual_plot = resid_panel(model)
+    # ggsave(paste0("normality/", result_name, ".png"))
 
     if (verbosity == 1) {
         print(summary(model))
