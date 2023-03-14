@@ -273,7 +273,12 @@ controls*.sto
 /results/**/unperturbed_grfs.sto
 /results/**/unperturbed_experiment_states.sto
 /results/**/model_unperturbed.osim
-/figures/**
+/figures/**/*.png
+/figures/**/*.svg
+/figures/**/*.txt
+/figures/**/*.jpg
+/figures/**/*.png
+/figures/methods_figure/**
 /manuscript/**
 /validate/**
 /analysis/**
