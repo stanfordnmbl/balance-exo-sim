@@ -55,4 +55,5 @@ doit plot_instantaneous_center_of_mass
 doit plot_com_versus_cop
 doit plot_center_of_pressure_vector
 doit plot_instantaneous_center_of_pressure
-doit create_perturbation_powers_*
+doit create_perturbation_powers_table*
+doit plot_perturbation_powers

@@ -82,3 +82,9 @@
 # doit plot_instantaneous_center_of_pressure
 # doit create_perturbation_powers_table*
 # doit plot_perturbation_powers
+
+
+# Trends with changing peak torque
+# --------------------------------
+doit subject*_moco_perturbed_torque*_time30_rise10_fall5_*
+doit subject*_moco_perturbed_torque*_time60_rise10_fall5_*

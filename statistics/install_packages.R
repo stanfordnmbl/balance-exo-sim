@@ -1,0 +1,7 @@
+install.packages("lme4", repos='https://cloud.r-project.org/')
+install.packages("multcomp", repos='https://cloud.r-project.org/')
+install.packages("broom", repos='https://cloud.r-project.org/')
+install.packages("emmeans", repos='https://cloud.r-project.org/')
+install.packages("lmerTest", repos='https://cloud.r-project.org/')
+install.packages("ggResidpanel", repos='https://cloud.r-project.org/')
+install.packages("ggplot2", repos='https://cloud.r-project.org/')
