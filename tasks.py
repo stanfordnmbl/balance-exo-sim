@@ -913,6 +913,11 @@ class TaskPlotUnperturbedResults(osp.StudyTask):
                 self.results_path, subject,
                 f'center_of_mass_{self.config_name}.sto'))
 
+        fig_names = ['figureS10', 'figureS11', 'figureS12']
+        for fig_name in fig_names:
+            if not os.path.isdir(os.path.join(self.figures_path, fig_name)):
+                os.mkdir(os.path.join(self.figures_path, fig_name))
+
         self.add_action(unperturbed_fpaths + coordinates_fpaths, 
                         [os.path.join(self.validate_path, 
                             f'{self.config_name}_coordinates.png'),
@@ -4321,6 +4326,12 @@ class TaskPlotCenterOfMassVector(osp.StudyTask):
                 targets += [os.path.join(self.analysis_path, 
                             f'com_vector_{kin}_{plane}.png')]
 
+        fig_names = ['figureS2', 'figureS3', 'figureS4', 'figureS5',
+                     'figure2', 'figure3']
+        for fig_name in fig_names:
+            if not os.path.isdir(os.path.join(self.figures_path, fig_name)):
+                os.mkdir(os.path.join(self.figures_path, fig_name))
+
         targets += [os.path.join(self.figures_path, 'figureS5', 'figureS5.png')]
         targets += [os.path.join(self.figures_path, 'figureS4', 'figureS4.png')]
         targets += [os.path.join(self.figures_path, 'figure3', 'figure3.png')]
@@ -4983,6 +4994,10 @@ class TaskPlotInstantaneousCenterOfMass(osp.StudyTask):
         for kin in ['pos', 'vel', 'acc']:
             targets += [os.path.join(self.analysis_path, 
                         f'instant_com_{kin}.png')]
+
+        for fig_name in ['figureS6', 'figureS7', 'figureS8']:
+            if not os.path.isdir(os.path.join(self.figures_path, fig_name)):
+                os.mkdir(os.path.join(self.figures_path, fig_name))
 
         targets += [os.path.join(self.figures_path, 'figureS8', 'figureS8.png')]
         targets += [os.path.join(self.figures_path, 'figureS7', 'figureS7.png')]
@@ -5858,6 +5873,9 @@ class TaskPlotCOMVersusCOP(osp.StudyTask):
                         self.cop_label_dict[f'{subject}_{label}'] = ilabel
                         ilabel += 1
 
+        if not os.path.isdir(os.path.join(self.figures_path, 'figureS14')):
+            os.mkdir(os.path.join(self.figures_path, 'figureS14'))
+
         targets = list()
         targets += [os.path.join(self.analysis_path, 'com_versus_cop.png')]
         targets += [os.path.join(self.figures_path, 'figureS14', 'figureS14.png')]
@@ -6248,6 +6266,9 @@ class TaskPlotCenterOfPressureVector(osp.StudyTask):
                         self.label_dict[f'{subject}_{label}'] = ilabel
                         ilabel += 1
 
+        if not os.path.isdir(os.path.join(self.figures_path, 'figure4')):
+            os.mkdir(os.path.join(self.figures_path, 'figure4'))
+
         self.add_action(deps, 
                 [os.path.join(self.analysis_path, 
                     'cop_vector.png'),
@@ -6613,6 +6634,8 @@ class TaskPlotInstantaneousCenterOfPressure(osp.StudyTask):
                     self.label_dict[label] = ilabel
                     ilabel += 1
 
+        if not os.path.isdir(os.path.join(self.figures_path, 'figureS9')):
+            os.mkdir(os.path.join(self.figures_path, 'figureS9'))
 
         targets = list()
         targets += [os.path.join(self.analysis_path, 'instant_cop_pos.png')]
@@ -7175,6 +7198,9 @@ class TaskPlotPerturbationPowers(osp.StudyTask):
             'perturbation_powers')
         if not os.path.exists(self.analysis_path): 
             os.makedirs(self.analysis_path)
+
+        if not os.path.isdir(os.path.join(self.figures_path, 'figure13')):
+            os.mkdir(os.path.join(self.figures_path, 'figure13'))
 
         self.add_action([os.path.join(self.analysis_path,
                                 'perturbation_powers_mean_muscles.csv'),

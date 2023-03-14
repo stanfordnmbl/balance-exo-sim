@@ -32,7 +32,8 @@ RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y \
         python3-opencv \
         python3-pip \
         ttf-mscorefonts-installer \
-        swig
+        swig \
+        r-base
 
 RUN pip3 install PyYAML
 
