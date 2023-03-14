@@ -7197,8 +7197,8 @@ class TaskPlotPerturbationPowers(osp.StudyTask):
         if not os.path.exists(self.analysis_path): 
             os.makedirs(self.analysis_path)
 
-        if not os.path.isdir(os.path.join(self.figures_path, 'figure13')):
-            os.mkdir(os.path.join(self.figures_path, 'figure13'))
+        if not os.path.isdir(os.path.join(self.figures_path, 'figureS13')):
+            os.mkdir(os.path.join(self.figures_path, 'figureS13'))
 
         self.add_action([os.path.join(self.analysis_path,
                                 'perturbation_powers_mean_muscles.csv'),
