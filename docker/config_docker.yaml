@@ -1,6 +1,6 @@
 doit_path: /balance-exo-sim
 opensim_home: /opensim-core-install
-R_exec_path: /lib/R/bin
+R_exec_path: /lib/R/bin/Rscript
 motion_capture_data_path: /
 results_path: /balance-exo-sim/results
 analysis_path: /balance-exo-sim/analysis

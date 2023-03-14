@@ -3921,8 +3921,7 @@ class TaskRunStatistics(osp.StudyTask):
 
         import subprocess
         cwd = os.path.join(self.statistics_path, 'center_of_mass')
-        exec_path = os.path.join(self.study.config['R_exec_path'],
-            'Rscript.exe') 
+        exec_path = os.path.join(self.study.config['R_exec_path']) 
         p = subprocess.Popen([exec_path, 'center_of_mass_statistics.R'],
             cwd=cwd)
         p.wait()
@@ -3937,8 +3936,7 @@ class TaskRunStatistics(osp.StudyTask):
 
         import subprocess
         cwd = os.path.join(self.statistics_path, 'center_of_pressure')
-        exec_path = os.path.join(self.study.config['R_exec_path'],
-            'Rscript.exe') 
+        exec_path = os.path.join(self.study.config['R_exec_path']) 
         p = subprocess.Popen([exec_path, 'center_of_pressure_statistics.R'],
             cwd=cwd)
         p.wait()
