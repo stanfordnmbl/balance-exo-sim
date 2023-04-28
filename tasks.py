@@ -84,6 +84,47 @@ def compute_distance(vec1, vec2):
 
     return np.sqrt(x*x + y*y + z*z)
 
+# Calculate whole-body angular momentum from the solution. The input model should
+# already be realized to SimTK::Stage::Velocity. 
+def calc_whole_body_angular_momentum(model, solution_fpath):
+    solution = osim.MocoTrajectory(solution_fpath)
+    states = solution.exportToStatesTrajectory(model)
+    matter = model.getMatterSubsystem()
+    result = np.zeros((states.getSize(), 3))
+    for istate in range(states.getSize()):
+        state = states.get(istate)
+        model.realizeVelocity(state)
+        momentum = matter.calcSystemCentralMomentum(state)
+        angular_momentum = momentum.get(0)
+        result[istate, 0] = angular_momentum[0]
+        result[istate, 1] = angular_momentum[1]
+        result[istate, 2] = angular_momentum[2]
+
+    return result
+
+# Calculate foot width based on the contact spheres in the model. The input model
+# should already have initSystem() called on it.
+def calc_foot_width(model):
+    midfootLocations = list()
+    for midfoot in ['medialMidfoot', 'lateralMidfoot']:
+        sphere = osim.ContactSphere.safeDownCast(
+                model.getComponent(
+                    f'contactgeometryset/{midfoot}_r'))
+        location = sphere.get_location()
+        midfootLocations.append(location)
+
+    toeLocations = list()
+    for toe in ['medialToe', 'lateralToe']:
+        sphere = osim.ContactSphere.safeDownCast(
+                model.getComponent(
+                    f'contactgeometryset/{toe}_r'))
+        location = sphere.get_location()
+        toeLocations.append(location)
+
+    midfootDistance = compute_distance(midfootLocations[0], midfootLocations[1])
+    toeDistance = compute_distance(toeLocations[0], toeLocations[1])
+
+    return np.mean([midfootDistance, toeDistance])
 
 # Preprocessing
 # -------------
@@ -3741,12 +3782,14 @@ class TaskCreateCenterOfPressureStatisticsTables(osp.StudyTask):
         cop_dict = collections.defaultdict(dict)
         time_dict = collections.defaultdict(dict)
         duration_dict = dict()
+        foot_width_dict = dict()
         for isubj, subject in enumerate(self.subjects):
 
             # Model
             # -----
             model = osim.Model(self.models[isubj])
             model.initSystem()
+            foot_width_dict[subject] = calc_foot_width(model)
 
             # Unperturbed center-of-pressure trajectory
             # -----------------------------------------
@@ -3759,8 +3802,8 @@ class TaskCreateCenterOfPressureStatisticsTables(osp.StudyTask):
 
                 for time in self.times:
 
-                    # Unperturbed center-of-mass trajectory
-                    # -------------------------------------
+                    # Unperturbed center-of-pressure trajectory
+                    # -----------------------------------------
                     label = f'{subject}_unperturbed_time{time}{torque_act}'
                     unperturb_index = self.label_dict[label]
                     unpTable = osim.TimeSeriesTable(file_dep[unperturb_index])
@@ -3778,8 +3821,8 @@ class TaskCreateCenterOfPressureStatisticsTables(osp.StudyTask):
 
                     for torque, subtalar in zip(self.torques, self.subtalars):
 
-                        # Perturbed center-of-mass trajectory
-                        # -----------------------------------
+                        # Perturbed center-of-pressure trajectory
+                        # ---------------------------------------
                         label = (f'{subject}_perturbed_torque{torque}_time{time}'
                                  f'_rise{self.rise}_fall{self.fall}{subtalar}{torque_act}')
                         perturb_index = self.label_dict[label]
@@ -3793,10 +3836,6 @@ class TaskCreateCenterOfPressureStatisticsTables(osp.StudyTask):
                         table_np[:, 2] = table.getDependentColumn(
                             'ground_force_r_pz').to_numpy() 
 
-                        # Compute difference between perturbed and unperturbed
-                        # trajectories for this subject. We don't need to interpolate
-                        # here since the perturbed and unperturbed trajectories contain
-                        # the same time points (up until the end of the perturbation).
                         cop_dict[subject][label] = table_np
                         time_dict[subject][label] = timeVec
 
@@ -3815,6 +3854,7 @@ class TaskCreateCenterOfPressureStatisticsTables(osp.StudyTask):
                     # Compute the closet time index to the current peak 
                     # perturbation time. 
                     duration = duration_dict[subject]
+                    foot_width = foot_width_dict[subject]
 
                     # Unperturbed
                     label = f'{subject}_unperturbed_time{time}{torque_act}'
@@ -3822,8 +3862,8 @@ class TaskCreateCenterOfPressureStatisticsTables(osp.StudyTask):
                     time_at_peak = timeVec[0] + (duration * (time / 100.0))
                     index_peak = np.argmin(np.abs(timeVec - time_at_peak))
                     cop = cop_dict[subject][label]
-                    cop_values[0, 0, isubj] = cop[index_peak, 0]
-                    cop_values[1, 0, isubj] = cop[index_peak, 2]
+                    cop_values[0, 0, isubj] = cop[index_peak, 0] / foot_width
+                    cop_values[1, 0, isubj] = cop[index_peak, 2] / foot_width
 
                     # Perturbed
                     for iperturb, (torque, subtalar) in enumerate(zip(self.torques, self.subtalars)):
@@ -3833,8 +3873,8 @@ class TaskCreateCenterOfPressureStatisticsTables(osp.StudyTask):
                         time_at_peak = timeVec[0] + (duration * (time / 100.0))
                         index_peak = np.argmin(np.abs(timeVec - time_at_peak))
                         cop = cop_dict[subject][label]
-                        cop_values[0, iperturb+1, isubj] = cop[index_peak, 0]
-                        cop_values[1, iperturb+1, isubj] = cop[index_peak, 2]
+                        cop_values[0, iperturb+1, isubj] = cop[index_peak, 0] / foot_width
+                        cop_values[1, iperturb+1, isubj] = cop[index_peak, 2] / foot_width
 
                 cop_value_dict[actu_name][time] = cop_values
 
@@ -3900,11 +3940,298 @@ class TaskCreateCenterOfPressureStatisticsTables(osp.StudyTask):
                     df_list[index].to_csv(f, line_terminator='\n')
 
 
+class TaskCreateWholeBodyAngularMomentumStatisticsTables(osp.StudyTask):
+    REGISTRY = []
+    def __init__(self, study, subjects, times):
+        super(TaskCreateWholeBodyAngularMomentumStatisticsTables, self).__init__(study)
+        self.name = 'create_whole_body_angular_momentum_statistics_tables'
+        self.results_path = os.path.join(study.config['results_path'], 
+            'experiments')
+        self.subjects = subjects
+        self.times = times
+        self.rise = study.rise
+        self.fall = study.fall
+        self.gravity = 9.81
+        self.torques = study.plot_torques
+        self.subtalars = study.plot_subtalars
+
+        deps = list()
+        self.multiindex_tuples = list()
+        self.multiindex_tuples_muscles = list()
+        self.multiindex_tuples_torques = list()
+        self.label_dict = dict()
+        self.com_dict = dict()
+        self.models = list()
+        ilabel = 0
+        for isubj, subject in enumerate(subjects):
+
+            # Model
+            # -----
+            self.models.append(
+                os.path.join(
+                    self.study.config['results_path'], 
+                    'unperturbed', subject,
+                    'model_unperturbed.osim'))
+
+            # Unperturbed solutions
+            # ---------------------
+            deps.append(
+                os.path.join(
+                    self.study.config['results_path'], 
+                    'unperturbed', subject,
+                    'unperturbed.sto'))
+
+            self.label_dict[f'{subject}_unperturbed'] = ilabel
+            ilabel += 1
+
+            # Unperturbed center-of-mass trajectory
+            # -------------------------------------
+            self.com_dict[f'{subject}_unperturbed'] = os.path.join(
+                    self.study.config['results_path'], 
+                    'unperturbed', subject,
+                    'center_of_mass_unperturbed.sto')
+
+            for actu in [False, True]:
+                torque_act = '_torque_actuators' if actu else ''
+                subpath = 'torque_actuators' if actu else 'perturbed'
+                actu_name = 'torques' if actu else 'muscles'
+
+                for itime, time in enumerate(self.times):
+
+                    # Unperturbed time-stepping solutions
+                    # -----------------------------------
+                    label = (f'perturbed_torque0_time{time}'
+                             f'_rise{self.rise}_fall{self.fall}{torque_act}')
+                    deps.append(
+                        os.path.join(
+                            self.study.config['results_path'], 
+                            subpath, label, subject,
+                            f'{label}.sto'))
+
+                    self.label_dict[f'{subject}_unperturbed_time{time}{torque_act}'] = ilabel
+                    ilabel += 1
+
+                    if actu and not itime:
+                        self.multiindex_tuples.append((subject, 'unperturbed'))
+                        self.multiindex_tuples_muscles.append((subject, 'unperturbed', 'muscles'))
+                        self.multiindex_tuples_torques.append((subject, 'unperturbed', 'torques'))
+
+                    for torque, subtalar in zip(self.torques, self.subtalars):
+
+                        # Perturbed solutions
+                        # -------------------
+                        label = (f'perturbed_torque{torque}_time{time}'
+                                f'_rise{self.rise}_fall{self.fall}{subtalar}{torque_act}')
+                        deps.append(
+                            os.path.join(
+                                self.study.config['results_path'], 
+                                subpath, label, subject,
+                                f'{label}.sto')
+                            )
+
+                        self.label_dict[f'{subject}_{label}'] = ilabel
+                        ilabel += 1
+
+                        if actu and not itime:
+                            self.multiindex_tuples.append((
+                                subject,
+                                f'perturbed_torque{torque}{subtalar}'
+                                ))
+                            self.multiindex_tuples_muscles.append((
+                                subject,
+                                f'perturbed_torque{torque}{subtalar}',
+                                'muscles'
+                                ))
+                            self.multiindex_tuples_torques.append((
+                                subject,
+                                f'perturbed_torque{torque}{subtalar}',
+                                'torques'
+                                ))
+
+        targets = list()
+        for actu in ['muscles', 'torques']:
+            for time in self.times:
+                for direc in ['x', 'y', 'z']:
+                    targets += [os.path.join(study.config['statistics_path'], 
+                                'whole_body_angular_momentum', 'tables',
+                                f'wbam_stats_time{time}_{direc}_{actu}.csv')]
+
+        for time in self.times:
+            for direc in ['x', 'y', 'z']:
+                targets += [os.path.join(study.config['statistics_path'], 
+                            'whole_body_angular_momentum', 'tables',
+                            f'wbam_stats_time{time}_{direc}_diff.csv')]
+
+        self.add_action(deps, targets, self.create_wbam_stats_table)
+
+    def create_wbam_stats_table(self, file_dep, target):
+
+        # Aggregate data
+        # --------------
+        import collections
+        wbam_dict = collections.defaultdict(dict)
+        duration_dict = dict()
+        com_height_dict = dict()
+        mass_dict = dict()
+        for isubj, subject in enumerate(self.subjects):
+
+            # Model
+            # -----
+            model = osim.Model(self.models[isubj])
+            state = model.initSystem()
+            mass_dict[subject] = model.getTotalMass(state)
+
+            # Unperturbed solution
+            # --------------------
+            unperturb_index = self.label_dict[f'{subject}_unperturbed']
+            tableTemp = osim.TimeSeriesTable(file_dep[unperturb_index])
+            timeTemp = np.array(tableTemp.getIndependentColumn())
+            duration_dict[subject] = timeTemp[-1] - timeTemp[0]
+
+            # Unperturbed center-of-mass trajectory
+            # -------------------------------------
+            tableTemp = osim.TimeSeriesTable(
+                self.com_dict[f'{subject}_unperturbed'])
+            com_height_dict[subject] = np.mean(tableTemp.getDependentColumn(
+                                               '/|com_position_y').to_numpy())
+            for actu in [False, True]:
+                torque_act = '_torque_actuators' if actu else ''
+
+                for time in self.times:
+
+                    # Unperturbed solution
+                    # --------------------
+                    label = f'{subject}_unperturbed_time{time}{torque_act}'
+                    unperturb_index = self.label_dict[label]
+                    unpTable_np = calc_whole_body_angular_momentum(model, 
+                        file_dep[unperturb_index])
+
+                    wbam_dict[subject][label] = unpTable_np
+
+                    for torque, subtalar in zip(self.torques, self.subtalars):
+
+                        # Perturbed solution
+                        # ------------------
+                        label = (f'{subject}_perturbed_torque{torque}_time{time}'
+                                 f'_rise{self.rise}_fall{self.fall}{subtalar}{torque_act}')
+                        perturb_index = self.label_dict[label]
+                        table = osim.TimeSeriesTable(file_dep[perturb_index])
+                        table_np = calc_whole_body_angular_momentum(model, 
+                            file_dep[perturb_index])
+
+                        wbam_dict[subject][label] = table_np
+
+        # Create tables
+        # -------------
+        wbam_value_dict = collections.defaultdict(dict)
+        for iactu, actu in enumerate([False, True]):
+            torque_act = '_torque_actuators' if actu else ''
+            actu_name = 'torques' if actu else 'muscles'
+
+            for itime, time in enumerate(self.times):
+                wbam_values = np.zeros((3, len(self.torques)+1, len(self.subjects)))
+
+                for isubj, subject in enumerate(self.subjects):
+
+                    # Compute the closet time index to the current peak 
+                    # perturbation time. 
+                    duration = duration_dict[subject]
+                    hCOM = com_height_dict[subject]
+                    mass = mass_dict[subject]
+                    vFr = np.sqrt(self.gravity * hCOM)
+                    wbam_hat = mass * hCOM * vFr
+
+                    # Unperturbed
+                    label = f'{subject}_unperturbed_time{time}{torque_act}'
+                    index_fall = -1
+                    wbam = wbam_dict[subject][label]
+                    wbam_values[0, 0, isubj] = wbam[index_fall, 0] / wbam_hat
+                    wbam_values[1, 0, isubj] = wbam[index_fall, 1] / wbam_hat
+                    wbam_values[2, 0, isubj] = wbam[index_fall, 2] / wbam_hat
+                        
+                    # Perturbed
+                    for iperturb, (torque, subtalar) in enumerate(zip(self.torques, self.subtalars)):
+                        label = (f'{subject}_perturbed_torque{torque}_time{time}'
+                                 f'_rise{self.rise}_fall{self.fall}{subtalar}{torque_act}')
+                        index_fall = -1
+                        wbam = wbam_dict[subject][label]
+                        wbam_values[0, iperturb+1, isubj] = wbam[index_fall, 0] / wbam_hat
+                        wbam_values[1, iperturb+1, isubj] = wbam[index_fall, 1] / wbam_hat
+                        wbam_values[2, iperturb+1, isubj] = wbam[index_fall, 2] / wbam_hat
+
+                wbam_value_dict[actu_name][time] = wbam_values
+
+                wbam_x = wbam_values[0, :, :].T.reshape(-1, 1)
+                wbam_y = wbam_values[1, :, :].T.reshape(-1, 1)
+                wbam_z = wbam_values[2, :, :].T.reshape(-1, 1)
+
+                index = pd.MultiIndex.from_tuples(self.multiindex_tuples,
+                    names=['subject', 'perturbation'])
+
+                df_list = list()
+                df_list.append(pd.DataFrame(wbam_x, index=index, columns=['wbam']))
+                df_list.append(pd.DataFrame(wbam_y, index=index, columns=['wbam']))
+                df_list.append(pd.DataFrame(wbam_z, index=index, columns=['wbam']))
+
+                offset = len(df_list)*(itime + iactu*len(self.times))
+                for index in np.arange(len(df_list)):
+                    target_dir = os.path.dirname(target[offset + index])
+                    if not os.path.exists(target_dir):
+                        os.makedirs(target_dir)
+                    with open(target[offset + index], 'w') as f:
+                        df_list[index].to_csv(f, line_terminator='\n')
+
+        wbam_diff_dict = collections.defaultdict(dict)
+        for itime, time in enumerate(self.times):
+            
+            # Muscles
+            wbam_muscles = wbam_value_dict['muscles'][time]
+            
+            index = pd.MultiIndex.from_tuples(self.multiindex_tuples_muscles,
+                    names=['subject', 'perturbation', 'actuator'])
+            df_muscles = list()
+            df_muscles.append(pd.DataFrame(wbam_muscles[0, :, :].T.reshape(-1, 1), index=index, columns=['wbam']))
+            df_muscles.append(pd.DataFrame(wbam_muscles[1, :, :].T.reshape(-1, 1), index=index, columns=['wbam']))
+            df_muscles.append(pd.DataFrame(wbam_muscles[2, :, :].T.reshape(-1, 1), index=index, columns=['wbam']))
+
+            for df in df_muscles:
+                for subject in self.subjects:
+                    df.loc[subject]['wbam'] -= df.loc[subject, 'unperturbed']['wbam']
+                    df.drop(labels=(subject, 'unperturbed'), inplace=True)
+
+            # Torques
+            wbam_torques = wbam_value_dict['torques'][time]
+
+            index = pd.MultiIndex.from_tuples(self.multiindex_tuples_torques,
+                    names=['subject', 'perturbation', 'actuator'])
+            df_torques = list()
+            df_torques.append(pd.DataFrame(wbam_torques[0, :, :].T.reshape(-1, 1), index=index, columns=['wbam']))
+            df_torques.append(pd.DataFrame(wbam_torques[1, :, :].T.reshape(-1, 1), index=index, columns=['wbam']))
+            df_torques.append(pd.DataFrame(wbam_torques[2, :, :].T.reshape(-1, 1), index=index, columns=['wbam']))
+
+            for df in df_torques:
+                for subject in self.subjects:
+                    df.loc[subject]['wbam'] -= df.loc[subject, 'unperturbed']['wbam']
+                    df.drop(labels=(subject, 'unperturbed'), inplace=True)
+
+            df_list = list()
+            for df_m, df_t in zip(df_muscles, df_torques):
+                df_list.append(pd.concat([df_m, df_t]))
+
+            offset = len(df_list)*itime + 6*len(self.times)
+            for index in np.arange(len(df_list)):
+                target_dir = os.path.dirname(target[offset + index])
+                if not os.path.exists(target_dir):
+                    os.makedirs(target_dir)
+                with open(target[offset + index], 'w') as f:
+                    df_list[index].to_csv(f, line_terminator='\n')
+
+
 class TaskRunStatistics(osp.StudyTask):
     REGISTRY = []
     def __init__(self, study, times):
         super(TaskRunStatistics, self).__init__(study)
-        self.name = f'run_statistics'
+        self.name = 'run_statistics'
         self.statistics_path = os.path.join(study.config['statistics_path'])
         self.times = times
         self.rise = study.rise
@@ -3912,6 +4239,7 @@ class TaskRunStatistics(osp.StudyTask):
 
         self.add_action([], [], self.run_center_of_mass_stats)
         self.add_action([], [], self.run_center_of_pressure_stats)
+        self.add_action([], [], self.run_whole_body_angular_momentum_stats)
 
     def run_center_of_mass_stats(self, file_dep, target):
         normality_path = os.path.join(self.study.config['statistics_path'],
@@ -3938,6 +4266,22 @@ class TaskRunStatistics(osp.StudyTask):
         cwd = os.path.join(self.statistics_path, 'center_of_pressure')
         exec_path = os.path.join(self.study.config['R_exec_path']) 
         p = subprocess.Popen([exec_path, 'center_of_pressure_statistics.R'],
+            cwd=cwd)
+        p.wait()
+        if p.returncode != 0:
+            raise Exception('Non-zero exit status: code %s.' % p.returncode)
+
+    def run_whole_body_angular_momentum_stats(self, file_dep, target):
+        normality_path = os.path.join(self.study.config['statistics_path'],
+            'whole_body_angular_momentum', 'normality')
+        if not os.path.exists(normality_path): 
+            os.makedirs(normality_path)
+
+        import subprocess
+        cwd = os.path.join(self.statistics_path, 'whole_body_angular_momentum')
+        exec_path = os.path.join(self.study.config['R_exec_path']) 
+        p = subprocess.Popen([exec_path, 
+            'whole_body_angular_momentum_statistics.R'],
             cwd=cwd)
         p.wait()
         if p.returncode != 0:
@@ -4139,7 +4483,7 @@ class TaskAggregateCenterOfPressureStatistics(osp.StudyTask):
         idep = 0
         itarget = 0
 
-        # Did all of the perturbations change the center-of-mass kinematics?
+        # Did all of the perturbations change the center of pressure?
         for actu in ['muscles', 'torques']:
             for kin in ['pos']:
                 for direc in ['x', 'z']:
@@ -4180,7 +4524,8 @@ class TaskAggregateCenterOfPressureStatistics(osp.StudyTask):
 
                     itarget += 1
 
-        # Were the torque-driven perturbations different from the muscle-driven perturbations?
+        # Were the torque-driven perturbations different from the 
+        # muscle-driven perturbations?
         for kin in ['pos']:
             for direc in ['x', 'z']:
                 significances = list()
@@ -4232,8 +4577,146 @@ class TaskAggregateCenterOfPressureStatistics(osp.StudyTask):
                 itarget += 1
 
 
-# Center-of-mass
-# --------------
+class TaskAggregateWholeBodyAngularMomentumStatistics(osp.StudyTask):
+    REGISTRY = []
+    def __init__(self, study, times):
+        super(TaskAggregateWholeBodyAngularMomentumStatistics, self).__init__(study)
+        self.name = 'aggregate_wbam_statistics_results'
+        self.results_path = os.path.join(study.config['statistics_path'], 
+            'whole_body_angular_momentum', 'results')
+        self.aggregate_path = os.path.join(study.config['statistics_path'],
+            'whole_body_angular_momentum', 'aggregate')
+        if not os.path.exists(self.aggregate_path): 
+            os.makedirs(self.aggregate_path)
+        self.times = times
+        self.rise = study.rise
+        self.fall = study.fall
+        self.torques = study.plot_torques
+        self.subtalars = study.plot_subtalars
+
+        self.multiindex_tuples = list()
+        for itime, time in enumerate(self.times):
+            for torque, subtalar in zip(self.torques, self.subtalars):
+                self.multiindex_tuples.append((
+                    time,
+                    f'perturbed_torque{torque}{subtalar}'
+                    ))
+
+
+        deps = list()
+        for actu in ['muscles', 'torques', 'diff']:
+            for direc in ['x', 'y', 'z']:
+                for time in self.times:
+                    deps += [os.path.join(self.results_path,
+                             f'wbam_stats_time{time}_{direc}_{actu}_comparisons.csv')]
+
+        targets = list()
+        for actu in ['muscles', 'torques', 'diff']:
+            for direc in ['x', 'y', 'z']:
+                    targets += [os.path.join(self.aggregate_path,
+                                f'wbam_stats_{direc}_{actu}.csv')]
+
+
+        self.add_action(deps, 
+                        targets, 
+                        self.aggregate_wbam_stats)
+
+    def aggregate_wbam_stats(self, file_dep, target):
+
+        idep = 0
+        itarget = 0
+
+        # Did all of the perturbations change the whole-body angular momentum?
+        for actu in ['muscles', 'torques']:
+            for direc in ['x', 'y', 'z']:
+                significances = list()
+                for itime, time in enumerate(self.times):
+                    df = pd.read_csv(file_dep[idep])
+                    idep += 1
+                        
+                    contrasts = df['contrast']
+                    p_values = df['adj.p.value']
+                    for torque, subtalar in zip(self.torques, self.subtalars):
+                        label = f'unperturbed - perturbed_torque{torque}{subtalar}'
+
+                        iperturb = 0
+                        foundContrast = False
+                        for icontrast, contrast in enumerate(contrasts):
+                            if label == contrast:
+                                iperturb = icontrast
+                                foundContrast = True
+                                break
+
+                        if not foundContrast:
+                            raise Exception(f'Did not find statistics contrast {label}')
+
+                        p_value = p_values[iperturb]
+                        significant = p_value < 0.05
+                        significances.append(significant)
+
+                index = pd.MultiIndex.from_tuples(self.multiindex_tuples,
+                    names=['time', 'perturbation'])
+                df_sig = pd.DataFrame(significances, index=index, columns=['significant'])
+
+                target_dir = os.path.dirname(target[itarget])
+                if not os.path.exists(target_dir):
+                    os.makedirs(target_dir)
+                with open(target[itarget], 'w') as f:
+                    df_sig.to_csv(f, line_terminator='\n')
+
+                itarget += 1
+
+        # Were the torque-driven perturbations different from the 
+        # muscle-driven perturbations?
+        for direc in ['x', 'y', 'z']:
+            significances = list()
+            for itime, time in enumerate(self.times):
+                df = pd.read_csv(file_dep[idep])
+                idep += 1
+                    
+                contrasts = df['contrast']
+                p_values = df['adj.p.value']
+                for torque, subtalar in zip(self.torques, self.subtalars):
+                    label = (f'perturbed_torque{torque}{subtalar} muscles - '
+                             f'perturbed_torque{torque}{subtalar} torques')
+
+                    iperturb = 0
+                    foundContrast = False
+                    for icontrast, contrast in enumerate(contrasts):
+                        if label == contrast:
+                            iperturb = icontrast
+                            foundContrast = True
+                            break
+
+                    if not foundContrast:
+                        label = (f'perturbed_torque{torque}{subtalar} torques - '
+                                 f'perturbed_torque{torque}{subtalar} muscles')
+
+                        for icontrast, contrast in enumerate(contrasts):
+                            if label == contrast:
+                                iperturb = icontrast
+                                foundContrast = True
+                                break
+
+                        if not foundContrast:
+                            raise Exception(f'Did not find statistics contrast {label}')
+
+                    p_value = p_values[iperturb]
+                    significant = p_value < 0.05
+                    significances.append(significant)
+
+            index = pd.MultiIndex.from_tuples(self.multiindex_tuples,
+                names=['time', 'perturbation'])
+            df_sig = pd.DataFrame(significances, index=index, columns=['significant'])
+
+            target_dir = os.path.dirname(target[itarget])
+            if not os.path.exists(target_dir):
+                os.makedirs(target_dir)
+            with open(target[itarget], 'w') as f:
+                df_sig.to_csv(f, line_terminator='\n')
+
+            itarget += 1
+
 
 class TaskPlotCenterOfMassVector(osp.StudyTask):
     REGISTRY = []
@@ -4572,6 +5055,24 @@ class TaskPlotCenterOfMassVector(osp.StudyTask):
         acc_x_diff_mean = dict()
         acc_y_diff_mean = dict()
         acc_z_diff_mean = dict()
+        pos_min_diff = 1000
+        pos_max_diff = 0
+        vel_min_diff = 1000
+        vel_max_diff = 0
+        acc_min_diff = 1000
+        acc_max_diff = 0
+        pos_trans_min_diff = 1000
+        pos_trans_max_diff = 0
+        vel_trans_min_diff = 1000
+        vel_trans_max_diff = 0
+        acc_trans_min_diff = 1000
+        acc_trans_max_diff = 0
+        pos_sag_min_diff = 1000
+        pos_sag_max_diff = 0
+        vel_sag_min_diff = 1000
+        vel_sag_max_diff = 0
+        acc_sag_min_diff = 1000
+        acc_sag_max_diff = 0
         for actu in [False, True]:
             torque_act = '_torque_actuators' if actu else ''
             actu_key = 'torques' if actu else 'muscles'
@@ -4588,6 +5089,25 @@ class TaskPlotCenterOfMassVector(osp.StudyTask):
             for itime, time in enumerate(self.times):
                 zipped = zip(self.torques, self.subtalars, self.colors)
                 for iperturb, (torque, subtalar, color) in enumerate(zipped):
+
+                    pos_min_diff_subj = list()
+                    pos_max_diff_subj = list()
+                    vel_min_diff_subj = list()
+                    vel_max_diff_subj = list()
+                    acc_min_diff_subj = list()
+                    acc_max_diff_subj = list()
+                    pos_trans_min_diff_subj = list()
+                    pos_trans_max_diff_subj = list()
+                    vel_trans_min_diff_subj = list()
+                    vel_trans_max_diff_subj = list()
+                    acc_trans_min_diff_subj = list()
+                    acc_trans_max_diff_subj = list()
+                    pos_sag_min_diff_subj = list()
+                    pos_sag_max_diff_subj = list()
+                    vel_sag_min_diff_subj = list()
+                    vel_sag_max_diff_subj = list()
+                    acc_sag_min_diff_subj = list()
+                    acc_sag_max_diff_subj = list()
                     for isubj, subject in enumerate(self.subjects):
 
                         label = (f'{subject}_perturbed_torque{torque}_time{time}'
@@ -4604,15 +5124,63 @@ class TaskPlotCenterOfMassVector(osp.StudyTask):
 
                         l_max = com_height_dict[subject]
                         v_max = np.sqrt(self.gravity * l_max)
-                        pos_x_diff[isubj] = com[index_fall, 0] / l_max
-                        pos_y_diff[isubj] = com[index_fall, 1] / l_max
-                        pos_z_diff[isubj] = com[index_fall, 2] / l_max
-                        vel_x_diff[isubj] = com[index_fall, 3] / v_max
-                        vel_y_diff[isubj] = com[index_fall, 4] / v_max
-                        vel_z_diff[isubj] = com[index_fall, 5] / v_max
-                        acc_x_diff[isubj] = com[index_peak, 6] / self.gravity
-                        acc_y_diff[isubj] = com[index_peak, 7] / self.gravity
-                        acc_z_diff[isubj] = com[index_peak, 8] / self.gravity
+                        px = com[index_fall, 0] 
+                        py = com[index_fall, 1] 
+                        pz = com[index_fall, 2] 
+                        vx = com[index_fall, 3] 
+                        vy = com[index_fall, 4] 
+                        vz = com[index_fall, 5] 
+                        ax = com[index_peak, 6] 
+                        ay = com[index_peak, 7] 
+                        az = com[index_peak, 8] 
+
+                        pos_x_diff[isubj] = px / l_max
+                        pos_y_diff[isubj] = py / l_max
+                        pos_z_diff[isubj] = pz / l_max
+                        vel_x_diff[isubj] = vx / v_max
+                        vel_y_diff[isubj] = vy / v_max
+                        vel_z_diff[isubj] = vz / v_max
+                        acc_x_diff[isubj] = ax / self.gravity
+                        acc_y_diff[isubj] = ay / self.gravity
+                        acc_z_diff[isubj] = az / self.gravity
+
+                        pos_min_diff_subj.append(np.linalg.norm([px, py, pz]))
+                        pos_max_diff_subj.append(np.linalg.norm([px, py, pz]))
+                        vel_min_diff_subj.append(np.linalg.norm([vx, vy, vz]))
+                        vel_max_diff_subj.append(np.linalg.norm([vx, vy, vz]))
+                        acc_min_diff_subj.append(np.linalg.norm([ax, ay, az]))
+                        acc_max_diff_subj.append(np.linalg.norm([ax, ay, az]))
+                        pos_trans_min_diff_subj.append(np.linalg.norm([px, pz]))
+                        pos_trans_max_diff_subj.append(np.linalg.norm([px, pz]))
+                        vel_trans_min_diff_subj.append(np.linalg.norm([vx, vz]))
+                        vel_trans_max_diff_subj.append(np.linalg.norm([vx, vz]))
+                        acc_trans_min_diff_subj.append(np.linalg.norm([ax, az]))
+                        acc_trans_max_diff_subj.append(np.linalg.norm([ax, az]))
+                        pos_sag_min_diff_subj.append(np.linalg.norm([px, py]))
+                        pos_sag_max_diff_subj.append(np.linalg.norm([px, py]))
+                        vel_sag_min_diff_subj.append(np.linalg.norm([vx, vy]))
+                        vel_sag_max_diff_subj.append(np.linalg.norm([vx, vy]))
+                        acc_sag_min_diff_subj.append(np.linalg.norm([ax, ay]))
+                        acc_sag_max_diff_subj.append(np.linalg.norm([ax, ay]))
+
+                    pos_min_diff = np.min([pos_min_diff, np.mean(pos_min_diff_subj)])
+                    pos_max_diff = np.max([pos_max_diff, np.mean(pos_max_diff_subj)])
+                    vel_min_diff = np.min([vel_min_diff, np.mean(vel_min_diff_subj)])
+                    vel_max_diff = np.max([vel_max_diff, np.mean(vel_max_diff_subj)])
+                    acc_min_diff = np.min([acc_min_diff, np.mean(acc_min_diff_subj)])
+                    acc_max_diff = np.max([acc_max_diff, np.mean(acc_max_diff_subj)])
+                    pos_trans_min_diff = np.min([pos_trans_min_diff, np.mean(pos_trans_min_diff_subj)])
+                    pos_trans_max_diff = np.max([pos_trans_max_diff, np.mean(pos_trans_max_diff_subj)])
+                    vel_trans_min_diff = np.min([vel_trans_min_diff, np.mean(vel_trans_min_diff_subj)])
+                    vel_trans_max_diff = np.max([vel_trans_max_diff, np.mean(vel_trans_max_diff_subj)])
+                    acc_trans_min_diff = np.min([acc_trans_min_diff, np.mean(acc_trans_min_diff_subj)])
+                    acc_trans_max_diff = np.max([acc_trans_max_diff, np.mean(acc_trans_max_diff_subj)])
+                    pos_sag_min_diff = np.min([pos_sag_min_diff, np.mean(pos_sag_min_diff_subj)])
+                    pos_sag_max_diff = np.max([pos_sag_max_diff, np.mean(pos_sag_max_diff_subj)])
+                    vel_sag_min_diff = np.min([vel_sag_min_diff, np.mean(vel_sag_min_diff_subj)])
+                    vel_sag_max_diff = np.max([vel_sag_max_diff, np.mean(vel_sag_max_diff_subj)])
+                    acc_sag_min_diff = np.min([acc_sag_min_diff, np.mean(acc_sag_min_diff_subj)])
+                    acc_sag_max_diff = np.max([acc_sag_max_diff, np.mean(acc_sag_max_diff_subj)])
 
                     pos_x_diff_mean[actu_key][itime, iperturb] = np.mean(pos_x_diff)
                     pos_y_diff_mean[actu_key][itime, iperturb] = np.mean(pos_y_diff)
@@ -6061,7 +6629,7 @@ class TaskPlotCOMVersusCOP(osp.StudyTask):
 
                         hCOM = com_height_dict[subject]
                         vFr = np.sqrt(self.gravity * hCOM)
-                        pos_vs_cop_x[isubj] = (com[index_fall, 0] - cop[index_peak, 0]) / hCOM
+                        pos_vs_cop_x[isubj] = (com[index_rise, 0] - cop[index_rise, 0]) / hCOM
                         vel_x_diff[isubj] = com[index_fall, 3] / vFr
                       
                     pos_vs_cop_x_mean[actu_key][itime, isubt] = np.mean(pos_vs_cop_x)
@@ -6170,6 +6738,365 @@ class TaskPlotCOMVersusCOP(osp.StudyTask):
         add_muscles_image(fig)
         add_torques_image(fig)
 
+        fig.savefig(target[0], dpi=600)
+        fig.savefig(target[1], dpi=600)
+        plt.close()
+
+
+class TaskPlotCOMVersusPeakTorque(osp.StudyTask):
+    REGISTRY = []
+    def __init__(self, study, subjects):
+        super(TaskPlotCOMVersusPeakTorque, self).__init__(study)
+        self.name = 'plot_com_versus_peak_torque'
+        self.results_path = os.path.join(study.config['results_path'], 
+            'experiments')
+        self.analysis_path = os.path.join(study.config['analysis_path'],
+            'com_versus_peak_torque')
+        self.figures_path = os.path.join(study.config['figures_path'])
+
+        if not os.path.exists(self.analysis_path): 
+            os.makedirs(self.analysis_path)
+        self.subjects = subjects
+        self.times = [30, 60]
+        self.rise = study.rise
+        self.fall = study.fall
+        self.gravity = 9.81
+        self.torques = [10, 12, 14, 16, 18, 20]
+        self.subtalars = ['', '', '', '', '', '']
+        self.colors = ['k', 'k', 'k', 'k', 'k', 'k']
+        self.models = list()
+        deps = list()
+        self.com_label_dict = dict()
+        ilabel = 0
+        for isubj, subject in enumerate(subjects):
+
+            # Model
+            # -----
+            self.models.append(os.path.join(
+                self.study.config['results_path'], 'unperturbed', 
+                subject, 'model_unperturbed.osim'))
+
+            # Unperturbed solutions
+            # ---------------------
+            deps.append(
+                os.path.join(
+                    self.study.config['results_path'], 
+                    'unperturbed', subject,
+                    'center_of_mass_unperturbed.sto'))
+            self.com_label_dict[f'{subject}_unperturbed'] = ilabel
+            ilabel += 1
+
+            for time in self.times:
+
+                # Unperturbed time-stepping solutions
+                # -----------------------------------
+                label = (f'perturbed_torque0_time{time}'
+                         f'_rise{self.rise}_fall{self.fall}')
+                deps.append(
+                    os.path.join(
+                        self.study.config['results_path'], 
+                        'perturbed', label, subject,
+                        f'center_of_mass_{label}.sto'))
+                self.com_label_dict[f'{subject}_unperturbed_time{time}'] = ilabel
+                ilabel += 1
+
+                for torque, subtalar in zip(self.torques, self.subtalars):
+
+                     # Perturbed solutions
+                     # -------------------
+                    label = (f'perturbed_torque{torque}_time{time}'
+                            f'_rise{self.rise}_fall{self.fall}{subtalar}')
+                    deps.append(
+                        os.path.join(
+                            self.study.config['results_path'], 
+                            'perturbed', label, subject,
+                            f'center_of_mass_{label}.sto')
+                        )
+                    self.com_label_dict[f'{subject}_{label}'] = ilabel
+                    ilabel += 1
+
+        if not os.path.isdir(os.path.join(self.figures_path, 'figureS15')):
+            os.mkdir(os.path.join(self.figures_path, 'figureS15'))
+
+        targets = list()
+        targets += [os.path.join(self.analysis_path, 'com_versus_peak_torque.png')]
+        targets += [os.path.join(self.figures_path, 'figureS15', 'figureS15.png')]
+
+        self.add_action(deps, targets, self.com_versus_peak_torque)
+
+    def com_versus_peak_torque(self, file_dep, target):
+
+        # Initialize figures
+        # ------------------
+        import collections
+        from collections import defaultdict
+        axes = collections.defaultdict(list)
+        fig = plt.figure(figsize=(7, 7))
+        for ikin, kin in enumerate(['acc', 'vel', 'pos']):
+            axes_list = list()
+            for itime, time in enumerate(self.times):
+                index = ikin*len(self.times) + itime + 1
+                ax = fig.add_subplot(3, 2, index)
+                ax.spines['left'].set_position(('outward', 10))
+                ax.set_xticks(np.arange(len(self.torques)))
+                ax.set_xlim(0, len(self.torques)-1)
+                ax.set_xticklabels([torque / 100.0 for torque in self.torques])
+                ax.grid(color='gray', linestyle='--', linewidth=0.25,
+                    clip_on=False, alpha=0.75, zorder=0)
+                util.publication_spines(ax)
+
+                if kin == 'acc':
+                    ax.set_title(f'exoskeleton torque peak time: {time}%')
+
+                if time == 60:
+                    ax.spines['left'].set_visible(False)
+                    ax.set_yticklabels([])
+                    ax.yaxis.set_ticks_position('none')
+                    ax.tick_params(axis='y', which='both', left=False, 
+                                   right=False, labelleft=False)
+
+                if not kin == 'pos':
+                    ax.spines['bottom'].set_visible(False)
+                    ax.set_xticklabels([])
+                    ax.xaxis.set_ticks_position('none')
+                    ax.tick_params(axis='x', which='both', left=False, 
+                                   right=False, labelleft=False)
+                else:
+                    ax.set_xlabel('exoskeleton peak torque $[N \\cdot m/kg]$')
+
+                ax.spines['bottom'].set_position(('outward', 10))
+                axes_list.append(ax)
+
+
+    
+            axes[kin] = axes_list
+
+        # Aggregate data
+        # --------------
+        com_dict = collections.defaultdict(dict)
+        time_dict = collections.defaultdict(dict)
+        com_height_dict = dict()
+        duration_dict = dict()
+        for isubj, subject in enumerate(self.subjects):
+
+            # Model
+            # -----
+            model = osim.Model(self.models[isubj])
+            model.initSystem()
+
+            # Unperturbed center-of-mass trajectory
+            # -------------------------------------
+            unperturb_index = self.com_label_dict[f'{subject}_unperturbed']
+            tableTemp = osim.TimeSeriesTable(file_dep[unperturb_index])
+            com_height_dict[subject] = np.mean(tableTemp.getDependentColumn(
+                                               '/|com_position_y').to_numpy())
+            timeTemp = np.array(tableTemp.getIndependentColumn())
+            duration_dict[subject] = timeTemp[-1] - timeTemp[0]
+
+            for time in self.times:
+
+                # Unperturbed center-of-mass trajectory
+                # -------------------------------------
+                unperturb_index = self.com_label_dict[f'{subject}_unperturbed_time{time}']
+                unpTableCOM = osim.TimeSeriesTable(file_dep[unperturb_index])
+                unpTimeVecCOM = unpTableCOM.getIndependentColumn()
+                unpTableCOM_np = np.zeros((len(unpTimeVecCOM), 9))
+                unpTableCOM_np[:, 0] = unpTableCOM.getDependentColumn(
+                    '/|com_position_x').to_numpy()
+                unpTableCOM_np[:, 1] = unpTableCOM.getDependentColumn(
+                    '/|com_position_y').to_numpy()
+                unpTableCOM_np[:, 2] = unpTableCOM.getDependentColumn(
+                    '/|com_position_z').to_numpy()
+                unpTableCOM_np[:, 3] = unpTableCOM.getDependentColumn(
+                    '/|com_velocity_x').to_numpy() 
+                unpTableCOM_np[:, 4] = unpTableCOM.getDependentColumn(
+                    '/|com_velocity_y').to_numpy() 
+                unpTableCOM_np[:, 5] = unpTableCOM.getDependentColumn(
+                    '/|com_velocity_z').to_numpy() 
+                unpTableCOM_np[:, 6] = unpTableCOM.getDependentColumn(
+                    '/|com_acceleration_x').to_numpy()
+                unpTableCOM_np[:, 7] = unpTableCOM.getDependentColumn(
+                    '/|com_acceleration_y').to_numpy()
+                unpTableCOM_np[:, 8] = unpTableCOM.getDependentColumn(
+                    '/|com_acceleration_z').to_numpy()
+
+
+                for torque, subtalar in zip(self.torques, self.subtalars):
+
+                    # Perturbed center-of-mass trajectory
+                    # -----------------------------------
+                    label = (f'{subject}_perturbed_torque{torque}_time{time}'
+                             f'_rise{self.rise}_fall{self.fall}{subtalar}')
+                    perturb_index = self.com_label_dict[label]
+                    tableCOM = osim.TimeSeriesTable(file_dep[perturb_index])
+                    timeVecCOM = tableCOM.getIndependentColumn()
+                    tableCOM_np = np.zeros((len(timeVecCOM), 9))
+                    tableCOM_np[:, 0] = tableCOM.getDependentColumn(
+                        '/|com_position_x').to_numpy()
+                    tableCOM_np[:, 1] = tableCOM.getDependentColumn(
+                        '/|com_position_y').to_numpy()
+                    tableCOM_np[:, 2] = tableCOM.getDependentColumn(
+                        '/|com_position_z').to_numpy()
+                    tableCOM_np[:, 3] = tableCOM.getDependentColumn(
+                        '/|com_velocity_x').to_numpy()
+                    tableCOM_np[:, 4] = tableCOM.getDependentColumn(
+                        '/|com_velocity_y').to_numpy()
+                    tableCOM_np[:, 5] = tableCOM.getDependentColumn(
+                        '/|com_velocity_z').to_numpy() 
+                    tableCOM_np[:, 6] = tableCOM.getDependentColumn(
+                        '/|com_acceleration_x').to_numpy()
+                    tableCOM_np[:, 7] = tableCOM.getDependentColumn(
+                        '/|com_acceleration_y').to_numpy()
+                    tableCOM_np[:, 8] = tableCOM.getDependentColumn(
+                        '/|com_acceleration_z').to_numpy()
+
+                    # Compute difference between perturbed and unperturbed
+                    # trajectories for this subject. We don't need to interpolate
+                    # here since the perturbed and unperturbed trajectories contain
+                    # the same time points (up until the end of the perturbation).
+                    com_dict[subject][label] = tableCOM_np - unpTableCOM_np
+                    time_dict[subject][label] = timeVecCOM
+
+        def compute_norm(x, y, z):
+            return np.sqrt(x*x + y*y + z*z)
+
+        # Plotting
+        # --------
+        pos_diff = np.zeros((len(self.times), len(self.torques), len(self.subjects)))
+        vel_diff = np.zeros((len(self.times), len(self.torques), len(self.subjects)))
+        acc_diff = np.zeros((len(self.times), len(self.torques), len(self.subjects)))
+        pos_diff_mean = np.zeros((len(self.times), len(self.torques)))
+        pos_diff_std = np.zeros((len(self.times), len(self.torques)))
+        vel_diff_mean = np.zeros((len(self.times), len(self.torques)))
+        vel_diff_std = np.zeros((len(self.times), len(self.torques)))
+        acc_diff_mean = np.zeros((len(self.times), len(self.torques)))
+        acc_diff_std = np.zeros((len(self.times), len(self.torques)))
+        for itime, time in enumerate(self.times):
+            zipped = zip(self.torques, self.subtalars, self.colors)
+            for itorque, (torque, subtalar, color) in enumerate(zipped):
+                for isubj, subject in enumerate(self.subjects):
+                    label = (f'{subject}_perturbed_torque{torque}_time{time}'
+                         f'_rise{self.rise}_fall{self.fall}{subtalar}')
+                    com = com_dict[subject][label]
+
+                    timeVec = time_dict[subject][label]
+                    duration = duration_dict[subject]
+                    time_at_peak = timeVec[0] + (duration * (time / 100.0))
+                    time_at_rise = timeVec[0] + (duration * ((time - 10) / 100.0))
+                    index_peak = np.argmin(np.abs(timeVec - time_at_peak))
+                    index_rise = np.argmin(np.abs(timeVec - time_at_rise))
+                    index_fall = -1
+
+                    hCOM = com_height_dict[subject]
+                    vFr = np.sqrt(self.gravity * hCOM)
+                    pos_diff[itime, itorque, isubj] = \
+                        compute_norm(com[index_fall, 0],
+                                     com[index_fall, 1],
+                                     com[index_fall, 2]) / hCOM
+
+                    vel_diff[itime, itorque, isubj] = \
+                        compute_norm(com[index_fall, 3],
+                                     com[index_fall, 4],
+                                     com[index_fall, 5]) / vFr
+
+                    acc_diff[itime, itorque, isubj] = \
+                        compute_norm(com[index_peak, 6],
+                                     com[index_peak, 7],
+                                     com[index_peak, 8]) / self.gravity
+
+                pos_diff_mean[itime, itorque] = np.mean(pos_diff[itime, itorque, :])
+                pos_diff_std[itime, itorque] = np.std(pos_diff[itime, itorque, :]) 
+                vel_diff_mean[itime, itorque] = np.mean(vel_diff[itime, itorque, :])
+                vel_diff_std[itime, itorque] = np.std(vel_diff[itime, itorque, :])
+                acc_diff_mean[itime, itorque] = np.mean(acc_diff[itime, itorque, :])
+                acc_diff_std[itime, itorque] = np.std(acc_diff[itime, itorque, :]) 
+
+
+        acc_step = 0.02
+        vel_step = 0.005
+        pos_step = 0.001
+        acc_lim = [0.0, 0.0]
+        vel_lim = [0.0, 0.0]
+        pos_lim = [0.0, 0.0]
+        update_lims(acc_diff_mean-acc_diff_std, acc_step, acc_lim)
+        update_lims(acc_diff_mean+acc_diff_std, acc_step, acc_lim)
+        update_lims(vel_diff_mean-vel_diff_std, vel_step, vel_lim)
+        update_lims(vel_diff_mean+vel_diff_std, vel_step, vel_lim)
+        update_lims(pos_diff_mean-pos_diff_std, pos_step, pos_lim)
+        update_lims(pos_diff_mean+pos_diff_std, pos_step, pos_lim)    
+    
+        for itime, time in enumerate(self.times):
+            zipped = zip(self.torques, self.subtalars, self.colors)
+            for itorque, (torque, subtalar, color) in enumerate(zipped):
+                perturbation = f'perturbed_torque{torque}{subtalar}'
+
+
+                ple, cle, ble = axes['acc'][itime].errorbar(
+                    itorque, 
+                    acc_diff_mean[itime, itorque], 
+                    yerr=acc_diff_std[itime, itorque],
+                    fmt='none', ecolor='black', lw=0.25,
+                    elinewidth=0.4, markeredgewidth=0.4, clip_on=False)
+                for cl in cle:
+                    cl.set_marker('_')
+                    cl.set_markersize(4)
+
+                axes['acc'][itime].plot(itorque, 
+                    acc_diff_mean[itime, itorque], marker='o',
+                    markersize=3,
+                    color=color, clip_on=False, zorder=2.5)
+                if not itime:
+                    axes['acc'][itime].set_ylabel(r'$\Delta$' + ' COM acceleration $[-]$')
+                axes['acc'][itime].set_ylim(acc_lim)
+                axes['acc'][itime].set_yticks(get_ticks_from_lims(acc_lim, acc_step))
+
+
+                ple, cle, ble = axes['vel'][itime].errorbar(
+                    itorque, 
+                    vel_diff_mean[itime, itorque], 
+                    yerr=vel_diff_std[itime, itorque],
+                    fmt='none', ecolor='black', lw=0.25,
+                    elinewidth=0.4, markeredgewidth=0.4, clip_on=False)
+                for cl in cle:
+                    cl.set_marker('_')
+                    cl.set_markersize(4)
+
+                axes['vel'][itime].plot(itorque, 
+                    vel_diff_mean[itime, itorque], marker='o',
+                    markersize=3,
+                    color=color, clip_on=False, zorder=2.5)
+                if not itime:
+                    axes['vel'][itime].set_ylabel(r'$\Delta$' + ' COM velocity $[-]$')
+                axes['vel'][itime].set_ylim(vel_lim)
+                axes['vel'][itime].set_yticks(get_ticks_from_lims(vel_lim, vel_step))
+
+
+                ple, cle, ble = axes['pos'][itime].errorbar(
+                    itorque, 
+                    pos_diff_mean[itime, itorque], 
+                    yerr=pos_diff_std[itime, itorque],
+                    fmt='none', ecolor='black', lw=0.25,
+                    elinewidth=0.4, markeredgewidth=0.4, clip_on=False)
+                for cl in cle:
+                    cl.set_marker('_')
+                    cl.set_markersize(4)
+
+                axes['pos'][itime].plot(itorque, 
+                    pos_diff_mean[itime, itorque], marker='o',
+                    markersize=3,
+                    color=color, clip_on=False, zorder=2.5)
+                if not itime:
+                    axes['pos'][itime].set_ylabel(r'$\Delta$' + ' COM position $[-]$')
+                axes['pos'][itime].set_ylim(pos_lim)
+                axes['pos'][itime].set_yticks(get_ticks_from_lims(pos_lim, pos_step))
+
+        handles = list()
+        handles.append(patches.Patch(color='k', label='plantarflexion'))
+        axes['acc'][0].legend(handles=handles, loc='upper left', 
+            frameon=True, fontsize=6)
+
+        fig.subplots_adjust(left=0.12, right=0.97, bottom=0.1, top=0.95, 
+            wspace=0.2, hspace=0.2)
         fig.savefig(target[0], dpi=600)
         fig.savefig(target[1], dpi=600)
         plt.close()
@@ -6313,6 +7240,7 @@ class TaskPlotCenterOfPressureVector(osp.StudyTask):
         import collections
         cop_dict = collections.defaultdict(dict)
         time_dict = collections.defaultdict(dict)
+        foot_width_dict = dict()
         duration_dict = dict()
         for isubj, subject in enumerate(self.subjects):
 
@@ -6320,6 +7248,7 @@ class TaskPlotCenterOfPressureVector(osp.StudyTask):
             # -----
             model = osim.Model(self.models[isubj])
             model.initSystem()
+            foot_width_dict[subject] = calc_foot_width(model)
 
             # Unperturbed center-of-pressure
             # ------------------------------
@@ -6395,6 +7324,7 @@ class TaskPlotCenterOfPressureVector(osp.StudyTask):
         cop_x_diff_mean = dict()
         cop_y_diff_mean = dict()
         cop_z_diff_mean = dict()
+        cop_max_diff = 0
         for actu in [False, True]:
             torque_act = '_torque_actuators' if actu else ''
             actu_key = 'torques' if actu else 'muscles'
@@ -6405,11 +7335,14 @@ class TaskPlotCenterOfPressureVector(osp.StudyTask):
             for itime, time in enumerate(self.times):
                 zipped = zip(self.torques, self.subtalars, self.colors)
                 for iperturb, (torque, subtalar, color) in enumerate(zipped):
+
+                    cop_max_diff_subj = list()
                     for isubj, subject in enumerate(self.subjects):
 
                         label = (f'{subject}_perturbed_torque{torque}_time{time}'
                                  f'_rise{self.rise}_fall{self.fall}{subtalar}{torque_act}')
                         cop = cop_dict[subject][label]
+                        foot_width = foot_width_dict[subject]
 
                         # Compute the closet time index to the current peak 
                         # perturbation time. 
@@ -6418,19 +7351,25 @@ class TaskPlotCenterOfPressureVector(osp.StudyTask):
                         time_at_peak = timeVec[0] + (duration * (time / 100.0))
                         index_peak = np.argmin(np.abs(timeVec - time_at_peak))
 
-                        cop_x_diff[isubj] = 100.0*cop[index_peak, 0]
-                        cop_y_diff[isubj] = 100.0*cop[index_peak, 1]
-                        cop_z_diff[isubj] = 100.0*cop[index_peak, 2]
+                        cop_x_diff[isubj] = cop[index_peak, 0] / foot_width
+                        cop_y_diff[isubj] = cop[index_peak, 1] / foot_width
+                        cop_z_diff[isubj] = cop[index_peak, 2] / foot_width
+
+                        cop_max_diff_subj.append(
+                            np.linalg.norm([cop[index_peak, 0],
+                                            cop[index_peak, 1],
+                                            cop[index_peak, 2]]))
 
                     cop_x_diff_mean[actu_key][itime, iperturb] = np.mean(cop_x_diff)
                     cop_y_diff_mean[actu_key][itime, iperturb] = np.mean(cop_y_diff)
                     cop_z_diff_mean[actu_key][itime, iperturb] = np.mean(cop_z_diff)
+                    cop_max_diff = np.max([cop_max_diff, np.mean(cop_max_diff_subj)])
 
         # Set plot limits and labels
         # --------------------------
         for iperturb in np.arange(len(self.subtalars)):
             # Transverse position
-            xz_cop_scale = 1.5
+            xz_cop_scale = 0.15
             axes[iperturb].set_xlim(-xz_cop_scale, xz_cop_scale)
             axes[iperturb].set_xticks([-xz_cop_scale, 0, xz_cop_scale])
             axes[iperturb].set_xticklabels([-xz_cop_scale, 0, xz_cop_scale], fontsize=tick_fs)
@@ -6441,7 +7380,7 @@ class TaskPlotCenterOfPressureVector(osp.StudyTask):
             else:
                 axes[iperturb].set_yticklabels([f'{time}' for time in self.times],
                                         fontsize=tick_fs+1)
-            axes[2].set_xlabel(r'$\Delta$' + ' center of pressure position $[cm]$',
+            axes[2].set_xlabel(r'$\Delta$' + ' center of pressure position $[-]$',
                 fontsize=tick_fs+3)
             axes[0].set_ylabel('exoskeleton torque peak time\n(% gait cycle)',
                 fontsize=tick_fs+3)
@@ -6526,7 +7465,7 @@ class TaskPlotCenterOfPressureVector(osp.StudyTask):
 
         fig.savefig(target[0], dpi=600)
         fig.savefig(target[1], dpi=600)
-        plt.close()         
+        plt.close()   
 
 
 class TaskPlotInstantaneousCenterOfPressure(osp.StudyTask):
@@ -6692,12 +7631,14 @@ class TaskPlotInstantaneousCenterOfPressure(osp.StudyTask):
         cop_dict = collections.defaultdict(dict)
         time_dict = collections.defaultdict(dict)
         duration_dict = dict()
+        foot_width_dict = dict()
         for isubj, subject in enumerate(self.subjects):
 
             # Model
             # -----
             model = osim.Model(self.models[isubj])
             model.initSystem()
+            foot_width_dict[subject] = calc_foot_width(model)
 
             # Unperturbed center-of-mass trajectory
             # -------------------------------------
@@ -6775,11 +7716,12 @@ class TaskPlotInstantaneousCenterOfPressure(osp.StudyTask):
                         # perturbation time. 
                         timeVec = time_dict[subject][label]
                         duration = duration_dict[subject]
+                        foot_width = foot_width_dict[subject]
                         time_at_peak = timeVec[0] + (duration * (time / 100.0))
                         index_peak = np.argmin(np.abs(timeVec - time_at_peak))
 
-                        cop_x_diff[isubj] = 100.0 * cop[index_peak, 0]
-                        cop_z_diff[isubj] = 100.0 * cop[index_peak, 2]
+                        cop_x_diff[isubj] = cop[index_peak, 0] / foot_width
+                        cop_z_diff[isubj] = cop[index_peak, 2] / foot_width
 
                     cop_x_diff_mean[actu_key][itime, isubt] = np.mean(cop_x_diff)
                     cop_z_diff_mean[actu_key][itime, isubt] = np.mean(cop_z_diff)
@@ -6808,8 +7750,8 @@ class TaskPlotInstantaneousCenterOfPressure(osp.StudyTask):
 
             return offsets
 
-        cop_x_step = 0.5
-        cop_z_step = 0.5
+        cop_x_step = 0.05
+        cop_z_step = 0.05
         cop_x_lim = [0.0, 0.0]
         cop_z_lim = [0.0, 0.0]
         for actu in ['muscles', 'torques']:
@@ -6866,8 +7808,456 @@ class TaskPlotInstantaneousCenterOfPressure(osp.StudyTask):
             if 'muscles' in actu:
                 axes[actu][0].legend(handles_cop, self.legend_labels, loc='lower left', 
                     frameon=True, fontsize=8)   
-                axes[actu][0].set_ylabel(r'$\Delta$' + ' fore-aft COP position $[cm]$')
-                axes[actu][1].set_ylabel(r'$\Delta$' + ' medio-lateral COP position $[cm]$')
+                axes[actu][0].set_ylabel(r'$\Delta$' + ' fore-aft COP position $[-]$')
+                axes[actu][1].set_ylabel(r'$\Delta$' + ' medio-lateral COP position $[-]$')
+
+        import cv2
+        def add_muscles_image(fig):
+            side = 0.175
+            l = 0.23
+            b = 0.81
+            w = side
+            h = side
+            ax = fig.add_axes([l, b, w, h], projection=None, polar=False)
+            image = cv2.imread(
+                os.path.join(self.study.config['figures_path'], 'images',
+                    'sagittal_muscles.tiff'))[..., ::-1]
+            ax.imshow(image, interpolation='none', aspect='equal')
+
+            ax.spines['top'].set_visible(False)
+            ax.spines['bottom'].set_visible(False)
+            ax.spines['left'].set_visible(False)
+            ax.spines['right'].set_visible(False)
+            ax.set_yticklabels([])
+            ax.xaxis.set_ticks_position('none')
+            ax.yaxis.set_ticks_position('none')
+            ax.tick_params(axis='x', which='both', bottom=False, 
+                           top=False, labelbottom=False)
+            ax.tick_params(axis='y', which='both', bottom=False, 
+                           top=False, labelbottom=False)
+
+        def add_torques_image(fig):
+            side = 0.175
+            l = 0.680
+            b = 0.81
+            w = side
+            h = side
+            ax = fig.add_axes([l, b, w, h], projection=None, polar=False)
+            image = cv2.imread(
+                os.path.join(self.study.config['figures_path'], 'images',
+                    'sagittal_torques.tiff'))[..., ::-1]
+            ax.imshow(image, interpolation='none', aspect='equal')
+
+            ax.spines['top'].set_visible(False)
+            ax.spines['bottom'].set_visible(False)
+            ax.spines['left'].set_visible(False)
+            ax.spines['right'].set_visible(False)
+            ax.set_yticklabels([])
+            ax.xaxis.set_ticks_position('none')
+            ax.yaxis.set_ticks_position('none')
+            ax.tick_params(axis='x', which='both', bottom=False, 
+                           top=False, labelbottom=False)
+            ax.tick_params(axis='y', which='both', bottom=False, 
+                           top=False, labelbottom=False)
+
+        for ifig, fig in enumerate(figs):
+            fig.subplots_adjust(left=0.125, right=0.95, bottom=0.075, top=0.8, wspace=0.2)
+            add_muscles_image(fig)
+            add_torques_image(fig)
+            fig.savefig(target[ifig], dpi=600)
+            plt.close()
+
+        for ifig, fig in enumerate(figs):
+            fig.savefig(target[ifig + len(figs)], dpi=600)
+            plt.close()
+
+# Whole-body angular momentum
+# ---------------------------
+
+class TaskPlotInstantaneousWholeBodyAngularMomentum(osp.StudyTask):
+    REGISTRY = []
+    def __init__(self, study, subjects, times):
+        super(TaskPlotInstantaneousWholeBodyAngularMomentum, self).__init__(study)
+        self.name = f'plot_instantaneous_whole_body_angular_momentum'
+        self.figures_path = os.path.join(study.config['figures_path']) 
+        self.results_path = os.path.join(study.config['results_path'], 
+            'experiments')
+        self.aggregate_path = os.path.join(study.config['statistics_path'],
+            'whole_body_angular_momentum', 'aggregate')
+        self.analysis_path = os.path.join(study.config['analysis_path'],
+            'whole_body_angular_momentum_instantaneous')
+        if not os.path.exists(self.analysis_path): 
+            os.makedirs(self.analysis_path)
+        self.subjects = subjects
+        self.times = times
+        self.rise = study.rise
+        self.fall = study.fall
+        self.gravity = 9.81
+        self.torques = study.plot_torques
+        self.subtalars = study.plot_subtalars
+        self.colors = study.plot_colors
+        self.hatches = [None, None, None, None, None]
+        self.edgecolor = 'black'
+        self.width = 0.15
+        N = len(self.subtalars)
+        min_width = -self.width*((N-1)/2)
+        max_width = -min_width
+        self.shifts = np.linspace(min_width, max_width, N)
+        self.legend_labels = ['eversion', 
+                              'plantarflexion + eversion', 
+                              'plantarflexion', 
+                              'plantarflexion + inversion', 
+                              'inversion']
+
+        deps = list()
+        self.label_dict = dict()
+        self.com_dict = dict()
+        self.models = list()
+        ilabel = 0
+        for isubj, subject in enumerate(subjects):
+
+            # Model
+            # -----
+            self.models.append(os.path.join(
+                self.study.config['results_path'], 'unperturbed', 
+                subject, 'model_unperturbed.osim'))
+
+            # Unperturbed solutions
+            # ---------------------
+            deps.append(
+                os.path.join(
+                    self.study.config['results_path'], 
+                    'unperturbed', subject,
+                    'unperturbed.sto'))
+
+            self.label_dict[f'{subject}_unperturbed'] = ilabel
+            ilabel += 1
+
+            deps.append(
+                os.path.join(
+                    self.study.config['results_path'], 
+                    'unperturbed', subject,
+                    'center_of_mass_unperturbed.sto'))
+
+            self.com_dict[f'{subject}_unperturbed'] = ilabel
+            ilabel += 1
+
+            for actu in [False, True]:
+                torque_act = '_torque_actuators' if actu else ''
+                subpath = 'torque_actuators' if actu else 'perturbed'
+
+                for time in self.times:
+
+                    # Unperturbed time-stepping solutions
+                    # -----------------------------------
+                    label = (f'perturbed_torque0_time{time}'
+                             f'_rise{self.rise}_fall{self.fall}{torque_act}')
+                    deps.append(
+                        os.path.join(
+                            self.study.config['results_path'], 
+                            subpath, label, subject,
+                            f'{label}.sto'))
+
+                    self.label_dict[f'{subject}_unperturbed_time{time}{torque_act}'] = ilabel
+                    ilabel += 1
+
+                    for torque, subtalar in zip(self.torques, self.subtalars):
+
+                        # Perturbed solutions
+                        # -------------------
+                        label = (f'perturbed_torque{torque}_time{time}'
+                                f'_rise{self.rise}_fall{self.fall}{subtalar}{torque_act}')
+                        deps.append(
+                            os.path.join(
+                                self.study.config['results_path'], 
+                                subpath, label, subject,
+                                f'{label}.sto'))
+
+                        self.label_dict[f'{subject}_{label}'] = ilabel
+                        ilabel += 1
+
+        # Statistics results
+        for actu in ['muscles', 'torques', 'diff']:
+            for direc in ['x', 'y', 'z']:
+                label = f'wbam_stats_{direc}_{actu}'
+                deps.append(os.path.join(self.aggregate_path, f'{label}.csv'))
+
+                self.label_dict[label] = ilabel
+                ilabel += 1
+
+        if not os.path.isdir(os.path.join(self.figures_path, 'figureS16')):
+            os.mkdir(os.path.join(self.figures_path, 'figureS16'))
+
+        targets = list()
+        targets += [os.path.join(self.analysis_path, 'instant_wbam.png')]
+        targets += [os.path.join(self.figures_path, 'figureS16', 'figureS16.png')]
+
+        self.add_action(deps, targets, self.plot_instantaneous_wbam)
+
+    def plot_instantaneous_wbam(self, file_dep, target):
+
+        # Initialize figures
+        # ------------------
+        from collections import defaultdict
+        figs = list()
+        axes = defaultdict(list)
+        for kin in ['pos']:
+            fig = plt.figure(figsize=(9, 10))
+            for iactu, actu in enumerate(['muscles', 'torques']):
+                for idirec, direc in enumerate(['frontal', 'transverse', 'sagittal']):
+                    index = 2*idirec + iactu + 1 
+                    ax = fig.add_subplot(3, 2, index)
+                    ax.axhline(y=0, color='black', linestyle='-',
+                            linewidth=0.1, alpha=1.0, zorder=2.5)
+                    ax.spines['left'].set_position(('outward', 30))
+                    ax.set_xticks(np.arange(len(self.times)))
+                    ax.set_xlim(0, len(self.times)-1)
+                    ax.grid(color='gray', linestyle='--', linewidth=0.4,
+                        clip_on=False, alpha=0.75, zorder=0)
+                    util.publication_spines(ax)
+
+                    if not direc == 'sagittal':
+                        ax.spines['bottom'].set_visible(False)
+                        ax.set_xticklabels([])
+                        ax.xaxis.set_ticks_position('none')
+                        ax.tick_params(axis='x', which='both', bottom=False, 
+                                       top=False, labelbottom=False)
+                    else:
+                        ax.spines['bottom'].set_position(('outward', 10))
+                        ax.set_xticklabels([f'{time + 5}' for time in self.times])
+                        ax.set_xlabel('exoskeleton torque end time\n(% gait cycle)')
+
+                    if actu == 'torques':
+                        ax.spines['left'].set_visible(False)
+                        ax.set_yticklabels([])
+                        ax.yaxis.set_ticks_position('none')
+                        ax.tick_params(axis='y', which='both', left=False, 
+                                       right=False, labelleft=False)
+
+                    axes[actu].append(ax)
+
+            figs.append(fig)
+
+        # Aggregate data
+        # --------------
+        import collections
+        wbam_dict = collections.defaultdict(dict)
+        time_dict = collections.defaultdict(dict)
+        duration_dict = dict()
+        com_height_dict = dict()
+        mass_dict = dict()
+        for isubj, subject in enumerate(self.subjects):
+
+            # Model
+            # -----
+            model = osim.Model(self.models[isubj])
+            state = model.initSystem()
+            mass_dict[subject] = model.getTotalMass(state)
+
+            # Unperturbed solution
+            # --------------------
+            unperturb_index = self.label_dict[f'{subject}_unperturbed']
+            tableTemp = osim.TimeSeriesTable(file_dep[unperturb_index])
+            timeTemp = np.array(tableTemp.getIndependentColumn())
+            duration_dict[subject] = timeTemp[-1] - timeTemp[0]
+
+            # Unperturbed center-of-mass trajectory
+            # -------------------------------------
+            unperturb_index = self.com_dict[f'{subject}_unperturbed']
+            tableTemp = osim.TimeSeriesTable(file_dep[unperturb_index])
+            timeTemp = np.array(tableTemp.getIndependentColumn())
+            com_height_dict[subject] = np.mean(tableTemp.getDependentColumn(
+                                               '/|com_position_y').to_numpy())
+            for actu in [False, True]:
+                torque_act = '_torque_actuators' if actu else ''
+
+                for time in self.times:
+
+                    # Unperturbed solution
+                    # --------------------
+                    unperturb_index = self.label_dict[f'{subject}_unperturbed_time{time}{torque_act}']
+                    unpTable_np = calc_whole_body_angular_momentum(model, 
+                        file_dep[unperturb_index])
+
+                    for torque, subtalar in zip(self.torques, self.subtalars):
+
+                        # Perturbed solution
+                        # ------------------
+                        label = (f'{subject}_perturbed_torque{torque}_time{time}'
+                                 f'_rise{self.rise}_fall{self.fall}{subtalar}{torque_act}')
+                        perturb_index = self.label_dict[label]
+                        table = osim.TimeSeriesTable(file_dep[perturb_index])
+                        timeVec = table.getIndependentColumn()
+                        table_np = calc_whole_body_angular_momentum(model, 
+                            file_dep[perturb_index])
+
+                        # Compute difference between perturbed and unperturbed
+                        # trajectories for this subject. We don't need to interpolate
+                        # here since the perturbed and unperturbed trajectories contain
+                        # the same time points (up until the end of the perturbation).
+                        wbam_dict[subject][label] = table_np - unpTable_np
+                        time_dict[subject][label] = np.array(timeVec)
+
+        # Plotting
+        # --------
+        wbam_x_diff = np.zeros(len(self.subjects))
+        wbam_y_diff = np.zeros(len(self.subjects))
+        wbam_z_diff = np.zeros(len(self.subjects))
+        wbam_x_diff_mean = dict()
+        wbam_y_diff_mean = dict()
+        wbam_z_diff_mean = dict()
+        wbam_x_diff_std = dict()
+        wbam_y_diff_std = dict()
+        wbam_z_diff_std = dict()
+        wbam_max_diff = 0
+        for actu in [False, True]:
+            torque_act = '_torque_actuators' if actu else ''
+            actu_key = 'torques' if actu else 'muscles'
+            wbam_x_diff_mean[actu_key] = np.zeros((len(self.times), len(self.subtalars)))
+            wbam_y_diff_mean[actu_key] = np.zeros((len(self.times), len(self.subtalars)))
+            wbam_z_diff_mean[actu_key] = np.zeros((len(self.times), len(self.subtalars)))
+            wbam_x_diff_std[actu_key] = np.zeros((len(self.times), len(self.subtalars)))
+            wbam_y_diff_std[actu_key] = np.zeros((len(self.times), len(self.subtalars)))
+            wbam_z_diff_std[actu_key] = np.zeros((len(self.times), len(self.subtalars)))
+
+            for itime, time in enumerate(self.times):
+                zipped = zip(self.torques, self.subtalars, self.colors, self.shifts)
+                for isubt, (torque, subtalar, color, shift) in enumerate(zipped):
+
+                    wbam_max_diff_subj = list()
+                    for isubj, subject in enumerate(self.subjects):
+                        label = (f'{subject}_perturbed_torque{torque}_time{time}'
+                             f'_rise{self.rise}_fall{self.fall}{subtalar}{torque_act}')
+                        wbam = wbam_dict[subject][label]
+                        hCOM = com_height_dict[subject]
+                        mass = mass_dict[subject]
+                        vFr = np.sqrt(self.gravity * hCOM)
+                        wbam_hat = mass * hCOM * vFr
+
+                        # Compute the closet time index to the current peak 
+                        # perturbation time. 
+                        duration = duration_dict[subject]
+                        time_at_peak = timeVec[0] + (duration * (time / 100.0))
+                        index_fall = -1
+
+                        wbam_x_diff[isubj] = wbam[index_fall, 0] / wbam_hat
+                        wbam_y_diff[isubj] = wbam[index_fall, 1] / wbam_hat
+                        wbam_z_diff[isubj] = wbam[index_fall, 2] / wbam_hat
+
+                        wbam_max_diff_subj.append(
+                            np.linalg.norm([wbam[index_fall, 0],
+                                            wbam[index_fall, 1],
+                                            wbam[index_fall, 2]]))
+
+                    wbam_x_diff_mean[actu_key][itime, isubt] = np.mean(wbam_x_diff)
+                    wbam_y_diff_mean[actu_key][itime, isubt] = np.mean(wbam_y_diff)
+                    wbam_z_diff_mean[actu_key][itime, isubt] = np.mean(wbam_z_diff)
+                    wbam_x_diff_std[actu_key][itime, isubt] = np.std(wbam_x_diff)
+                    wbam_y_diff_std[actu_key][itime, isubt] = np.std(wbam_y_diff)
+                    wbam_z_diff_std[actu_key][itime, isubt] = np.std(wbam_z_diff)
+                    wbam_max_diff = np.max([wbam_max_diff, np.mean(wbam_max_diff_subj)])
+
+
+        def get_offsets(means, stds, lim, shift=0.0):
+            min_value = 0
+            max_value = 0
+
+            if np.any(means < 0):
+                min_value = np.min(means[means < 0] - stds[means < 0])
+
+            if np.any(means > 0):
+                max_value = np.max(means[means > 0] + stds[means > 0])
+
+            lim_range = lim[1] - lim[0]
+
+            offsets = np.zeros_like(means)
+
+            if np.any(means < 0):
+                offsets[means < 0] = min_value - (0.06 + shift)*lim_range
+            if np.any(means > 0):
+                offsets[means > 0] = max_value - (0.01 - 6*shift)*lim_range
+
+            return offsets
+
+        wbam_x_step = 0.002
+        wbam_y_step = 0.0005
+        wbam_z_step = 0.005
+        wbam_x_lim = [-0.004, 0.006]
+        wbam_y_lim = [0.0, 0.0]
+        wbam_z_lim = [0.0, 0.0]
+        for actu in ['muscles', 'torques']:
+            update_lims(wbam_x_diff_mean[actu]-wbam_x_diff_std[actu], wbam_x_step, wbam_x_lim, mirror=True)
+            update_lims(wbam_y_diff_mean[actu]-wbam_y_diff_std[actu], wbam_y_step, wbam_y_lim)
+            update_lims(wbam_z_diff_mean[actu]-wbam_z_diff_std[actu], wbam_z_step, wbam_z_lim)       
+            update_lims(wbam_x_diff_mean[actu]+wbam_x_diff_std[actu], wbam_x_step, wbam_x_lim, mirror=True)
+            update_lims(wbam_y_diff_mean[actu]+wbam_y_diff_std[actu], wbam_y_step, wbam_y_lim)
+            update_lims(wbam_z_diff_mean[actu]+wbam_z_diff_std[actu], wbam_z_step, wbam_z_lim)
+
+        diff_stats_wbam_x = pd.read_csv(file_dep[self.label_dict['wbam_stats_x_diff']], index_col=[0, 1])
+        diff_stats_wbam_y = pd.read_csv(file_dep[self.label_dict['wbam_stats_y_diff']], index_col=[0, 1])
+        diff_stats_wbam_z = pd.read_csv(file_dep[self.label_dict['wbam_stats_z_diff']], index_col=[0, 1])    
+        for actu in ['muscles', 'torques']:
+            stats_wbam_x = pd.read_csv(file_dep[self.label_dict[f'wbam_stats_x_{actu}']], index_col=[0, 1])
+            stats_wbam_y = pd.read_csv(file_dep[self.label_dict[f'wbam_stats_y_{actu}']], index_col=[0, 1])
+            stats_wbam_z = pd.read_csv(file_dep[self.label_dict[f'wbam_stats_z_{actu}']], index_col=[0, 1])
+
+            handles_wbam = list()
+            for itime, time in enumerate(self.times):
+                wbam_x_offsets = get_offsets(wbam_x_diff_mean[actu][itime, :], wbam_x_diff_std[actu][itime, :], wbam_x_lim)
+                wbam_y_offsets = get_offsets(wbam_y_diff_mean[actu][itime, :], wbam_y_diff_std[actu][itime, :], wbam_y_lim)
+                wbam_z_offsets = get_offsets(wbam_z_diff_mean[actu][itime, :], wbam_z_diff_std[actu][itime, :], wbam_z_lim)
+                diff_wbam_x_offsets = get_offsets(wbam_x_diff_mean[actu][itime, :], wbam_x_diff_std[actu][itime, :], wbam_x_lim, shift=0.01)
+                diff_wbam_y_offsets = get_offsets(wbam_y_diff_mean[actu][itime, :], wbam_y_diff_std[actu][itime, :], wbam_y_lim, shift=0.01)
+                diff_wbam_z_offsets = get_offsets(wbam_z_diff_mean[actu][itime, :], wbam_z_diff_std[actu][itime, :], wbam_z_lim, shift=0.01)
+
+                zipped = zip(self.torques, self.subtalars, self.colors, self.shifts, self.hatches)
+                for isubt, (torque, subtalar, color, shift, hatch) in enumerate(zipped):
+                    perturbation = f'perturbed_torque{torque}{subtalar}'
+
+                    # Set the x-position for these bar chart entries.
+                    x = itime + shift
+                    lw = 0.2
+
+                    # Instantaneous positions
+                    # -----------------------
+                    plot_errorbar(axes[actu][0], x, wbam_x_diff_mean[actu][itime, isubt], wbam_x_diff_std[actu][itime, isubt])
+                    h_wbam = axes[actu][0].bar(x, wbam_x_diff_mean[actu][itime, isubt], self.width, color=color, clip_on=False, 
+                        hatch=hatch, edgecolor=self.edgecolor, lw=lw, zorder=2.5)
+                    if stats_wbam_x.loc[(time, perturbation)]['significant']:
+                        axes[actu][0].text(x, wbam_x_offsets[isubt], '*', ha='center', fontsize=10)
+                        if (actu == 'torques') and diff_stats_wbam_x.loc[(time, perturbation)]['significant']:
+                            axes[actu][0].text(x, diff_wbam_x_offsets[isubt], r'$ \diamond $', ha='center', fontsize=8)
+                    handles_wbam.append(h_wbam)
+
+                    plot_errorbar(axes[actu][1], x, wbam_y_diff_mean[actu][itime, isubt], wbam_y_diff_std[actu][itime, isubt])
+                    axes[actu][1].bar(x, wbam_y_diff_mean[actu][itime, isubt], self.width, color=color, clip_on=False, 
+                        hatch=hatch, edgecolor=self.edgecolor , lw=lw, zorder=2.5)
+                    if stats_wbam_y.loc[(time, perturbation)]['significant']:
+                        axes[actu][1].text(x, wbam_y_offsets[isubt], '*', ha='center', fontsize=10)
+                        if (actu == 'torques') and diff_stats_wbam_y.loc[(time, perturbation)]['significant']:
+                            axes[actu][1].text(x, diff_wbam_y_offsets[isubt], r'$ \diamond $', ha='center', fontsize=8)
+                    
+                    plot_errorbar(axes[actu][2], x, wbam_z_diff_mean[actu][itime, isubt], wbam_z_diff_std[actu][itime, isubt])
+                    axes[actu][2].bar(x, wbam_z_diff_mean[actu][itime, isubt], self.width, color=color, clip_on=False, 
+                        hatch=hatch, edgecolor=self.edgecolor , lw=lw, zorder=2.5)
+                    if stats_wbam_z.loc[(time, perturbation)]['significant']:
+                        axes[actu][2].text(x, wbam_z_offsets[isubt], '*', ha='center', fontsize=10)
+                        if (actu == 'torques') and diff_stats_wbam_z.loc[(time, perturbation)]['significant']:
+                            axes[actu][2].text(x, diff_wbam_z_offsets[isubt], r'$ \diamond $', ha='center', fontsize=8)
+                     
+            axes[actu][0].set_ylim(wbam_x_lim)
+            axes[actu][0].set_yticks(get_ticks_from_lims(wbam_x_lim, wbam_x_step))
+            axes[actu][1].set_ylim(wbam_y_lim)
+            axes[actu][1].set_yticks(get_ticks_from_lims(wbam_y_lim, wbam_y_step))
+            axes[actu][2].set_ylim(wbam_z_lim)
+            axes[actu][2].set_yticks(get_ticks_from_lims(wbam_z_lim, wbam_z_step))
+
+            if 'muscles' in actu:
+                axes[actu][0].legend(handles_wbam, self.legend_labels, loc='upper left', 
+                    frameon=True, fontsize=8)   
+                axes[actu][0].set_ylabel(r'$\Delta$' + ' frontal WBAM $[-]$')
+                axes[actu][1].set_ylabel(r'$\Delta$' + ' transverse WBAM $[-]$')
+                axes[actu][2].set_ylabel(r'$\Delta$' + ' sagittal WBAM $[-]$')
 
         import cv2
         def add_muscles_image(fig):

@@ -261,6 +261,12 @@ controls*.sto
 /statistics/center_of_pressure/tables/**
 /statistics/center_of_pressure/normality/**
 
+/statistics/whole_body_angular_momentum/whole_body_angular_momentum_statistics.txt
+/statistics/whole_body_angular_momentum/aggregate/**
+/statistics/whole_body_angular_momentum/results/**
+/statistics/whole_body_angular_momentum/tables/**
+/statistics/whole_body_angular_momentum/normality/**
+
 # Results files
 /results/guess/**
 /results/perturbed/**
@@ -273,6 +279,7 @@ controls*.sto
 /results/**/unperturbed_grfs.sto
 /results/**/unperturbed_experiment_states.sto
 /results/**/model_unperturbed.osim
+/results/**/*.zip
 /figures/**/*.png
 /figures/**/*.svg
 /figures/**/*.txt
@@ -291,5 +298,9 @@ controls*.sto
 
 # Tempoarary
 /cop/**
+
+# AddBiomechanics testing
+addbio.zip
+addbio/
 
 

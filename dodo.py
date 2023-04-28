@@ -74,7 +74,7 @@ study.constraint_tolerance = 1e-4
 study.convergence_tolerance = 1e-2
 
 # Maximum perturbation torque
-study.torques = [0, 10] #, 20, 30, 40, 50]
+study.torques = [0, 10]
 study.times = [20, 25, 30, 35, 40, 45, 50, 55, 60] 
 study.rise = 10
 study.fall = 5
@@ -169,21 +169,27 @@ study.add_task(TaskComputeObjectiveContributions, subjects)
 # ----------
 study.add_task(TaskCreateCenterOfMassStatisticsTables, subjects, study.times)
 study.add_task(TaskCreateCenterOfPressureStatisticsTables, subjects, study.times)
+study.add_task(TaskCreateWholeBodyAngularMomentumStatisticsTables, subjects, study.times)
 study.add_task(TaskRunStatistics, study.times)
 study.add_task(TaskAggregateCenterOfMassStatistics, study.times)
 study.add_task(TaskAggregateCenterOfPressureStatistics, study.times)
+study.add_task(TaskAggregateWholeBodyAngularMomentumStatistics, study.times)
 
 # Center-of-mass analysis
 # -----------------------
 study.add_task(TaskPlotCenterOfMassVector, subjects, study.times)
 study.add_task(TaskPlotInstantaneousCenterOfMass, subjects, study.times)
 study.add_task(TaskPlotCOMVersusCOP, subjects, study.times)
+study.add_task(TaskPlotCOMVersusPeakTorque, subjects)
 
 # Center-of-pressure analysis
 # ---------------------------
 study.add_task(TaskPlotCenterOfPressureVector, subjects, study.times)
-
 study.add_task(TaskPlotInstantaneousCenterOfPressure, subjects, study.times)
+
+# Whole-body angular momentum analysis
+# ------------------------------------
+study.add_task(TaskPlotInstantaneousWholeBodyAngularMomentum, subjects, study.times)
 
 # Device powers
 # -------------
