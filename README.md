@@ -28,7 +28,7 @@ Software requirements
 
 Config file setup
 -----------------
-Before running any simulations, you will need create a file called "config.yml"
+Before running any simulations, you will need create a file called 'config.yml'
 and place it in the top directory of the repository. This file will contain
 various values and paths needed to run the simulation pipeline. 
 
@@ -38,25 +38,24 @@ trajectory optimization tasks (solutions are already included in the
 repository) but run the time-stepping integration tasks that produce model 
 kinematic changes in response to applied exoskeleton torques:
 
-unperturbed_initial_guess: True
-skip_tracking_solve: True
-skip_timestepping_solve: False
-enable_perturbed_plotting_tasks: False
+- unperturbed_initial_guess: True
+- skip_tracking_solve: True
+- skip_timestepping_solve: False
+- enable_perturbed_plotting_tasks: False
 
 The remaining entries are paths that will be specific to your system and 
 represent the top-level repository path need by the 'doit' Python package, the
 OpenSim installation directory, the directory containing the raw mocap data, and
 subdirectories needed for different parts of the simulation pipeline:
 
-doit_path: Path to the repository root 
-           (i.e., C:\Users\Nick\Repos\balance-exo-sim)
-motion_capture_data_path: Path to raw mocap data (download from SimTK project)
-R_exec_path: \path\to\Rscript.exe (R language executable)
-results_path: <doit_path>\results
-analysis_path: <doit_path>\analysis
-validate_path: <doit_path>\validate
-statistics_path: <doit_path>\statistics
-figures_path: <doit_path>\figures
+- doit_path: Path to the repository root (e.g., C:\Users\Nick\Repos\balance-exo-sim)
+- motion_capture_data_path: Path to raw mocap data (download from SimTK project)
+- R_exec_path: \path\to\Rscript.exe (R language executable)
+- results_path: <doit_path>\results
+- analysis_path: <doit_path>\analysis
+- validate_path: <doit_path>\validate
+- statistics_path: <doit_path>\statistics
+- figures_path: <doit_path>\figures
 
 'doit' workflow
 ---------------
@@ -87,8 +86,8 @@ A Docker container that includes a Python environment and an OpenSim installatio
 needed to reproduce the study results can be created from the Dockerfile located
 under the subdirectory '/docker'. The text file 'commands.txt' contains a list
 of useful commands for building the Docker image, creating a container, 
-configuring the config.yml and run_tasks.sh files, and executing the simulation
-workflow.
+configuring the 'config.yml' and 'run_tasks.sh' files, and executing the 
+simulation workflow.
 
 ### NOTE
 In a previous version of this project, we refered to ankle exoskeleton
